@@ -63,6 +63,10 @@ From the UI: add models under **Models → Add Model**, create virtual API keys
 under **Virtual Keys**, set up teams/users/budgets, etc. Everything you do here
 is persisted in Postgres.
 
+**For step-by-step UI walkthroughs** (configuring endpoints, virtual keys,
+routing, fallbacks, least-cost routing) see [`docs/user-guide.md`](docs/user-guide.md).
+For architectural background see [`docs/design.md`](docs/design.md).
+
 ## Sanity checks
 
 ```bash
