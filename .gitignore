@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Stateful bind-mounted data
+data/
+
+# Local Claude Code / session tooling — machine-specific, not for the repo
+.claude/
+.remember/
+supertool
+
+# Editor/OS junk
+*.swp
+.DS_Store
