@@ -344,6 +344,12 @@ You can tune this with `router_settings.retry_after` and
 
 ## 5. Routing: least-cost routing
 
+> **Want the full mental model** of how least-cost routing ties together
+> with virtual keys, model access groups, and budgets/accounting? See the
+> dedicated [cost-routing-guide.md](cost-routing-guide.md) — it walks
+> through a complete UI setup and explains the "model group vs. model
+> access group" distinction that trips most people up.
+
 ### The setup
 
 Lowest-cost routing picks the cheapest deployment from a model group on

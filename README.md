@@ -65,6 +65,9 @@ is persisted in Postgres.
 
 **For step-by-step UI walkthroughs** (configuring endpoints, virtual keys,
 routing, fallbacks, least-cost routing) see [`docs/user-guide.md`](docs/user-guide.md).
+**To understand how virtual keys, model access groups, budgets, and routing
+interlink** for cost-based routing, see
+[`docs/cost-routing-guide.md`](docs/cost-routing-guide.md).
 For architectural background see [`docs/design.md`](docs/design.md).
 
 ## Sanity checks
