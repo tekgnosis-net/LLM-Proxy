@@ -61,4 +61,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      # LiteLLM can take ~60-90s to boot (Prisma migration check + worker
+      # spin-up against Postgres); a 30s grace nearly flapped to unhealthy on
+      # a real recreate. start_period only widens the startup tolerance — it
+      # never delays healthy detection on a fast boot — so 60s is free safety.
+      start_period: 60s
