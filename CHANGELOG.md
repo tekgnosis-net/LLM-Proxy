@@ -1,3 +1,17 @@
+# [1.5.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.4.0...v1.5.0) (2026-06-06)
+
+
+### Bug Fixes
+
+* **ui:** defensively strip any plaintext key from key list (defense-in-depth) ([2ec395b](https://github.com/tekgnosis-net/LLM-Proxy/commit/2ec395ba8d6f68bc317a771107c2ecd030612cce))
+
+
+### Features
+
+* **ui:** /api/keys routes (list/create/delete, login-gated) ([85e9f1b](https://github.com/tekgnosis-net/LLM-Proxy/commit/85e9f1b933957445f820523f8a5f316da85c25a2))
+* **ui:** keys_client (list/generate/delete via litellm key API) ([fc6f2be](https://github.com/tekgnosis-net/LLM-Proxy/commit/fc6f2bee7809c8d379703c157e0f04ed6cf3d3fd))
+* **ui:** Virtual Keys screen (create/list/delete with budgets) ([1cf4add](https://github.com/tekgnosis-net/LLM-Proxy/commit/1cf4add9e3001df2ea70e8820d2f3c7f98eaf82d))
+
 # [1.4.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.3.0...v1.4.0) (2026-06-06)
 
 
