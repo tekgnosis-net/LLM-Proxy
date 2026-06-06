@@ -2,7 +2,7 @@ from __future__ import annotations
 import yaml
 from pathlib import Path
 from typing import Any, Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 VALID_ROUTING_STRATEGIES = {
     "simple-shuffle", "least-busy", "usage-based-routing",
@@ -42,15 +42,18 @@ class RouterSettings(BaseModel, extra="allow"):
 class CacheParams(BaseModel, extra="allow"):
     type: Optional[str] = None
 
-    @field_validator("*", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _no_ssl(cls, v, info):
-        if info.field_name in FORBIDDEN_CACHE_KEYS:
-            raise ValueError(
-                f"cache_params must not contain {info.field_name!r} "
-                "(LiteLLM bug #10949: any ssl key forces a TLS handshake that hangs against plain Valkey)"
-            )
-        return v
+    def _no_ssl(cls, data):
+        if isinstance(data, dict):
+            for k in FORBIDDEN_CACHE_KEYS:
+                if k in data:
+                    raise ValueError(
+                        f"cache_params must not contain {k!r} "
+                        "(LiteLLM bug #10949: any ssl key forces a TLS "
+                        "handshake that hangs against plain Valkey)"
+                    )
+        return data
 
 
 class LitellmSettings(BaseModel, extra="allow"):
@@ -73,13 +76,17 @@ def load_config(path: str) -> ProxyConfig:
         raw = yaml.safe_load(p.read_text()) or {}
     except yaml.YAMLError as e:
         raise ConfigError(f"invalid YAML: {e}") from e
-    # explicit guardrail on cache_params before pydantic (clear message)
-    cache_params = (raw.get("litellm_settings") or {}).get("cache_params") or {}
-    for k in FORBIDDEN_CACHE_KEYS:
-        if k in cache_params:
-            raise ConfigError(
-                f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)"
-            )
+    if not isinstance(raw, dict):
+        raise ConfigError("config root must be a mapping")
+    # explicit guardrail on cache_params before pydantic (clear message, defense-in-depth)
+    ls = raw.get("litellm_settings")
+    cache_params = ls.get("cache_params") if isinstance(ls, dict) else None
+    if isinstance(cache_params, dict):
+        for k in FORBIDDEN_CACHE_KEYS:
+            if k in cache_params:
+                raise ConfigError(
+                    f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)"
+                )
     try:
         return ProxyConfig.model_validate(raw)
     except Exception as e:

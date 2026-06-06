@@ -1,6 +1,6 @@
 import pytest
 import yaml
-from app.config_store import load_config, ConfigError, VALID_ROUTING_STRATEGIES
+from app.config_store import load_config, ConfigError, CacheParams, VALID_ROUTING_STRATEGIES
 
 
 def write(tmp_path, data):
@@ -45,3 +45,35 @@ def test_cost_based_routing_is_valid():
 def test_missing_file_raises(tmp_path):
     with pytest.raises(ConfigError):
         load_config(str(tmp_path / "nope.yaml"))
+
+
+@pytest.mark.parametrize("key", ["ssl", "ssl_check_hostname"])
+def test_cacheparams_model_rejects_ssl_directly(key):
+    # locks the guardrail at the MODEL layer (would fail if the loop alone enforced it)
+    with pytest.raises(Exception):
+        CacheParams(**{key: False})
+
+
+def test_string_cache_params_is_not_substring_matched(tmp_path):
+    # 'use_ssl_please' must NOT trip the ssl guard; it's a malformed shape ->
+    # should raise ConfigError (from pydantic), not a false "forbidden key ssl"
+    p = tmp_path / "c.yaml"
+    p.write_text("litellm_settings:\n  cache_params: use_ssl_please\n")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(p))
+    assert "forbidden key 'ssl'" not in str(e.value)
+
+
+@pytest.mark.parametrize("body", ["- a\n- b\n", "just a string\n", "42\n"])
+def test_malformed_root_raises_configerror_not_attributeerror(tmp_path, body):
+    p = tmp_path / "c.yaml"
+    p.write_text(body)
+    with pytest.raises(ConfigError):
+        load_config(str(p))
+
+
+def test_litellm_settings_as_string_raises_configerror(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("litellm_settings: hello\n")
+    with pytest.raises(ConfigError):
+        load_config(str(p))
