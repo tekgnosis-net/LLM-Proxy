@@ -1,6 +1,7 @@
 import pytest
 import yaml
-from app.config_store import load_config, ConfigError, CacheParams, VALID_ROUTING_STRATEGIES, ProxyConfig, validate_config
+from pathlib import Path
+from app.config_store import load_config, ConfigError, CacheParams, VALID_ROUTING_STRATEGIES, ProxyConfig, validate_config, write_config
 
 
 def write(tmp_path, data):
@@ -104,3 +105,45 @@ def test_unknown_keys_preserved_roundtrip():
 def test_validate_config_helper_raises_configerror_on_bad_routing():
     with pytest.raises(ConfigError):
         validate_config({"router_settings": {"routing_strategy": "lowest-cost"}})
+
+
+def test_write_then_load_roundtrip(tmp_path):
+    path = str(tmp_path / "config.yaml")
+    raw = {
+        "general_settings": {"store_model_in_db": False},
+        "litellm_settings": {"cache": True, "cache_params": {"type": "redis", "host": "valkey", "port": "6379"}},
+        "router_settings": {"routing_strategy": "simple-shuffle"},
+        "model_list": [{"model_name": "cheap", "litellm_params": {"model": "openai/gpt-4o-mini"}}],
+    }
+    write_config(path, raw)
+    cfg = load_config(path)
+    assert cfg.model_list[0].model_name == "cheap"
+    assert cfg.router_settings.routing_strategy == "simple-shuffle"
+
+
+def test_write_emits_guardrail_header(tmp_path):
+    path = str(tmp_path / "config.yaml")
+    write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})
+    text = Path(path).read_text()
+    assert text.startswith("#")
+    assert "#10949" in text and "store_model_in_db" in text
+
+
+def test_write_rejects_forbidden_ssl(tmp_path):
+    path = str(tmp_path / "config.yaml")
+    with pytest.raises(ConfigError):
+        write_config(path, {"litellm_settings": {"cache_params": {"type": "redis", "ssl": False}}})
+
+
+def test_write_creates_timestamped_backup(tmp_path):
+    path = str(tmp_path / "config.yaml")
+    write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})
+    write_config(path, {"router_settings": {"routing_strategy": "least-busy"}})
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert len(backups) >= 1
+
+
+def test_write_is_atomic_leaves_no_tmp(tmp_path):
+    path = str(tmp_path / "config.yaml")
+    write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})
+    assert not list(tmp_path.glob("*.tmp"))

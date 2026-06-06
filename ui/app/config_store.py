@@ -1,5 +1,8 @@
 from __future__ import annotations
+import os
+import tempfile
 import yaml
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 from pydantic import BaseModel, field_validator, model_validator
@@ -93,3 +96,41 @@ def load_config(path: str) -> ProxyConfig:
     if not isinstance(raw, dict):
         raise ConfigError("config root must be a mapping")
     return validate_config(raw)
+
+
+_HEADER = """\
+# LiteLLM proxy config — managed by the admin UI (llm-proxy-ui). The UI re-emits
+# this header on save (hand-added comments are not preserved; keys/values are).
+# store_model_in_db is OFF: this file is the single source of truth for models,
+# routing, and caching.
+#
+# Caching: the UI never writes an `ssl` key into cache_params. Don't add one by
+# hand either — LiteLLM bug #10949 makes any ssl key (even ssl: false) use an SSL
+# connection -> TLS handshake against plain Valkey hangs.
+#
+# routing_strategy must be one of: simple-shuffle, least-busy, usage-based-routing,
+# usage-based-routing-v2, latency-based-routing, cost-based-routing (NOT lowest-cost).
+"""
+
+
+def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
+    """Validate, then atomically write `raw` to `path` (header + yaml). Backs up the
+    prior file. Returns the validated ProxyConfig. Raises ConfigError on invalid input."""
+    cfg = validate_config(raw)                       # guardrails BEFORE any disk write
+    body = yaml.safe_dump(cfg.model_dump(exclude_none=True), sort_keys=False, default_flow_style=False)
+    content = _HEADER + "\n" + body
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if backup and p.exists():
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        p.with_name(f"{p.name}.bak.{ts}").write_text(p.read_text())
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, str(p))
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return cfg
