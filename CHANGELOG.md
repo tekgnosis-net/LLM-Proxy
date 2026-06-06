@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.2.0...v1.3.0) (2026-06-06)
+
+
+### Features
+
+* **ui:** reject literal secrets in config (enforce os.environ/ refs) ([7cf866c](https://github.com/tekgnosis-net/LLM-Proxy/commit/7cf866c402e5b83521f263497d0322179f0ff7a3))
+
 # [1.2.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.1.0...v1.2.0) (2026-06-06)
 
 
