@@ -23,8 +23,12 @@ class KeysClient:
             r.raise_for_status()
             data = r.json()
             keys = data.get("keys", data) if isinstance(data, dict) else data
-            # normalize: keep only dict items (full objects); drop bare token strings
-            return [k for k in keys if isinstance(k, dict)]
+            out = []
+            for k in keys:
+                if isinstance(k, dict):  # full objects only (drop bare token strings)
+                    k.pop("key", None)   # defense-in-depth: never surface a plaintext key in a list
+                    out.append(k)
+            return out
 
     async def generate_key(self, payload: dict[str, Any]) -> dict[str, Any]:
         async with self._client() as c:
