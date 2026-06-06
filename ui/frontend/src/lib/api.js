@@ -16,4 +16,5 @@ export const api = {
   keys: () => req('/api/keys'),
   createKey: (payload) => req('/api/keys', { method: 'POST', body: JSON.stringify(payload) }),
   deleteKey: (tokens) => req('/api/keys/delete', { method: 'POST', body: JSON.stringify({ tokens }) }),
+  usage: () => req('/api/usage'),
 }

@@ -7,6 +7,7 @@
   import Models from './routes/Models.svelte'
   import Routing from './routes/Routing.svelte'
   import Keys from './routes/Keys.svelte'
+  import Usage from './routes/Usage.svelte'
   import { createConfigStore } from './lib/configStore.svelte.js'
   const store = createConfigStore()
 
@@ -25,6 +26,7 @@
       <div class="brand"><span class="logo">LP</span> LLM Proxy</div>
       <div class="navgroup">Overview</div>
       <button class="nav" class:active={screen==='dash'} onclick={() => screen='dash'}>▦ Dashboard</button>
+      <button class="nav" class:active={screen==='usage'} onclick={() => screen='usage'}>📊 Usage &amp; Spend</button>
       <div class="navgroup">Configuration</div>
       <button class="nav" class:active={screen==='models'} onclick={() => screen='models'}>◳ Models</button>
       <button class="nav" class:active={screen==='routing'} onclick={() => screen='routing'}>⇄ Routing</button>
@@ -39,6 +41,7 @@
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
       {:else if screen==='keys'}<Keys />
+      {:else if screen==='usage'}<Usage />
       {:else}<ConfigViewer />{/if}
     </main>
   </div>
