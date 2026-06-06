@@ -1,3 +1,12 @@
+# [1.6.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.5.0...v1.6.0) (2026-06-06)
+
+
+### Features
+
+* **ui:** /api/usage (combined spend/activity, resilient) ([7464e2f](https://github.com/tekgnosis-net/LLM-Proxy/commit/7464e2feb72f78f3db6a89d1aa6df98721bd7c88))
+* **ui:** spend_client (total/by-model/by-key/activity) ([6dbdf29](https://github.com/tekgnosis-net/LLM-Proxy/commit/6dbdf298455425dea6c2014d56f124ccdb42729b))
+* **ui:** Usage & Spend screen (spend cards, by-model/key, activity) ([a767985](https://github.com/tekgnosis-net/LLM-Proxy/commit/a767985508565b04dd7349719e18b6eaad0faefc))
+
 # [1.5.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.4.0...v1.5.0) (2026-06-06)
 
 
