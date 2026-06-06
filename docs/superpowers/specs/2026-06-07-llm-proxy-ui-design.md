@@ -113,9 +113,11 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
 - **`auth`** — login (verify password hash), session cookie issue/verify,
   `login_required` dependency.
 - **`config_store`** — load/parse/validate/write `config.yaml`. Pydantic models
-  mirror the schema (`model_list`, `router_settings` incl. `routing_groups`,
-  `litellm_settings.cache_params`). Produces a diff vs the on-disk file before
-  applying. **Guardrails live here** (see below).
+  mirror LiteLLM's schema per [`docs/config-schema.md`](config-schema.md)
+  (`model_list`/`litellm_params`/`model_info`, `router_settings`,
+  `litellm_settings.cache_params`, `general_settings`) — preserving unknown keys
+  on round-trip. Produces a diff vs the on-disk file before applying.
+  **Guardrails live here** (see below).
 - **`reloader`** — after a successful write, call the socket-proxy to `SIGHUP`
   litellm, then poll `/health/readiness` until the proxy is back; returns
   success/failure to the UI.
@@ -203,14 +205,21 @@ passed validation, and a bad apply self-heals.
 
 1. **Typed generation, never free-form.** The UI builds config from structured
    form input into typed models (the `config_store` pydantic tree, **expanded in
-   Phase 2 to mirror LiteLLM's expected schema**: per-provider `litellm_params`,
-   `router_settings`, `cache_params`), then serializes to YAML. A raw-YAML
-   editor, if offered, routes through the same validation — it can't bypass it.
+   Phase 2 to mirror LiteLLM's expected schema** per the authoritative
+   [`docs/config-schema.md`](../../config-schema.md) — every section's exact
+   params, types, provider-specific `litellm_params`, secrets, and the forbidden
+   keys), then serializes to YAML. Secrets are emitted as `os.environ/<VAR>`
+   (never literals); unknown keys are preserved on round-trip. A raw-YAML editor,
+   if offered, routes through the same validation — it can't bypass it.
 
-2. **Schema + guardrail validation (pre-write).** Reject before touching disk:
-   the #10949 ssl-guard, the routing-strategy enum, and required-field checks
-   (every `model_list` entry has `model_name` + `litellm_params.model`;
-   `cache_params.type` valid; etc.).
+2. **YAML structure validation (pre-write).** Parse the candidate YAML and
+   validate its STRUCTURE against [`docs/config-schema.md`](../../config-schema.md):
+   correct nesting (`litellm_params` only under `model_list[]` entries),
+   required-field checks (every `model_list` entry has `model_name` +
+   `litellm_params.model`; `cache_params.type` valid when `cache: true`), and the
+   crash-class guardrails — **hard-reject** the #10949 ssl keys and any
+   `routing_strategy` outside the valid enum (these crash the proxy on load).
+   Nothing reaches disk until this passes.
 
 3. **LiteLLM-fidelity validation (pre-apply) — prevents the crash.** Because a
    bad config can crash the proxy on SIGHUP, validate the candidate against
@@ -330,5 +339,6 @@ GitHub Actions on `main`:
 - Prototype (visual source of truth): `2026-06-07-llm-proxy-ui-prototype.html`.
 - Brainstorm decisions: config-only · FastAPI+Svelte · admin-password auth ·
   scoped socket-proxy reload · full-bleed Apple-HIG.
-- Background: `docs/cost-routing-guide.md`; memory notes on LiteLLM bugs
+- **Config dictionary (authoritative): [`docs/config-schema.md`](../../config-schema.md)** — the LiteLLM config.yaml params the UI generates/validates.
+- Background: `docs/archive/cost-routing-guide.md`; memory notes on LiteLLM bugs
   (#10949 SSL cache, router-settings no-setter, store_model_in_db precedence).
