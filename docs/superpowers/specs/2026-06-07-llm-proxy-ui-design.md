@@ -81,7 +81,7 @@ impossible to reintroduce. Ships as a container in the existing compose stack.
 | Stack | FastAPI backend + **Svelte** SPA, single container (multi-stage build) |
 | Auth | Admin password (`.env`, hashed) + session cookie; **master key server-side only** |
 | Framing | Full-viewport Apple-HIG web app (no desktop-window chrome) |
-| v1 scope | Models · Routing · Virtual keys/budgets · Spend dashboard · Prompt caching |
+| v1 scope | Models · Routing · Virtual keys/budgets · Spend dashboard · Prompt caching · **DB housekeeping** |
 
 **Why config-only is safe:** the feared "config-only drops models" issue
 (#25350) was investigated and is a **false alarm** — the reporter retracted it
@@ -94,8 +94,9 @@ as their own upstream gateway's fault. We are on the latest release (v1.87.1).
 - **NEW `llm-proxy-ui`**: built from `./ui` (multi-stage: build Svelte → serve
   via FastAPI). Mounts the host `config/config.yaml` **read-write**. Env:
   `LITELLM_BASE_URL=http://litellm:4000`, `LITELLM_MASTER_KEY`,
-  `ADMIN_PASSWORD_HASH`, `SOCKET_PROXY_URL`, `SESSION_SECRET`. Publishes
-  `${UI_PORT:-8081}:8080`. Depends on litellm healthy.
+  `ADMIN_PASSWORD_HASH`, `SOCKET_PROXY_URL`, `SESSION_SECRET`, and
+  `DATABASE_URL` (Postgres — for DB housekeeping + stats only). Publishes
+  `${UI_PORT:-8081}:8080`. Depends on litellm + postgres healthy.
 - **NEW `socket-proxy`** (`tecnativa/docker-socket-proxy`): mounts the Docker
   socket and exposes only container POST actions (`POST=1`, `CONTAINERS=1`, all
   other API families `0`) on an **internal network reachable only by the UI**.
@@ -120,8 +121,13 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
   success/failure to the UI.
 - **`litellm_client`** — thin async client for the management API (keys, spend,
   health) using the server-side master key.
+- **`housekeeping`** — APScheduler jobs + manual triggers for DB maintenance
+  (prune expired keys, trim error/audit logs beyond a window, `VACUUM
+  (ANALYZE)`); also serves read-only DB stats. Uses a direct Postgres
+  connection (`DATABASE_URL`). Jobs are idempotent, batched, and logged.
 - **`routes`** — `/api/auth/*`, `/api/config/{models,routing,cache}`,
-  `/api/keys/*`, `/api/usage/*`, `/api/health`, `/api/config/export|import`.
+  `/api/keys/*`, `/api/usage/*`, `/api/housekeeping/*`, `/api/db/stats`,
+  `/api/health`, `/api/config/export|import`.
 - **static** — serves the built Svelte SPA.
 
 ### Guardrails (make the known bugs impossible)
@@ -148,6 +154,33 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
 | **Virtual Keys** | API | List w/ live budget bars; Create-Key sheet (alias, access, budget, rate limits, expiry, per-key routing override); revoke |
 | **Usage & Spend** | API | 24h/7d/30d range; totals incl. cache savings; spend by day/model/key |
 | **Settings** | mixed | Proxy connection + master-key status, reload-mechanism status, config.yaml viewer + **Export/Import snapshot (GitOps)**, admin password, theme (System/light/dark), version |
+| **Housekeeping** | config + DB | DB stats cards; spend-log retention (config-backed); UI-cron schedule + targets (expired keys, logs, VACUUM); "Run cleanup now" w/ dry-run preview; last/next run |
+
+## DB Housekeeping
+
+Postgres grows over time — chiefly `LiteLLM_SpendLogs` (one row per request),
+plus error/audit logs and expired keys. v1 manages this **two ways**:
+
+1. **LiteLLM built-in retention (config path).** The UI sets, in `config.yaml`
+   `general_settings`: `maximum_spend_logs_retention_period` (e.g. `30d`),
+   `maximum_spend_logs_retention_interval` (purge cadence), and a
+   `disable_spend_logs` toggle. The proxy enforces these on its own schedule;
+   written/applied like any config change (validate → SIGHUP).
+2. **UI-managed maintenance cron (APScheduler in the backend).** For what
+   LiteLLM doesn't auto-clean: delete expired/over-age virtual keys, trim
+   `LiteLLM_ErrorLogs`/audit logs beyond a window, and `VACUUM (ANALYZE)` to
+   reclaim disk. Schedule (cron/interval) and per-target retention are set in
+   the UI, with a manual **"Run cleanup now"** (dry-run preview shows row counts
+   first) and last-run / next-run status.
+
+This introduces a **third data path**: the UI backend connects to Postgres
+directly (`DATABASE_URL`) for maintenance + read-only stats (table sizes, row
+counts, oldest spend log, total DB size). Config stays on the file path; key/
+spend management stays on the API path.
+
+**Safety:** the cron only prunes append-only logs and expired keys (never alters
+schema or live config tables); deletes are batched, idempotent, and logged. Use
+a least-privilege Postgres role for the UI if feasible (see Security).
 
 ## Design system
 
@@ -186,6 +219,9 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
   `SameSite=Lax`, `Secure` when behind TLS.
 - `socket-proxy` is the only thing with Docker access, allow-listed to one
   action on one container; the UI reaches it over an internal network.
+- The UI backend holds `DATABASE_URL` for housekeeping/stats. Prefer a
+  **least-privilege Postgres role** (DELETE/VACUUM on log tables + SELECT for
+  stats) over reusing the full owner credential, if practical.
 - Intended for LAN/VPN; put behind a reverse proxy + TLS for any wider exposure.
 
 ## Testing
@@ -206,7 +242,8 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
 2. **Models + Routing** editing with write→validate→reload.
 3. **Virtual Keys + budgets** (API) incl. Create-Key sheet + per-key routing.
 4. **Usage & Spend** dashboard.
-5. **Caching** config + **Export/Import snapshot** + dark-mode polish.
+5. **Caching** config + **DB housekeeping** (retention config + maintenance
+   cron + DB stats) + **Export/Import snapshot** + dark-mode polish.
 
 ## Risks / open questions
 
@@ -219,6 +256,9 @@ Each module has one job, a clear interface, and is unit-testable in isolation:
 - `tecnativa/docker-socket-proxy` exposes API families, not per-container
   scoping — may need a minimal custom reloader behind it, or accept
   container-family scoping on a private network.
+- Housekeeping cron must track LiteLLM's schema (table names like
+  `LiteLLM_SpendLogs`, `LiteLLM_ErrorLogs` can change across versions) — pin to
+  known tables, guard with existence checks, and verify after LiteLLM upgrades.
 
 ## References
 
