@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     config_path: str = "/config/config.yaml"
     socket_proxy_url: str = "http://socket-proxy:2375"
     litellm_container: str = "litellm-proxy"
-    reload_mode: str = "SIGHUP"       # "SIGHUP" or "restart" (set per the Task 4 spike)
+    reload_mode: Literal["SIGHUP", "restart"] = "restart"   # spike: this image needs a restart, SIGHUP is a no-op
     reload_timeout_s: float = 90.0    # max wait for the proxy to return healthy after reload
 
 
