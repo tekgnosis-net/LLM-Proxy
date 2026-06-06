@@ -11,8 +11,8 @@
   function resetForm() { form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '' }; provider = PROVIDERS[0]; showAdd = false }
   async function addModel() {
     const entry = { model_name: form.modelName, litellm_params: buildLitellmParams(provider, form) }
-    await store.saveSection('model_list', [...models(), entry])
-    resetForm()
+    const ok = await store.saveSection('model_list', [...models(), entry])
+    if (ok) resetForm()   // keep the user's input on a rejected save (422)
   }
   async function deleteModel(i) {
     await store.saveSection('model_list', models().filter((_, j) => j !== i))

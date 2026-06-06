@@ -19,7 +19,8 @@
     try { fallbacks = JSON.parse(fallbacksText) } catch (e) { parseErr = 'Fallbacks must be valid JSON'; return }
     const rs = { ...(store.config?.router_settings ?? {}), routing_strategy: strategy, fallbacks }
     if (numRetries !== '' && numRetries != null) rs.num_retries = Number(numRetries); else delete rs.num_retries
-    await store.saveSection('router_settings', rs)
+    const ok = await store.saveSection('router_settings', rs)
+    if (ok) sync()   // reflect the canonical saved config
   }
 </script>
 
