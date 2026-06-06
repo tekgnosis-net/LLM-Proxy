@@ -56,8 +56,11 @@ The UI ships as a service in the root [`docker-compose.yml`](../docker-compose.y
 # generate an admin password hash + session secret (one-time)
 SESSION_SECRET=$(openssl rand -hex 32)
 docker compose build llm-proxy-ui
+# NOTE: argon2 hashes contain `$`, which docker compose interpolates in .env
+# values — the `sed` escapes each `$` as `$$`, or login fails silently.
 HASH=$(docker compose run --rm --no-deps llm-proxy-ui \
-  python -c "from app.auth import hash_password; print(hash_password('YOUR_PASSWORD'))")
+  python -c "from app.auth import hash_password; print(hash_password('YOUR_PASSWORD'))" \
+  | sed 's/[$]/$$/g')
 printf "UI_PORT=8081\nADMIN_PASSWORD_HASH=%s\nSESSION_SECRET=%s\n" "$HASH" "$SESSION_SECRET" >> .env
 
 docker compose up -d
