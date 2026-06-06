@@ -90,7 +90,7 @@ services:
       SOCKET_PROXY_URL: http://socket-proxy:2375
       LITELLM_CONTAINER: litellm-proxy
     volumes:
-      - ./config/config.yaml:/config/config.yaml
+      - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:
       - "${UI_PORT:-8081}:8080"
     depends_on:

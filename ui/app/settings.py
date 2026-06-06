@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     config_path: str = "/config/config.yaml"
     socket_proxy_url: str = "http://socket-proxy:2375"
     litellm_container: str = "litellm-proxy"
-    database_url: str = ""            # Postgres (housekeeping/stats)
+    reload_mode: str = "SIGHUP"       # "SIGHUP" or "restart" (set per the Task 4 spike)
+    reload_timeout_s: float = 90.0    # max wait for the proxy to return healthy after reload
 
 
 @lru_cache
