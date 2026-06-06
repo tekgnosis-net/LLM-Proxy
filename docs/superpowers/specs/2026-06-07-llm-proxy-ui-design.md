@@ -192,6 +192,53 @@ a least-privilege Postgres role for the UI if feasible (see Security).
 - Light + dark via system preference (dark mode is polish, can land last).
 - Svelte + CSS variables; no heavy component library.
 
+## Config generation & safe-apply (THE critical safety path)
+
+Generating `config.yaml` correctly is the highest-risk part of this app. A
+malformed config **crashes the LiteLLM container on reload**; a *semantically*
+wrong one (e.g. a model that doesn't load) is accepted but **fails silently**
+(requests 404). The UI must make both impossible in normal use. Phase 2
+implements a layered pipeline — nothing reaches the running proxy until it has
+passed validation, and a bad apply self-heals.
+
+1. **Typed generation, never free-form.** The UI builds config from structured
+   form input into typed models (the `config_store` pydantic tree, **expanded in
+   Phase 2 to mirror LiteLLM's expected schema**: per-provider `litellm_params`,
+   `router_settings`, `cache_params`), then serializes to YAML. A raw-YAML
+   editor, if offered, routes through the same validation — it can't bypass it.
+
+2. **Schema + guardrail validation (pre-write).** Reject before touching disk:
+   the #10949 ssl-guard, the routing-strategy enum, and required-field checks
+   (every `model_list` entry has `model_name` + `litellm_params.model`;
+   `cache_params.type` valid; etc.).
+
+3. **LiteLLM-fidelity validation (pre-apply) — prevents the crash.** Because a
+   bad config can crash the proxy on SIGHUP, validate the candidate against
+   LiteLLM's *actual* expectations BEFORE writing/reloading, without touching the
+   running proxy. Phase 2 decides between: (a) importing LiteLLM's own config
+   models in the UI backend (`pip install litellm`) and validating with them
+   (highest fidelity, heavier image); (b) a throwaway dry-run (`litellm --config
+   <candidate>` parse in a one-off container — authoritative, operationally
+   heavier); (c) a faithful hand-maintained schema in `config_store` (lightest,
+   must track LiteLLM releases). **Recommended:** (a) if image weight is
+   acceptable, else (c) plus the runtime net below.
+
+4. **Atomic write + backup.** Write a temp file, `os.replace()` it over
+   `config.yaml` (atomic — the proxy never reads a half-written file), keeping a
+   timestamped backup of the prior version.
+
+5. **Apply + verify (catches crash AND silent-fail).** SIGHUP; then poll
+   `/health/readiness` until healthy (bounded timeout) AND fetch `/v1/models`,
+   confirming the expected `model_name`s are present. The model-presence check is
+   what catches "accepted but silently wrong."
+
+6. **Auto-rollback.** If the proxy doesn't return healthy, or `/v1/models`
+   doesn't match, within the timeout → restore the backup → SIGHUP again →
+   surface the error to the user. The proxy is never left broken; the user sees
+   exactly what was rejected.
+
+This pipeline is the spine of Phase 2; its plan TDDs each layer.
+
 ## Data flows
 
 1. **Config edit** (Models/Routing/Caching): UI form → `PATCH /api/config/*` →
@@ -254,7 +301,10 @@ GitHub Actions on `main`:
 
 1. **Scaffold** — container + compose wiring (UI + socket-proxy), auth,
    `config_store` read/validate/view, Dashboard + health.
-2. **Models + Routing** editing with write→validate→reload.
+2. **Models + Routing** editing on the **safe-apply pipeline** (typed generation
+   → schema+guardrail validation → LiteLLM-fidelity validation → atomic write +
+   backup → SIGHUP → health/`/v1/models` verify → auto-rollback). This is the
+   highest-risk phase — its plan TDDs each layer before any UI is wired.
 3. **Virtual Keys + budgets** (API) incl. Create-Key sheet + per-key routing.
 4. **Usage & Spend** dashboard.
 5. **Caching** config + **DB housekeeping** (retention config + maintenance
