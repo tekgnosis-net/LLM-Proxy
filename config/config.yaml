@@ -8,9 +8,14 @@ litellm_settings:
   telemetry: false
   cache: true
   cache_params:
-    type: redis
-    host: os.environ/REDIS_HOST
-    port: os.environ/REDIS_PORT
+    # In-memory response cache. The Redis-backed cache hits an upstream LiteLLM
+    # bug: RedisCache.init_async_client() caches the async client by a params
+    # hash (not per event loop), so the client created on the startup loop is
+    # reused on the serving loop and every op hangs to socket_timeout (5s).
+    # See GitHub issue BerriAI/litellm#19724. In-memory is correct for a single
+    # node; Valkey stays in the stack and gets wired to router_settings for
+    # rate-limit/coordination if/when this scales to multiple proxy replicas.
+    type: local
 
 # model_list intentionally omitted.
 # Add and manage models through the UI at http://localhost:4000/ui
