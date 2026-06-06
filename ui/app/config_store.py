@@ -17,12 +17,12 @@ class ConfigError(ValueError):
 
 
 class LitellmParams(BaseModel, extra="allow"):
-    model: Optional[str] = None
+    model: str
 
 
 class ModelEntry(BaseModel, extra="allow"):
     model_name: str
-    litellm_params: LitellmParams = LitellmParams()
+    litellm_params: LitellmParams
 
 
 class RouterSettings(BaseModel, extra="allow"):
@@ -68,6 +68,20 @@ class ProxyConfig(BaseModel, extra="allow"):
     model_list: list[ModelEntry] = []
 
 
+def validate_config(raw: dict) -> "ProxyConfig":
+    """Validate a candidate config dict (incl. guardrails). Raises ConfigError."""
+    ls = raw.get("litellm_settings")
+    cache_params = ls.get("cache_params") if isinstance(ls, dict) else None
+    if isinstance(cache_params, dict):
+        for k in FORBIDDEN_CACHE_KEYS:
+            if k in cache_params:
+                raise ConfigError(f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)")
+    try:
+        return ProxyConfig.model_validate(raw)
+    except Exception as e:
+        raise ConfigError(str(e)) from e
+
+
 def load_config(path: str) -> ProxyConfig:
     p = Path(path)
     if not p.exists():
@@ -78,16 +92,4 @@ def load_config(path: str) -> ProxyConfig:
         raise ConfigError(f"invalid YAML: {e}") from e
     if not isinstance(raw, dict):
         raise ConfigError("config root must be a mapping")
-    # explicit guardrail on cache_params before pydantic (clear message, defense-in-depth)
-    ls = raw.get("litellm_settings")
-    cache_params = ls.get("cache_params") if isinstance(ls, dict) else None
-    if isinstance(cache_params, dict):
-        for k in FORBIDDEN_CACHE_KEYS:
-            if k in cache_params:
-                raise ConfigError(
-                    f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)"
-                )
-    try:
-        return ProxyConfig.model_validate(raw)
-    except Exception as e:
-        raise ConfigError(str(e)) from e
+    return validate_config(raw)

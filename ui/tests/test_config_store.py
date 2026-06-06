@@ -1,6 +1,6 @@
 import pytest
 import yaml
-from app.config_store import load_config, ConfigError, CacheParams, VALID_ROUTING_STRATEGIES
+from app.config_store import load_config, ConfigError, CacheParams, VALID_ROUTING_STRATEGIES, ProxyConfig, validate_config
 
 
 def write(tmp_path, data):
@@ -77,3 +77,30 @@ def test_litellm_settings_as_string_raises_configerror(tmp_path):
     p.write_text("litellm_settings: hello\n")
     with pytest.raises(ConfigError):
         load_config(str(p))
+
+
+def test_model_entry_requires_model_in_litellm_params():
+    with pytest.raises(Exception):
+        ProxyConfig.model_validate({"model_list": [{"model_name": "x", "litellm_params": {}}]})
+
+
+def test_model_entry_requires_model_name():
+    with pytest.raises(Exception):
+        ProxyConfig.model_validate({"model_list": [{"litellm_params": {"model": "openai/gpt-4o"}}]})
+
+
+def test_unknown_keys_preserved_roundtrip():
+    raw = {
+        "litellm_settings": {"cache": True, "cache_params": {"type": "redis", "host": "valkey", "port": "6379"}},
+        "router_settings": {"routing_strategy": "cost-based-routing", "num_retries": 5},
+        "model_list": [{"model_name": "cheap", "litellm_params": {"model": "openai/gpt-4o-mini", "rpm": 100}}],
+    }
+    cfg = ProxyConfig.model_validate(raw)
+    dumped = cfg.model_dump(exclude_none=True)
+    assert dumped["router_settings"]["num_retries"] == 5
+    assert dumped["model_list"][0]["litellm_params"]["rpm"] == 100
+
+
+def test_validate_config_helper_raises_configerror_on_bad_routing():
+    with pytest.raises(ConfigError):
+        validate_config({"router_settings": {"routing_strategy": "lowest-cost"}})
