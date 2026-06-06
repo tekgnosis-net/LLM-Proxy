@@ -13,8 +13,29 @@ def _reloader(handler, mode="restart"):
         mode=mode,
         transport=transport,
         poll_interval_s=0.0,
-        timeout_s=2.0,
+        timeout_s=0.5,
     )
+
+
+@pytest.mark.asyncio
+async def test_verify_continues_through_connection_error_then_succeeds():
+    """Restart window: first probes raise ConnectError (container down), then healthy.
+    The loop MUST keep polling through the down-period, not abort."""
+    calls = {"n": 0}
+    def handler(req):
+        if req.url.path.endswith("/restart"):
+            return httpx.Response(204)
+        if req.url.path.endswith("/health/readiness"):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise httpx.ConnectError("container down")
+            return httpx.Response(200, json={"status": "healthy"})
+        if req.url.path.endswith("/v1/models"):
+            return httpx.Response(200, json={"data": [{"id": "cheap"}]})
+        return httpx.Response(404)
+    r = _reloader(handler, mode="restart")
+    assert await r.reload_and_verify(expected_models=["cheap"]) is True
+    assert calls["n"] >= 3
 
 
 @pytest.mark.asyncio
