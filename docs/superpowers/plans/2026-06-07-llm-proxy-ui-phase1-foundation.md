@@ -49,7 +49,8 @@ ui/
             └── ConfigViewer.svelte # read-only config.yaml view
 ```
 
-Compose/root changes: `docker-compose.yml`, `.env.example`.
+Compose/root changes: `docker-compose.yml`, `.env.example`,
+`.releaserc.json`, `.github/workflows/release.yml`.
 
 ---
 
@@ -1000,9 +1001,105 @@ git commit -m "docs: Phase 1 admin UI runbook (build, hash, login)"
 
 ---
 
+## Task 9: CI — semantic-release + GHCR image publish
+
+**Files:**
+- Create: `.releaserc.json`
+- Create: `.github/workflows/release.yml`
+
+- [ ] **Step 1: Create `.releaserc.json`**
+
+```json
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    ["@semantic-release/git", {
+      "assets": ["CHANGELOG.md"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]"
+    }],
+    "@semantic-release/github"
+  ]
+}
+```
+
+- [ ] **Step 2: Create `.github/workflows/release.yml`**
+
+```yaml
+name: release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write      # tags, releases, CHANGELOG commit
+  packages: write      # push to GHCR
+  issues: write
+  pull-requests: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # semantic-release needs full history
+      - name: Semantic release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GHCR
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push UI image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ui
+          push: true
+          tags: |
+            ghcr.io/tekgnosis-net/llm-proxy-ui:${{ steps.semantic.outputs.new_release_version }}
+            ghcr.io/tekgnosis-net/llm-proxy-ui:latest
+```
+
+- [ ] **Step 3: Verify the workflow YAML is valid**
+
+Run: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/release.yml')); print('OK')"`
+Expected: `OK`.
+
+- [ ] **Step 4: Commit (triggers the first release on push)**
+
+```bash
+git add .releaserc.json .github/workflows/release.yml
+git commit -m "ci: semantic-release + GHCR image publish for llm-proxy-ui"
+git push
+```
+
+- [ ] **Step 5: Verify on GitHub**
+
+After push: Actions → `release` run is green; a GitHub Release + tag (e.g.
+`v0.1.0`) is created; **Packages** shows `llm-proxy-ui` with `:<version>` and
+`:latest`. (First run: ensure repo → Settings → Actions → Workflow permissions
+allow "Read and write".)
+
+---
+
 ## Self-Review
 
-- **Spec coverage (Phase 1 slice):** container scaffold ✓ (T1,7), auth admin-password + server-side master key ✓ (T3,5,7), config-only `store_model_in_db:false` ✓ (T7.4), `config_store` read+validate + **guardrails** ✓ (T2), health/dashboard ✓ (T4,5,6), Apple-HIG shell + B framing ✓ (T6), socket-proxy defined (used Phase 2) ✓ (T7). Deferred by design to later phases: config **write**+reload (P2), keys (P3), spend (P4), caching+housekeeping+export (P5).
+- **Spec coverage (Phase 1 slice):** container scaffold ✓ (T1,7), auth admin-password + server-side master key ✓ (T3,5,7), config-only `store_model_in_db:false` ✓ (T7.4), `config_store` read+validate + **guardrails** ✓ (T2), health/dashboard ✓ (T4,5,6), Apple-HIG shell + B framing ✓ (T6), socket-proxy defined (used Phase 2) ✓ (T7). CI/CD — semantic-release + GHCR
+image publish ✓ (T9). Deferred by design to later phases: config **write**+reload (P2), keys (P3), spend (P4), caching+housekeeping+export (P5).
 - **Placeholders:** none — every code step has full content. (The one prose **Note** in T7 is a real build-config instruction, not a placeholder.)
 - **Type consistency:** `load_config`/`ConfigError`/`VALID_ROUTING_STRATEGIES`, `hash_password`/`verify_password`/`login_required`, `LitellmClient.health()`, `create_app()`, and `api.*` JS helpers are defined once and referenced consistently across tasks.
 

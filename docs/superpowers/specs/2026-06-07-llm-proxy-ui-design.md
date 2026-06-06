@@ -235,6 +235,21 @@ a least-privilege Postgres role for the UI if feasible (see Security).
 - **Integration:** `docker compose up` smoke test of the config-edit→reload
   round trip and a key-create round trip.
 
+## CI/CD
+
+GitHub Actions on `main`:
+
+- **Semantic-release** (`semantic-release`, node) reads the conventional commits
+  already in use (`feat:` / `fix:` / `docs:` / `chore:`) → computes the next
+  version, updates `CHANGELOG.md`, and creates a git tag + GitHub release.
+- **Image publish:** when a release is cut, build `./ui` and push
+  `ghcr.io/tekgnosis-net/llm-proxy-ui:<version>` **and** `:latest` to GHCR
+  (workflow `permissions: packages: write`, login via `GITHUB_TOKEN`).
+- Compose keeps `build: ./ui` for local/host builds (the live host lacks GHCR
+  pull creds — see deployment notes); switch the UI service to
+  `image: ghcr.io/tekgnosis-net/llm-proxy-ui:<tag>` once a registry pull token
+  is configured on the host.
+
 ## Phasing (implementation order)
 
 1. **Scaffold** — container + compose wiring (UI + socket-proxy), auth,
