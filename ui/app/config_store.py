@@ -128,6 +128,7 @@ def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     try:
         with os.fdopen(fd, "w") as f:
             f.write(content)
+        os.chmod(tmp, 0o644)   # host-readable (config.yaml holds no secrets — only os.environ/ refs)
         os.replace(tmp, str(p))
     except BaseException:
         if os.path.exists(tmp):
