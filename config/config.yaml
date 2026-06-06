@@ -17,6 +17,17 @@ litellm_settings:
     host: os.environ/REDIS_HOST
     port: os.environ/REDIS_PORT
 
+# NOTE: routing strategy is NOT set here. With store_model_in_db: true,
+# LiteLLM reads router settings from the DB (LiteLLM_Config.router_settings),
+# which OVERRIDES this file — a router_settings block here is silently ignored
+# (verified). The admin UI Router Settings page is display-only in this build
+# (GET /router/settings exists, but there is NO save endpoint), so the strategy
+# can only be changed in the DB, e.g.:
+#   UPDATE "LiteLLM_Config"
+#     SET param_value = jsonb_set(param_value,'{routing_strategy}','"cost-based-routing"')
+#     WHERE param_name='router_settings';
+# Current value: cost-based-routing. See docs/cost-routing-guide.md.
+
 # model_list intentionally omitted.
 # Add and manage models through the UI at http://localhost:4000/ui
 # (they will be stored in Postgres because store_model_in_db: true).
