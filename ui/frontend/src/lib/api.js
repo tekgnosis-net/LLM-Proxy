@@ -1,0 +1,12 @@
+async function req(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts })
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText)
+  return r.json()
+}
+export const api = {
+  me: () => req('/api/auth/me'),
+  login: (password) => req('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  logout: () => req('/api/auth/logout', { method: 'POST' }),
+  health: () => req('/api/health'),
+  config: () => req('/api/config'),
+}
