@@ -6,6 +6,7 @@
   import ConfigViewer from './routes/ConfigViewer.svelte'
   import Models from './routes/Models.svelte'
   import Routing from './routes/Routing.svelte'
+  import Keys from './routes/Keys.svelte'
   import { createConfigStore } from './lib/configStore.svelte.js'
   const store = createConfigStore()
 
@@ -28,6 +29,8 @@
       <button class="nav" class:active={screen==='models'} onclick={() => screen='models'}>◳ Models</button>
       <button class="nav" class:active={screen==='routing'} onclick={() => screen='routing'}>⇄ Routing</button>
       <button class="nav" class:active={screen==='config'} onclick={() => screen='config'}>◈ config.yaml</button>
+      <div class="navgroup">Access</div>
+      <button class="nav" class:active={screen==='keys'} onclick={() => screen='keys'}>🔑 Virtual Keys</button>
       <div class="spacer"></div>
       <button class="nav" onclick={logout}>⎋ Sign out</button>
     </aside>
@@ -35,6 +38,7 @@
       {#if screen==='dash'}<Dashboard />
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
+      {:else if screen==='keys'}<Keys />
       {:else}<ConfigViewer />{/if}
     </main>
   </div>

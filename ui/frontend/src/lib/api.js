@@ -13,4 +13,7 @@ export const api = {
   health: () => req('/api/health'),
   config: () => req('/api/config'),
   putConfig: (config) => req('/api/config', { method: 'PUT', body: JSON.stringify(config) }),
+  keys: () => req('/api/keys'),
+  createKey: (payload) => req('/api/keys', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteKey: (tokens) => req('/api/keys/delete', { method: 'POST', body: JSON.stringify({ tokens }) }),
 }
