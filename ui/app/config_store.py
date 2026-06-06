@@ -1,0 +1,86 @@
+from __future__ import annotations
+import yaml
+from pathlib import Path
+from typing import Any, Optional
+from pydantic import BaseModel, field_validator
+
+VALID_ROUTING_STRATEGIES = {
+    "simple-shuffle", "least-busy", "usage-based-routing",
+    "usage-based-routing-v2", "latency-based-routing", "cost-based-routing",
+}
+# ssl keys that trigger LiteLLM bug #10949 — never allowed in cache_params
+FORBIDDEN_CACHE_KEYS = {"ssl", "ssl_check_hostname"}
+
+
+class ConfigError(ValueError):
+    pass
+
+
+class LitellmParams(BaseModel, extra="allow"):
+    model: Optional[str] = None
+
+
+class ModelEntry(BaseModel, extra="allow"):
+    model_name: str
+    litellm_params: LitellmParams = LitellmParams()
+
+
+class RouterSettings(BaseModel, extra="allow"):
+    routing_strategy: Optional[str] = None
+
+    @field_validator("routing_strategy")
+    @classmethod
+    def _strategy(cls, v):
+        if v is not None and v not in VALID_ROUTING_STRATEGIES:
+            raise ValueError(
+                f"invalid routing_strategy {v!r}; must be one of "
+                f"{sorted(VALID_ROUTING_STRATEGIES)} (note: 'lowest-cost' is not valid)"
+            )
+        return v
+
+
+class CacheParams(BaseModel, extra="allow"):
+    type: Optional[str] = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _no_ssl(cls, v, info):
+        if info.field_name in FORBIDDEN_CACHE_KEYS:
+            raise ValueError(
+                f"cache_params must not contain {info.field_name!r} "
+                "(LiteLLM bug #10949: any ssl key forces a TLS handshake that hangs against plain Valkey)"
+            )
+        return v
+
+
+class LitellmSettings(BaseModel, extra="allow"):
+    cache: Optional[bool] = None
+    cache_params: Optional[CacheParams] = None
+
+
+class ProxyConfig(BaseModel, extra="allow"):
+    general_settings: dict[str, Any] = {}
+    litellm_settings: LitellmSettings = LitellmSettings()
+    router_settings: RouterSettings = RouterSettings()
+    model_list: list[ModelEntry] = []
+
+
+def load_config(path: str) -> ProxyConfig:
+    p = Path(path)
+    if not p.exists():
+        raise ConfigError(f"config file not found: {path}")
+    try:
+        raw = yaml.safe_load(p.read_text()) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(f"invalid YAML: {e}") from e
+    # explicit guardrail on cache_params before pydantic (clear message)
+    cache_params = (raw.get("litellm_settings") or {}).get("cache_params") or {}
+    for k in FORBIDDEN_CACHE_KEYS:
+        if k in cache_params:
+            raise ConfigError(
+                f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)"
+            )
+    try:
+        return ProxyConfig.model_validate(raw)
+    except Exception as e:
+        raise ConfigError(str(e)) from e
