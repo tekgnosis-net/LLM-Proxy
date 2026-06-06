@@ -77,7 +77,7 @@ impossible to reintroduce. Ships as a container in the existing compose stack.
 | Decision | Choice |
 |---|---|
 | Source of truth | Config-only (`store_model_in_db: false`); `config.yaml` authoritative for models/routing/cache |
-| Reload | SIGHUP hot-reload via a **scoped docker-socket-proxy** (UI has no raw socket) |
+| Reload | Apply config via a controlled **container restart** (~25s) through a **scoped docker-socket-proxy** (UI has no raw socket). NOTE: SIGHUP is a no-op on `main-stable` — see the Phase 2 reload note below |
 | Stack | FastAPI backend + **Svelte** SPA, single container (multi-stage build) |
 | Auth | Admin password (`.env`, hashed) + session cookie; **master key server-side only** |
 | Framing | Full-viewport Apple-HIG web app (no desktop-window chrome) |
@@ -202,6 +202,14 @@ wrong one (e.g. a model that doesn't load) is accepted but **fails silently**
 (requests 404). The UI must make both impossible in normal use. Phase 2
 implements a layered pipeline — nothing reaches the running proxy until it has
 passed validation, and a bad apply self-heals.
+
+> **Reload mechanism (Phase 2 spike finding):** `SIGHUP` does **not** reload
+> config on `ghcr.io/berriai/litellm:main-stable` (it's a no-op). Applying a
+> config change is therefore a **container restart** (~25s, brief proxy
+> downtime) triggered via the socket-proxy (`POST /containers/<c>/restart`).
+> Everywhere this section says "SIGHUP", read it as "trigger reload (restart)".
+> The validate → backup → atomic write → restart → verify (health + `/v1/models`)
+> → auto-rollback flow is unchanged; only the trigger differs.
 
 1. **Typed generation, never free-form.** The UI builds config from structured
    form input into typed models (the `config_store` pydantic tree, **expanded in

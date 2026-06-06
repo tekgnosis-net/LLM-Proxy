@@ -12,7 +12,7 @@ editor for it, plus the proxy's API for virtual keys, budgets, and spend.
 > the [clickable prototype](docs/superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html),
 > and the [Phase 1 plan](docs/superpowers/plans/2026-06-07-llm-proxy-ui-phase1-foundation.md).
 > Until the UI ships, manage models/routing by editing `config/config.yaml` and
-> hot-reloading the proxy.
+> restarting the proxy to apply.
 
 ## Stack
 
@@ -22,7 +22,7 @@ editor for it, plus the proxy's API for virtual keys, budgets, and spend.
 | `postgres` | `postgres:16-alpine` | Virtual keys, budgets, spend logs |
 | `valkey` | `valkey/valkey:8-alpine` | Response cache + rate-limit state (Redis-protocol, BSD-3 fork) |
 | `llm-proxy-ui` _(building)_ | `ghcr.io/tekgnosis-net/llm-proxy-ui` | Apple-HIG admin UI (FastAPI + Svelte) |
-| `socket-proxy` _(building)_ | `tecnativa/docker-socket-proxy` | Scoped Docker access so the UI can SIGHUP-reload the proxy |
+| `socket-proxy` _(building)_ | `tecnativa/docker-socket-proxy` | Scoped Docker access so the UI can restart the proxy to apply config |
 
 **Configuration model:** `config.yaml` is the single source of truth for
 models, routing, and caching (`store_model_in_db: false`). Keys/budgets/spend
@@ -46,8 +46,9 @@ the bundled UI.
 ```
 
 Everything above is editable on the host. After editing `config/config.yaml`,
-reload the proxy: `docker compose kill -s SIGHUP litellm` (hot reload, no full
-restart) — or, once the UI is running, edit it there and click **Save & apply**.
+apply it: `docker compose restart litellm` (the proxy re-reads `config.yaml` on
+restart, ~25s; SIGHUP is a no-op on this image) — or, once the UI is running,
+edit it there and click **Save & apply** (validate → restart → verify → rollback).
 
 ## Quickstart
 
@@ -84,7 +85,7 @@ Generate a random key: `echo "sk-$(openssl rand -hex 32)"`. `.env` is
 
 ```bash
 docker compose logs -f litellm                 # tail proxy logs
-docker compose kill -s SIGHUP litellm          # hot-reload config.yaml
+docker compose restart litellm                 # apply config.yaml changes (~25s)
 docker compose down                            # stop (data persists in ./data)
 docker compose exec postgres pg_dump -U "$POSTGRES_USER" litellm > backup-$(date +%F).sql
 ```

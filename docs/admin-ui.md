@@ -30,8 +30,9 @@ This UI fixes all three by design (guardrails + a single source of truth).
 - **One container** (`llm-proxy-ui`): a FastAPI backend serving a Svelte SPA.
 - **`config.yaml` is the single source of truth** for models / routing /
   caching (`store_model_in_db: false`). The UI is a validating editor for that
-  file; changes are applied with a hot **SIGHUP** reload (no full restart) via a
-  scoped `docker-socket-proxy`.
+  file; changes are applied via a controlled **container restart** (~25s; SIGHUP
+  is a no-op on this LiteLLM image) through a scoped `docker-socket-proxy`, with
+  health-verify and auto-rollback.
 - **Virtual keys, budgets, and spend** are read/written through the LiteLLM
   management API. The master key stays **server-side only** (never in the
   browser).

@@ -1,7 +1,8 @@
 # LiteLLM proxy bootstrap — the SINGLE SOURCE OF TRUTH for models, routing, and
 # caching. store_model_in_db is OFF, so this file is authoritative. The admin UI
-# (llm-proxy-ui) reads/writes this file, validates it, and hot-reloads the proxy
-# via SIGHUP. Virtual keys, budgets, and spend live in Postgres and are managed
+# (llm-proxy-ui) reads/writes this file, validates it, and applies changes by
+# restarting the proxy (~25s; SIGHUP is a no-op on this image) with health-verify
+# + auto-rollback. Virtual keys, budgets, and spend live in Postgres and are managed
 # through the proxy API (NOT here).
 
 general_settings:
