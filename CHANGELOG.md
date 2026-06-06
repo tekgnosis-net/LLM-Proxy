@@ -1,3 +1,16 @@
+# [1.2.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.1.0...v1.2.0) (2026-06-06)
+
+
+### Bug Fixes
+
+* **ui:** write config.yaml world-readable (0644) so host can read it ([f9c6c74](https://github.com/tekgnosis-net/LLM-Proxy/commit/f9c6c742004cf33e0eb1155cb92e4ce9be0becb3))
+
+
+### Features
+
+* **ui:** PUT /api/config with safe-apply (422 invalid, 409 rolled-back) ([2612a2e](https://github.com/tekgnosis-net/LLM-Proxy/commit/2612a2ec9aa261c39527424667473ab7410a93cb))
+* **ui:** safe_apply orchestration with auto-rollback ([e96b872](https://github.com/tekgnosis-net/LLM-Proxy/commit/e96b87255e38abcc8d3f75d7ae9a6e457f8b21db))
+
 # [1.1.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.0.0...v1.1.0) (2026-06-06)
 
 
