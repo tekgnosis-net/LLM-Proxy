@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     litellm_container: str = "litellm-proxy"
     reload_mode: Literal["SIGHUP", "restart"] = "restart"   # spike: this image needs a restart, SIGHUP is a no-op
     reload_timeout_s: float = 90.0    # max wait for the proxy to return healthy after reload
+    database_url: str = ""            # asyncpg DSN for housekeeping/stats
+    housekeeping_enabled: bool = False        # opt-in: scheduled maintenance cron
+    housekeeping_interval_hours: int = 24
+    housekeeping_spendlog_retention_days: int = 90
+    housekeeping_delete_expired_keys: bool = True
 
 
 @lru_cache

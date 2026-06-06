@@ -89,10 +89,16 @@ services:
       CONFIG_PATH: /config/config.yaml
       SOCKET_PROXY_URL: http://socket-proxy:2375
       LITELLM_CONTAINER: litellm-proxy
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      HOUSEKEEPING_ENABLED: "${HOUSEKEEPING_ENABLED:-false}"
+      HOUSEKEEPING_INTERVAL_HOURS: "${HOUSEKEEPING_INTERVAL_HOURS:-24}"
+      HOUSEKEEPING_SPENDLOG_RETENTION_DAYS: "${HOUSEKEEPING_SPENDLOG_RETENTION_DAYS:-90}"
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:
       - "${UI_PORT:-8081}:8080"
     depends_on:
       litellm:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
