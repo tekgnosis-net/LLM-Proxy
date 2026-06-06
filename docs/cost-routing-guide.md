@@ -12,6 +12,43 @@ complete hands-on UI walkthrough.
 
 ---
 
+## ⚠️ Operational reality on this LiteLLM build (read this first)
+
+Hard-won lessons from a real deployment (LiteLLM **1.87.1**). Several UI
+screens *lie* about what's actually in effect — budget your time accordingly:
+
+1. **`store_model_in_db: true` makes the database the source of truth.**
+   Precedence is **env < `config.yaml` < DB**. Anything ever set in the admin
+   UI is persisted to Postgres and silently overrides `config.yaml`. To see
+   what's *actually* in effect, inspect the DB (`LiteLLM_Config`,
+   `LiteLLM_CacheConfig`), not the YAML.
+
+2. **The Router Settings UI page can't save** — it's GET-only (no setter
+   endpoint), so changing the Routing Strategy there does nothing and "reverts"
+   to the default on refresh. Set it in the DB instead (see §2). The valid
+   value is **`cost-based-routing`**; the UI options are `simple-shuffle`,
+   `least-busy`, `usage-based-routing`, `latency-based-routing`,
+   `cost-based-routing`, `usage-based-routing-v2`. **There is no `lowest-cost`**
+   — that's only the docs' nickname for `cost-based-routing`.
+
+3. **Do NOT configure the Redis cache via the UI Cache Settings form.** It
+   writes an `ssl` key, and LiteLLM bug
+   [#10949](https://github.com/BerriAI/litellm/issues/10949) makes *any* present
+   `ssl` key (even `ssl: false`) use an SSL connection → a TLS handshake against
+   plain Valkey hangs → endless `Redis ... Timeout connecting to server` in the
+   logs. Configure the cache in `config.yaml` (with **no** `ssl:` line); if the
+   UI already poisoned it, strip the keys:
+   ```sql
+   UPDATE "LiteLLM_CacheConfig"
+     SET cache_settings = cache_settings - 'ssl' - 'ssl_check_hostname';
+   ```
+
+4. **`cost-based-routing` only does anything when a model group has 2+
+   deployments.** One deployment per public model name = nothing to choose
+   between. Co-locate comparable providers under one name (see §3 and §5).
+
+---
+
 ## TL;DR — the whole system in one picture
 
 There are **two independent axes** in LiteLLM. They are wired up
@@ -281,17 +318,26 @@ unpriced model as free and floods it.
 
 ### Step 2 — Turn on cost-based routing
 
-Sidebar → **Settings → Router Settings → Routing Strategy** → choose
-**`lowest-cost`** → **Save**. Effective immediately, no restart.
+> ⚠️ **The UI cannot set this on this build** (see "Operational reality"
+> above). The **Router Settings page is display-only** (no save endpoint), and
+> `config.yaml` `router_settings` is **overridden by the DB** when
+> `store_model_in_db: true`. The only lever that works is a SQL update on
+> `LiteLLM_Config`:
+>
+> ```sql
+> UPDATE "LiteLLM_Config"
+>   SET param_value = jsonb_set(param_value,'{routing_strategy}','"cost-based-routing"')
+>   WHERE param_name='router_settings';
+> -- if no row exists yet:
+> -- INSERT INTO "LiteLLM_Config"(param_name,param_value)
+> --   VALUES('router_settings','{"routing_strategy":"cost-based-routing"}');
+> ```
+> Restart the proxy afterward. The strategy value is **`cost-based-routing`**
+> (LiteLLM docs sometimes call it "lowest-cost" — same thing; the actual enum
+> value is `cost-based-routing`, there is no `lowest-cost`).
 
 Now every call to `cheap` / `mid` / `premium` picks the cheapest *healthy*
 deployment in that group per request.
-
-> Equivalent in `config.yaml` (the UI value wins if both are set):
-> ```yaml
-> router_settings:
->   routing_strategy: lowest-cost
-> ```
 
 ### Step 3 — Create a team with a budget and an access grant
 
@@ -371,7 +417,7 @@ general_settings:
   store_model_in_db: true
 
 router_settings:
-  routing_strategy: lowest-cost
+  routing_strategy: cost-based-routing   # docs call this "lowest-cost"
   cooldown_time: 30        # seconds a failed deployment sits out
   num_retries: 2
 

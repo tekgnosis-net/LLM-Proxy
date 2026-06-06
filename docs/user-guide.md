@@ -364,12 +364,17 @@ Add multiple models in the UI sharing the same Public Model Name:
 | `cheap-chat`      | Anthropic | `anthropic/claude-haiku-4-5-20251001`  |
 | `cheap-chat`      | Google    | `gemini/gemini-2.0-flash`              |
 
-**Step 2.** Set the routing strategy to `lowest-cost` (either via UI
-Settings → Router Settings, or in `config.yaml`):
+**Step 2.** Set the routing strategy to `cost-based-routing`. The config
+below is the conceptual shape, **but on the current build neither the UI nor
+`config.yaml` actually applies it** — the Router Settings UI page can't save
+and the DB overrides `config.yaml` when `store_model_in_db: true`. You must
+set it in the DB. See the gotchas + exact SQL in
+[cost-routing-guide.md](cost-routing-guide.md).
 
 ```yaml
+# Conceptual only — DB-overridden when store_model_in_db: true (see above)
 router_settings:
-  routing_strategy: lowest-cost
+  routing_strategy: cost-based-routing   # docs call this "lowest-cost"
 ```
 
 **Step 3.** Clients call `model: "cheap-chat"`. LiteLLM consults its
@@ -483,7 +488,7 @@ litellm_settings:
     - premium: ["mid"]
 
 router_settings:
-  routing_strategy: lowest-cost
+  routing_strategy: cost-based-routing   # docs call this "lowest-cost"
   cooldown_time: 30
   num_retries: 2
 
