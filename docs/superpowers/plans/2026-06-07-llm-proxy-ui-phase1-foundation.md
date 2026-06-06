@@ -1103,6 +1103,28 @@ image publish ✓ (T9). Deferred by design to later phases: config **write**+rel
 - **Placeholders:** none — every code step has full content. (The one prose **Note** in T7 is a real build-config instruction, not a placeholder.)
 - **Type consistency:** `load_config`/`ConfigError`/`VALID_ROUTING_STRATEGIES`, `hash_password`/`verify_password`/`login_required`, `LitellmClient.health()`, `create_app()`, and `api.*` JS helpers are defined once and referenced consistently across tasks.
 
+## Phase 2 must-settle-first (from Phase 1 final review + smoke test)
+
+Settle these at the START of the Phase 2 plan — foundation choices, not Phase 1 defects:
+
+1. **Mount the config *directory*, not the file.** Change the `llm-proxy-ui`
+   volume from `./config/config.yaml:/config/config.yaml` to `./config:/config`
+   (keep `CONFIG_PATH=/config/config.yaml`). A bind-mounted single file can't be
+   atomically replaced via temp-file + `os.rename()` (fails `EXDEV`); a directory
+   mount lets the UI write `config.yaml.tmp` and rename within the same fs.
+2. **Decide `database_url`'s fate.** `settings.py` declares it but compose never
+   passes it to the UI — wire it through (housekeeping/stats) or drop the field
+   until needed.
+3. **Run the write path through the read validators.** The save endpoint must
+   feed incoming config through `load_config`/pydantic (guardrails) BEFORE
+   persisting; add round-trip tests (write → reload → equal).
+4. **`.env` `$$`-escaping for ADMIN_PASSWORD_HASH** is a known gotcha (smoke test;
+   see `.env.example` + the `litellm-ui-admin-hash-env-escaping` memory).
+5. **Minor/optional:** make `SessionMiddleware(https_only=...)` env-driven if the
+   UI ever leaves the LAN; reconcile the README `LITELLM_PORT` reference with the
+   host-local port tweak; consider dropping litellm's `4000:4000` host publish
+   once the UI fully fronts it.
+
 ## Follow-on plans (one per phase)
 
 - Phase 2 — Models + Routing editing + write/validate/**reload** (socket-proxy SIGHUP).
