@@ -8,14 +8,14 @@ litellm_settings:
   telemetry: false
   cache: true
   cache_params:
-    # In-memory response cache. The Redis-backed cache hits an upstream LiteLLM
-    # bug: RedisCache.init_async_client() caches the async client by a params
-    # hash (not per event loop), so the client created on the startup loop is
-    # reused on the serving loop and every op hangs to socket_timeout (5s).
-    # See GitHub issue BerriAI/litellm#19724. In-memory is correct for a single
-    # node; Valkey stays in the stack and gets wired to router_settings for
-    # rate-limit/coordination if/when this scales to multiple proxy replicas.
-    type: local
+    # Configure the Redis cache HERE (or in the DB), NOT via the admin UI's
+    # Cache Settings form: the UI writes an `ssl` key, which triggers LiteLLM
+    # bug #10949 (RedisCache uses SSLConnection whenever an `ssl` key is
+    # present, even ssl=False) -> TLS handshake against plain Valkey hangs ->
+    # "Timeout connecting to server". Do NOT add an `ssl:` line here.
+    type: redis
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
 
 # model_list intentionally omitted.
 # Add and manage models through the UI at http://localhost:4000/ui

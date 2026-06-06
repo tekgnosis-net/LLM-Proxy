@@ -42,14 +42,8 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
       STORE_MODEL_IN_DB: "true"
-      # REDIS_HOST/REDIS_PORT intentionally unset. On current LiteLLM, ANY
-      # LiteLLM<->Redis connection (response cache OR proxy config-sync) hits
-      # the init_async_client loop-binding bug (BerriAI/litellm#19724): the
-      # async client is cached across event loops, so every op hangs to
-      # socket_timeout (5s) and floods logs with "Timeout connecting to server".
-      # Response cache is in-memory (config.yaml cache_params type: local).
-      # Valkey stays running and ready to re-wire once the upstream bug is fixed
-      # or via a patched image (Option Y).
+      REDIS_HOST: valkey
+      REDIS_PORT: "6379"
       UI_USERNAME: admin
       UI_PASSWORD: ${LITELLM_MASTER_KEY}
     depends_on:
