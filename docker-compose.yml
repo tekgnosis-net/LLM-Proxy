@@ -41,7 +41,7 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
-      STORE_MODEL_IN_DB: "true"
+      STORE_MODEL_IN_DB: "false"
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
       UI_USERNAME: admin
@@ -66,3 +66,33 @@ services:
       # a real recreate. start_period only widens the startup tolerance — it
       # never delays healthy detection on a fast boot — so 60s is free safety.
       start_period: 60s
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3
+    container_name: litellm-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      POST: "1"          # allow container POST actions (SIGHUP reload) — used from Phase 2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  llm-proxy-ui:
+    build: ./ui
+    container_name: litellm-ui
+    restart: unless-stopped
+    environment:
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CONFIG_PATH: /config/config.yaml
+      SOCKET_PROXY_URL: http://socket-proxy:2375
+      LITELLM_CONTAINER: litellm-proxy
+    volumes:
+      - ./config/config.yaml:/config/config.yaml
+    ports:
+      - "${UI_PORT:-8081}:8080"
+    depends_on:
+      litellm:
+        condition: service_healthy
