@@ -1,6 +1,9 @@
 async function req(path, opts = {}) {
   const r = await fetch(path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts })
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText)
+  if (!r.ok) {
+    const detail = (await r.json().catch(() => ({}))).detail || r.statusText
+    const err = new Error(detail); err.status = r.status; throw err
+  }
   return r.json()
 }
 export const api = {
@@ -9,4 +12,5 @@ export const api = {
   logout: () => req('/api/auth/logout', { method: 'POST' }),
   health: () => req('/api/health'),
   config: () => req('/api/config'),
+  putConfig: (config) => req('/api/config', { method: 'PUT', body: JSON.stringify(config) }),
 }
