@@ -1,20 +1,34 @@
-# LiteLLM (Docker Compose, UI-driven)
+# LLM-Proxy
 
-Self-contained LiteLLM proxy stack — proxy + UI + Postgres + Valkey — wired so
-that essentially all configuration (models, virtual keys, teams, users,
-budgets) is done through the admin UI. All persistent files live on the host
-as bind mounts, so you can still edit, back up, or inspect anything directly.
+Self-hosted LiteLLM gateway (Docker Compose) — **LiteLLM proxy + Postgres +
+Valkey** — managed by a **purpose-built Apple-HIG admin UI** that's replacing
+LiteLLM's unreliable bundled UI. All configuration lives in a single
+version-controlled `config.yaml` (config-only mode); the UI is a validating
+editor for it, plus the proxy's API for virtual keys, budgets, and spend.
+
+> **Status:** the custom UI (`llm-proxy-ui`) is in active development — Phase 1
+> (foundation) is being built. See **[`docs/admin-ui.md`](docs/admin-ui.md)**,
+> the [design spec](docs/superpowers/specs/2026-06-07-llm-proxy-ui-design.md),
+> the [clickable prototype](docs/superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html),
+> and the [Phase 1 plan](docs/superpowers/plans/2026-06-07-llm-proxy-ui-phase1-foundation.md).
+> Until the UI ships, manage models/routing by editing `config/config.yaml` and
+> hot-reloading the proxy.
 
 ## Stack
 
-| Service    | Image                                  | Purpose                                                                  |
-|------------|----------------------------------------|--------------------------------------------------------------------------|
-| `litellm`  | `ghcr.io/berriai/litellm:main-stable`  | OpenAI-compatible proxy + admin UI at `/ui`                              |
-| `postgres` | `postgres:16-alpine`                   | Stores models, virtual keys, teams, users, spend logs                    |
-| `valkey`   | `valkey/valkey:8-alpine`               | Response cache + rate-limit state (Redis-protocol, BSD-3 licensed fork)  |
+| Service | Image | Purpose |
+|---|---|---|
+| `litellm` | `ghcr.io/berriai/litellm:main-stable` | OpenAI-compatible gateway (config-only; bundled UI not used) |
+| `postgres` | `postgres:16-alpine` | Virtual keys, budgets, spend logs |
+| `valkey` | `valkey/valkey:8-alpine` | Response cache + rate-limit state (Redis-protocol, BSD-3 fork) |
+| `llm-proxy-ui` _(building)_ | `ghcr.io/tekgnosis-net/llm-proxy-ui` | Apple-HIG admin UI (FastAPI + Svelte) |
+| `socket-proxy` _(building)_ | `tecnativa/docker-socket-proxy` | Scoped Docker access so the UI can SIGHUP-reload the proxy |
 
-Only `litellm` exposes a host port (4000). Postgres and Valkey are reachable
-only on the internal compose network.
+**Configuration model:** `config.yaml` is the single source of truth for
+models, routing, and caching (`store_model_in_db: false`). Keys/budgets/spend
+are stateful and live in Postgres, managed via the proxy API. See
+[`docs/admin-ui.md`](docs/admin-ui.md) for the architecture and why we moved off
+the bundled UI.
 
 ## Bind-mounted layout
 
@@ -24,127 +38,69 @@ only on the internal compose network.
 ├── .env                 ← secrets (NOT in git)
 ├── .env.example         ← template
 ├── config/
-│   └── config.yaml      ← minimal proxy boot config; UI takes over from here
+│   └── config.yaml      ← single source of truth (models, routing, cache)
+├── ui/                  ← the custom admin UI (FastAPI + Svelte)
 └── data/
-    ├── postgres/        ← Postgres datadir (DB state — persistent)
+    ├── postgres/        ← Postgres datadir (persistent)
     └── valkey/          ← Valkey AOF + RDB persistence
 ```
 
-Every file above can be edited on the host. After editing `config/config.yaml`,
-run `docker compose restart litellm` to pick up the change. The contents of
-`data/` should not normally be hand-edited, but they are normal files on disk
-and can be backed up with `tar`/`rsync` while the stack is stopped.
+Everything above is editable on the host. After editing `config/config.yaml`,
+reload the proxy: `docker compose kill -s SIGHUP litellm` (hot reload, no full
+restart) — or, once the UI is running, edit it there and click **Save & apply**.
 
 ## Quickstart
 
 ```bash
-# 1. Inspect / customize secrets — a .env was generated with random keys.
-$EDITOR .env
-
-# 2. Bring the stack up.
+$EDITOR .env            # secrets were generated with random keys
 docker compose up -d
-
-# 3. Watch the proxy come online (first boot runs Prisma migrations).
-docker compose logs -f litellm
+docker compose ps       # wait for (healthy)
 ```
 
-When all three services report `(healthy)`:
+Proxy health:
 
 ```bash
-docker compose ps
+curl -fsS http://localhost:${LITELLM_PORT:-4000}/health/readiness
 ```
 
-Open <http://localhost:4000/ui> and log in:
+Admin UI (once built): `http://<host>:${UI_PORT:-8081}` — see
+[`docs/admin-ui.md`](docs/admin-ui.md) for first-time setup (admin password
+hash + session secret).
 
-- **Username:** `admin`
-- **Password:** the value of `LITELLM_MASTER_KEY` in `.env`
+## Secrets in `.env`
 
-From the UI: add models under **Models → Add Model**, create virtual API keys
-under **Virtual Keys**, set up teams/users/budgets, etc. Everything you do here
-is persisted in Postgres.
+- **`LITELLM_MASTER_KEY`** — gates the proxy's admin API. The UI backend holds
+  it **server-side only**. Safe to rotate.
+- **`LITELLM_SALT_KEY`** — encrypts provider API keys in Postgres. **Do not
+  rotate** after adding provider keys — it makes existing encrypted keys
+  undecryptable. Back it up.
+- **`ADMIN_PASSWORD_HASH`**, **`SESSION_SECRET`** — admin UI login (argon2 hash)
+  and cookie signing. See [`docs/admin-ui.md`](docs/admin-ui.md).
 
-**For step-by-step UI walkthroughs** (configuring endpoints, virtual keys,
-routing, fallbacks, least-cost routing) see [`docs/user-guide.md`](docs/user-guide.md).
-**To understand how virtual keys, model access groups, budgets, and routing
-interlink** for cost-based routing, see
-[`docs/cost-routing-guide.md`](docs/cost-routing-guide.md).
-For architectural background see [`docs/design.md`](docs/design.md).
-
-## Sanity checks
-
-```bash
-# Proxy is alive
-curl -fsS http://localhost:4000/health/liveliness
-
-# Proxy can reach DB + cache
-curl -fsS http://localhost:4000/health/readiness
-
-# Valkey is being used as cache (after issuing a couple of /chat/completions calls)
-docker compose exec valkey valkey-cli KEYS '*'
-```
-
-## About the secrets in `.env`
-
-Two keys, both 256-bit random values prefixed `sk-`:
-
-- **`LITELLM_MASTER_KEY`** — gates all admin endpoints and is the UI admin
-  password. Safe to rotate: change in `.env`, then `docker compose up -d`.
-- **`LITELLM_SALT_KEY`** — symmetric key used to encrypt provider API keys
-  (OpenAI, Anthropic, etc.) before storing them in Postgres. **Do not rotate**
-  after you've added provider keys through the UI — rotating makes existing
-  encrypted keys undecryptable, forcing you to re-enter every one. Back this
-  value up alongside your Postgres backups.
-
-Generate fresh values any time with:
-
-```bash
-echo "sk-$(openssl rand -hex 32)"
-```
-
-`.env` is `.gitignore`d. If you re-share this repo, share `.env.example` only.
-
-## Permission note for bind mounts
-
-The Postgres entrypoint chowns `data/postgres` to its own UID (999) on first
-boot, so things normally just work. If you see permission errors in
-`docker compose logs postgres` on first start, run:
-
-```bash
-sudo chown -R 999:999 data/postgres data/valkey
-```
-
-…and restart the stack.
+Generate a random key: `echo "sk-$(openssl rand -hex 32)"`. `.env` is
+`.gitignore`d — share `.env.example` only.
 
 ## Common operations
 
 ```bash
-# Tail proxy logs
-docker compose logs -f litellm
-
-# Reload after editing config/config.yaml
-docker compose restart litellm
-
-# Stop the stack (data persists in ./data/)
-docker compose down
-
-# Stop and wipe state (deletes models, keys, teams, cache)
-docker compose down && sudo rm -rf data/postgres data/valkey
-
-# Upgrade LiteLLM to the newest stable
-docker compose pull litellm && docker compose up -d litellm
-
-# Backup Postgres while the stack is running
+docker compose logs -f litellm                 # tail proxy logs
+docker compose kill -s SIGHUP litellm          # hot-reload config.yaml
+docker compose down                            # stop (data persists in ./data)
 docker compose exec postgres pg_dump -U "$POSTGRES_USER" litellm > backup-$(date +%F).sql
 ```
 
-## Adding host-side env vars (e.g. provider API keys via env instead of UI)
+If Postgres shows permission errors on first boot:
+`sudo chown -R 999:999 data/postgres data/valkey` then `docker compose up -d`.
 
-Two paths:
+## Documentation
 
-1. **(Recommended)** Add provider keys through the UI's **Models → Add Model**
-   flow; they end up encrypted in Postgres via `LITELLM_SALT_KEY`. No restart
-   needed.
-2. **For env-style configuration** — add the variable to `.env` and reference
-   it from `config/config.yaml` using `os.environ/VAR_NAME`, then add it to the
-   `litellm` service `environment:` block in `docker-compose.yml`. Restart the
-   `litellm` service.
+- **[`docs/admin-ui.md`](docs/admin-ui.md)** — the new admin UI (architecture, run, status).
+- **[`docs/superpowers/specs/`](docs/superpowers/specs/)** — design spec + clickable prototype.
+- **[`docs/superpowers/plans/`](docs/superpowers/plans/)** — implementation plans (per phase).
+- **[`docs/archive/`](docs/archive/)** — legacy guides for the bundled LiteLLM UI (concepts still valid).
+
+## CI/CD
+
+`main` runs **semantic-release** (conventional commits → versioned GitHub
+releases) and publishes the UI image to GHCR
+(`ghcr.io/tekgnosis-net/llm-proxy-ui:<version>` + `:latest`).
