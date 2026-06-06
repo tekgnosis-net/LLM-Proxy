@@ -3,13 +3,13 @@
 A purpose-built, Apple-HIG admin UI for this LiteLLM proxy stack — a reliable
 replacement for the bundled LiteLLM UI.
 
-> **Status: in active development.** Phase 1 (foundation) is being built now.
-> This doc describes the target app; sections marked _(planned)_ land in later
-> phases. Authoritative design: the
-> [spec](superpowers/specs/2026-06-07-llm-proxy-ui-design.md) and
-> [clickable prototype](superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html)
-> (open in a browser). Build steps: the
-> [Phase 1 plan](superpowers/plans/2026-06-07-llm-proxy-ui-phase1-foundation.md).
+> **Status: shipped** (Phases 1–5). Foundation/auth, models + routing with
+> safe-apply, virtual keys + budgets, usage & spend, and caching + housekeeping +
+> export/import + dark mode are all live and released to GHCR. Design:
+> the [spec](superpowers/specs/2026-06-07-llm-proxy-ui-design.md),
+> [clickable prototype](superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html),
+> the [config schema](../config-schema.md), and the per-phase
+> [plans](superpowers/plans/). Screenshots: [`../README.md`](../README.md).
 
 ## Why it exists
 
@@ -36,11 +36,16 @@ This UI fixes all three by design (guardrails + a single source of truth).
 - **Virtual keys, budgets, and spend** are read/written through the LiteLLM
   management API. The master key stays **server-side only** (never in the
   browser).
-- **DB housekeeping** _(planned)_: LiteLLM's built-in spend-log retention plus a
-  UI-managed maintenance cron (expired keys, log trimming, `VACUUM`) with DB
-  stats.
+- **DB housekeeping:** an opt-in UI-managed maintenance cron (APScheduler) that
+  trims spend logs past a retention window and deletes expired keys, plus DB
+  stats (size, row counts) and a manual "Run now". Cron is off unless
+  `HOUSEKEEPING_ENABLED=true`; retention defaults to 90 days; the DELETE is
+  parameterized + bounded.
+- **Export / Import:** download `config.yaml`, or import one (validated + applied
+  through the same safe-apply pipeline).
 - **Auth:** a single admin password (`ADMIN_PASSWORD_HASH`, argon2) + signed
-  session cookie.
+  session cookie. The argon2 hash's `$` must be escaped as `$$` in `.env` (docker
+  compose interpolates `$` — see "Running it"), or login fails silently.
 
 ### Guardrails (the old bugs can't recur)
 
@@ -68,14 +73,38 @@ docker compose up -d
 # open http://<host>:8081  and log in
 ```
 
-## Screens
+## Screens (all live)
 
-Dashboard · Models · Routing · Caching · Virtual Keys · Usage & Spend ·
-Settings · Housekeeping — see the prototype for the visual design. Each is
-filled in across the implementation phases.
+- **Dashboard** — proxy health (reachable, DB connected).
+- **Usage & Spend** — total spend, by model, by key, daily activity (last 30d).
+- **Models** — provider-driven CRUD (OpenAI/Anthropic/Azure/Bedrock/Gemini/local); secrets emitted as `os.environ/<VAR>`.
+- **Routing** — strategy (valid enum only), retries, fallbacks.
+- **Caching** — Redis/Valkey cache config (never an `ssl` key).
+- **config.yaml** — read-only view of the effective config.
+- **Virtual Keys** — create (one-time plaintext shown once) / list / delete with budgets, model allowlist, expiry.
+- **Housekeeping** — DB stats + maintenance.
+- **Settings** — export/import config + dark mode.
+
+Config-editing screens use the **safe-apply pipeline**: validate (schema +
+guardrails) → atomic write + backup → restart proxy → verify health & `/v1/models`
+→ auto-rollback on failure.
+
+## A note on `config.yaml` ownership
+
+The UI writes `config.yaml` from inside its container (running as root), so after
+the first UI save the file is `root`-owned, mode `0644` — host-readable (it holds
+no secrets, only `os.environ/` refs) but not host-writable. To hand-edit, use the
+UI, or `sudo` (or `rm` + restore from git, since the host owns the `config/` dir).
 
 ## CI/CD
 
 `main` runs **semantic-release** (conventional commits → versions + GitHub
 releases) and publishes the UI image to
 `ghcr.io/tekgnosis-net/llm-proxy-ui:<version>` + `:latest`.
+
+## Credit
+
+Built on **[LiteLLM](https://github.com/BerriAI/litellm)** (BerriAI) — the proxy
+that powers all routing, caching, key management, and spend tracking. This UI is
+a front-end + deployment around it. See the repo [README](../README.md) for full
+acknowledgements.
