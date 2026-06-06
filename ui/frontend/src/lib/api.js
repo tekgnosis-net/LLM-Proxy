@@ -17,4 +17,7 @@ export const api = {
   createKey: (payload) => req('/api/keys', { method: 'POST', body: JSON.stringify(payload) }),
   deleteKey: (tokens) => req('/api/keys/delete', { method: 'POST', body: JSON.stringify({ tokens }) }),
   usage: () => req('/api/usage'),
+  housekeeping: () => req('/api/housekeeping'),
+  runHousekeeping: () => req('/api/housekeeping/run', { method: 'POST' }),
+  exportConfigUrl: '/api/config/export',
 }
