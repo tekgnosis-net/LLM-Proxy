@@ -14,6 +14,28 @@ VALID_ROUTING_STRATEGIES = {
 # ssl keys that trigger LiteLLM bug #10949 — never allowed in cache_params
 FORBIDDEN_CACHE_KEYS = {"ssl", "ssl_check_hostname"}
 
+# Secret-bearing keys that must never hold a literal value in config.yaml.
+# Any non-empty string that does not start with "os.environ/" is rejected.
+SECRET_FIELDS = {
+    "master_key", "database_url", "api_key", "aws_access_key_id",
+    "aws_secret_access_key", "vertex_credentials", "redis_password",
+    "redis_url", "s3_aws_secret_access_key",
+}
+
+
+def _check_no_literal_secrets(node) -> None:
+    """Recursively reject any secret field whose value is a literal string."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k in SECRET_FIELDS and isinstance(v, str) and v and not v.startswith("os.environ/"):
+                raise ConfigError(
+                    f"secret field {k!r} must be an os.environ/<VAR> reference, not a literal value"
+                )
+            _check_no_literal_secrets(v)
+    elif isinstance(node, list):
+        for item in node:
+            _check_no_literal_secrets(item)
+
 
 class ConfigError(ValueError):
     pass
@@ -79,6 +101,8 @@ def validate_config(raw: dict) -> "ProxyConfig":
         for k in FORBIDDEN_CACHE_KEYS:
             if k in cache_params:
                 raise ConfigError(f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)")
+    # Enforce "config.yaml holds no secrets" — all secret fields must be os.environ/ refs.
+    _check_no_literal_secrets(raw)
     try:
         return ProxyConfig.model_validate(raw)
     except Exception as e:

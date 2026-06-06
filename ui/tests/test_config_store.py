@@ -147,3 +147,31 @@ def test_write_is_atomic_leaves_no_tmp(tmp_path):
     path = str(tmp_path / "config.yaml")
     write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})
     assert not list(tmp_path.glob("*.tmp"))
+
+
+# --- secret-field guardrail tests ---
+
+def test_literal_api_key_in_model_is_rejected():
+    with pytest.raises(ConfigError) as e:
+        validate_config({"model_list": [{"model_name": "x", "litellm_params": {"model": "openai/gpt-4o", "api_key": "sk-REALSECRET"}}]})
+    assert "api_key" in str(e.value)
+
+
+def test_env_ref_api_key_is_allowed():
+    cfg = validate_config({"model_list": [{"model_name": "x", "litellm_params": {"model": "openai/gpt-4o", "api_key": "os.environ/OPENAI_API_KEY"}}]})
+    assert cfg.model_list[0].model_name == "x"
+
+
+def test_literal_master_key_rejected_env_ref_ok():
+    with pytest.raises(ConfigError):
+        validate_config({"general_settings": {"master_key": "sk-literal"}})
+    validate_config({"general_settings": {"master_key": "os.environ/LITELLM_MASTER_KEY"}})  # no raise
+
+
+def test_bootstrap_config_with_all_env_refs_passes():
+    validate_config({
+        "general_settings": {"master_key": "os.environ/LITELLM_MASTER_KEY", "database_url": "os.environ/DATABASE_URL", "store_model_in_db": False},
+        "litellm_settings": {"cache": True, "cache_params": {"type": "redis", "host": "os.environ/REDIS_HOST", "port": "os.environ/REDIS_PORT"}},
+        "router_settings": {"routing_strategy": "simple-shuffle"},
+        "model_list": [],
+    })  # must not raise
