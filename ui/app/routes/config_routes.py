@@ -29,7 +29,10 @@ def get_config():
 @router.get("/config/export", dependencies=[Depends(login_required)])
 def export_config():
     s = get_settings()
-    text = Path(s.config_path).read_text()
+    try:
+        text = Path(s.config_path).read_text()
+    except OSError as e:
+        raise HTTPException(status_code=404, detail=f"config not found: {e}")
     return PlainTextResponse(text, media_type="text/yaml",
                              headers={"Content-Disposition": 'attachment; filename="config.yaml"'})
 

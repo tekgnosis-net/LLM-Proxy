@@ -93,6 +93,7 @@ services:
       HOUSEKEEPING_ENABLED: "${HOUSEKEEPING_ENABLED:-false}"
       HOUSEKEEPING_INTERVAL_HOURS: "${HOUSEKEEPING_INTERVAL_HOURS:-24}"
       HOUSEKEEPING_SPENDLOG_RETENTION_DAYS: "${HOUSEKEEPING_SPENDLOG_RETENTION_DAYS:-90}"
+      HOUSEKEEPING_DELETE_EXPIRED_KEYS: "${HOUSEKEEPING_DELETE_EXPIRED_KEYS:-true}"
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:
