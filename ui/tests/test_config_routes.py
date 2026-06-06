@@ -48,3 +48,11 @@ def test_put_config_rollback_returns_409(tmp_path):
     r = c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}})
     assert r.status_code == 409
     assert c.get("/api/config").json()["router_settings"]["routing_strategy"] == "least-busy"
+
+
+def test_export_returns_yaml_attachment(tmp_path):
+    c = _client(tmp_path)  # reuse the helper (logged in)
+    r = c.get("/api/config/export")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert "routing_strategy" in r.text or "model_list" in r.text

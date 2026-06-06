@@ -1,4 +1,6 @@
+from pathlib import Path
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from app.auth import login_required
 from app.config_store import load_config, ConfigError
 from app.settings import get_settings
@@ -22,6 +24,14 @@ def get_config():
     except ConfigError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return cfg.model_dump(exclude_none=True)
+
+
+@router.get("/config/export", dependencies=[Depends(login_required)])
+def export_config():
+    s = get_settings()
+    text = Path(s.config_path).read_text()
+    return PlainTextResponse(text, media_type="text/yaml",
+                             headers={"Content-Disposition": 'attachment; filename="config.yaml"'})
 
 
 @router.put("/config", dependencies=[Depends(login_required)])
