@@ -4,6 +4,10 @@
   import Login from './routes/Login.svelte'
   import Dashboard from './routes/Dashboard.svelte'
   import ConfigViewer from './routes/ConfigViewer.svelte'
+  import Models from './routes/Models.svelte'
+  import Routing from './routes/Routing.svelte'
+  import { createConfigStore } from './lib/configStore.svelte.js'
+  const store = createConfigStore()
 
   let authed = $state(false)
   let screen = $state('dash')
@@ -21,12 +25,17 @@
       <div class="navgroup">Overview</div>
       <button class="nav" class:active={screen==='dash'} onclick={() => screen='dash'}>▦ Dashboard</button>
       <div class="navgroup">Configuration</div>
+      <button class="nav" class:active={screen==='models'} onclick={() => screen='models'}>◳ Models</button>
+      <button class="nav" class:active={screen==='routing'} onclick={() => screen='routing'}>⇄ Routing</button>
       <button class="nav" class:active={screen==='config'} onclick={() => screen='config'}>◈ config.yaml</button>
       <div class="spacer"></div>
       <button class="nav" onclick={logout}>⎋ Sign out</button>
     </aside>
     <main class="main">
-      {#if screen==='dash'}<Dashboard />{:else}<ConfigViewer />{/if}
+      {#if screen==='dash'}<Dashboard />
+      {:else if screen==='models'}<Models {store} />
+      {:else if screen==='routing'}<Routing {store} />
+      {:else}<ConfigViewer />{/if}
     </main>
   </div>
 {/if}
