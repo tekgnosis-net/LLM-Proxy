@@ -1,3 +1,19 @@
+# [1.7.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.6.0...v1.7.0) (2026-06-06)
+
+
+### Bug Fixes
+
+* **ui:** clean export error + wire HOUSEKEEPING_DELETE_EXPIRED_KEYS env ([be4aa5a](https://github.com/tekgnosis-net/LLM-Proxy/commit/be4aa5af6e42f3e36c08d998ffb66b2a4c1eb423))
+
+
+### Features
+
+* **ui:** /api/housekeeping (stats + maintenance) + opt-in cron ([fe4189b](https://github.com/tekgnosis-net/LLM-Proxy/commit/fe4189bb99774aafb432fe20429ed58110349a40))
+* **ui:** Caching, Housekeeping, Settings (export/import + dark mode) + nav ([32d2c0c](https://github.com/tekgnosis-net/LLM-Proxy/commit/32d2c0c9e47b02f116abc7ea40ad997554d153ce))
+* **ui:** db_admin (asyncpg stats + maintenance SQL) ([31d230b](https://github.com/tekgnosis-net/LLM-Proxy/commit/31d230bd0074b61a4ded226375fc0798edf8a9f4))
+* **ui:** GET /api/config/export (download config.yaml) ([89f98bf](https://github.com/tekgnosis-net/LLM-Proxy/commit/89f98bf34fd0fa92bde8fa3ad7efe78d8fc45688))
+* **ui:** housekeeping deps + settings + DB env ([326532a](https://github.com/tekgnosis-net/LLM-Proxy/commit/326532a689a10d01ea13ccb69d8e8de541d15fdb))
+
 # [1.6.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.5.0...v1.6.0) (2026-06-06)
 
 
