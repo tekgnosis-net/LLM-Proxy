@@ -1,3 +1,18 @@
+# [1.4.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.3.0...v1.4.0) (2026-06-06)
+
+
+### Bug Fixes
+
+* **ui:** keep Models form on rejected save; resync Routing after save ([19c2cab](https://github.com/tekgnosis-net/LLM-Proxy/commit/19c2cabdf42774b65d567e73913edab0b427fb28))
+
+
+### Features
+
+* **ui:** config store + provider presets + putConfig (full round-trip) ([97349a0](https://github.com/tekgnosis-net/LLM-Proxy/commit/97349a0bf73b24f9ec62277b2c5aef6e286e4694))
+* **ui:** Models screen (provider-driven CRUD on safe-apply) ([481663e](https://github.com/tekgnosis-net/LLM-Proxy/commit/481663e3cdc5cd40df1bfe4c0e19e514a3dfb800))
+* **ui:** Routing screen (strategy + retries + fallbacks on safe-apply) ([402550b](https://github.com/tekgnosis-net/LLM-Proxy/commit/402550bb9578409aa8ef0bd3d77c28a54e5a4b98))
+* **ui:** wire Models + Routing into the sidebar nav ([203a158](https://github.com/tekgnosis-net/LLM-Proxy/commit/203a158b4a69bf02dc3758e0dbe00540b2e04064))
+
 # [1.3.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.2.0...v1.3.0) (2026-06-06)
 
 
