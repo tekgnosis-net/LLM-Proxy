@@ -1,0 +1,229 @@
+# LLM-Proxy Admin UI — Design Spec
+
+- **Status:** Draft for review
+- **Date:** 2026-06-07
+- **Owner:** kumar
+- **Visual reference:** clickable prototype committed alongside this spec at
+  `docs/superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html` (open in a browser)
+
+## Context
+
+The LiteLLM proxy is excellent as a gateway, but its **bundled admin UI is
+unreliable on this stack** — we hit a string of bugs this week:
+
+1. Configuring the Redis cache via the UI writes an `ssl` key, which triggers
+   LiteLLM bug **#10949** (SSLConnection even when `ssl: false`) → TLS handshake
+   against plain Valkey hangs → endless "Timeout connecting to server".
+2. The **Router Settings page has no save endpoint** (`/router/settings` is
+   GET-only) → routing-strategy changes never persist ("reverts to
+   simple-shuffle").
+3. With `store_model_in_db: true`, the **DB silently overrides `config.yaml`
+   and env vars**, so the effective config is opaque and edits land in
+   surprising places.
+4. **Routing precedence is invisible** (per-key `router_settings` > team >
+   global > config.yaml), so global settings appear ignored.
+
+**Goal:** a purpose-built, Apple-HIG admin UI that manages this proxy
+*reliably and reproducibly* — config as a single version-controlled file,
+stateful resources via the proxy API, and guardrails that make the above bugs
+impossible to reintroduce. Ships as a container in the existing compose stack.
+
+## Goals
+
+- Manage **models, routing, caching** through `config.yaml` as the single
+  source of truth (`store_model_in_db: false`).
+- Manage **virtual keys, budgets, spend/usage** through the LiteLLM management
+  API.
+- **Apple-HIG**, full-viewport responsive web app (iCloud.com feel).
+- Ship as one container in the existing `docker-compose` stack.
+- **GitOps**: `config.yaml` is the versioned source; UI offers export/import
+  snapshots.
+- **Guardrails**: the UI can never write an `ssl` cache key or an invalid
+  routing strategy (the two bugs that bit us).
+
+## Non-goals (v1)
+
+- Full teams/users RBAC, multi-admin, SSO/OIDC.
+- Guardrails config, MCP-servers config, live log streaming.
+- Replacing the LiteLLM gateway — we keep it as-is.
+
+## Architecture
+
+```
+                     Admin browser (LAN)
+                          │ https + session cookie (admin password)
+                          ▼
+   ┌───────────────────────────────────────────────┐
+   │  llm-proxy-ui   (NEW container)                 │
+   │   Svelte SPA  ⇄ /api ⇄  FastAPI backend         │
+   │     • read/write/validate config.yaml           │
+   │     • LiteLLM API client (master key, srv-side) │
+   │     • auth/session                              │
+   └───┬──────────────┬───────────────────┬─────────┘
+       │ bind mount RW │ http              │ http (scoped)
+       ▼               ▼                   ▼
+   config.yaml     litellm:4000      socket-proxy (NEW)
+   (host file,     /key /spend        → SIGHUP litellm
+    shared)        /health            (reload config.yaml)
+       ▲                                   │
+       └─ litellm mounts same file (RO) ◄──┘
+                            │
+                            ▼
+              Postgres (keys/spend) · Valkey (cache)
+```
+
+**Decisions locked in brainstorming:**
+
+| Decision | Choice |
+|---|---|
+| Source of truth | Config-only (`store_model_in_db: false`); `config.yaml` authoritative for models/routing/cache |
+| Reload | SIGHUP hot-reload via a **scoped docker-socket-proxy** (UI has no raw socket) |
+| Stack | FastAPI backend + **Svelte** SPA, single container (multi-stage build) |
+| Auth | Admin password (`.env`, hashed) + session cookie; **master key server-side only** |
+| Framing | Full-viewport Apple-HIG web app (no desktop-window chrome) |
+| v1 scope | Models · Routing · Virtual keys/budgets · Spend dashboard · Prompt caching |
+
+**Why config-only is safe:** the feared "config-only drops models" issue
+(#25350) was investigated and is a **false alarm** — the reporter retracted it
+as their own upstream gateway's fault. We are on the latest release (v1.87.1).
+
+## Docker-compose changes
+
+- **litellm**: set `STORE_MODEL_IN_DB: "false"`; keep `config.yaml` bind mount
+  (it stays read-only *to litellm*; the host file is writable by the UI).
+- **NEW `llm-proxy-ui`**: built from `./ui` (multi-stage: build Svelte → serve
+  via FastAPI). Mounts the host `config/config.yaml` **read-write**. Env:
+  `LITELLM_BASE_URL=http://litellm:4000`, `LITELLM_MASTER_KEY`,
+  `ADMIN_PASSWORD_HASH`, `SOCKET_PROXY_URL`, `SESSION_SECRET`. Publishes
+  `${UI_PORT:-8081}:8080`. Depends on litellm healthy.
+- **NEW `socket-proxy`** (`tecnativa/docker-socket-proxy`): mounts the Docker
+  socket and exposes only container POST actions (`POST=1`, `CONTAINERS=1`, all
+  other API families `0`) on an **internal network reachable only by the UI**.
+  Caveat: this proxy scopes by API *family*, not per-container — for true
+  single-action / single-container scoping, run a ~20-line custom reloader
+  (does only `kill -HUP litellm`) behind it. See Risks. This keeps the *UI*
+  itself free of any Docker access either way.
+- **.env.example**: add `UI_PORT`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`.
+
+## Backend (FastAPI) — components
+
+Each module has one job, a clear interface, and is unit-testable in isolation:
+
+- **`auth`** — login (verify password hash), session cookie issue/verify,
+  `login_required` dependency.
+- **`config_store`** — load/parse/validate/write `config.yaml`. Pydantic models
+  mirror the schema (`model_list`, `router_settings` incl. `routing_groups`,
+  `litellm_settings.cache_params`). Produces a diff vs the on-disk file before
+  applying. **Guardrails live here** (see below).
+- **`reloader`** — after a successful write, call the socket-proxy to `SIGHUP`
+  litellm, then poll `/health/readiness` until the proxy is back; returns
+  success/failure to the UI.
+- **`litellm_client`** — thin async client for the management API (keys, spend,
+  health) using the server-side master key.
+- **`routes`** — `/api/auth/*`, `/api/config/{models,routing,cache}`,
+  `/api/keys/*`, `/api/usage/*`, `/api/health`, `/api/config/export|import`.
+- **static** — serves the built Svelte SPA.
+
+### Guardrails (make the known bugs impossible)
+
+- **Cache:** `config_store` never serializes an `ssl` (or `ssl_check_hostname`)
+  key into `cache_params`. The Caching screen has no TLS control. (Prevents
+  #10949.)
+- **Routing strategy:** must be one of the valid enum
+  (`simple-shuffle`, `least-busy`, `usage-based-routing`,
+  `usage-based-routing-v2`, `latency-based-routing`, `cost-based-routing`).
+  `lowest-cost` is rejected (it's only a docs nickname).
+- **Write-then-verify:** every config write is validated (schema + `litellm`
+  dry-parse if feasible) *before* replacing the file; the previous file is
+  backed up so a bad apply can roll back.
+
+## Screens (see prototype for visuals)
+
+| Screen | Data path | Notes |
+|---|---|---|
+| **Dashboard** | API (health/spend) | Health pills, month stats, 7-day spend chart, over-budget alerts |
+| **Models** | config.yaml | Deployments grouped by public model name; add/edit/remove → write+reload |
+| **Routing** | config.yaml | Global strategy + per-group strategy + fallbacks; "Save & apply" = write+validate+SIGHUP+confirm |
+| **Caching** | config.yaml | Enable, backend (Redis/Valkey or in-memory), host/port, TTL; **no TLS toggle**; live stats via `/cache/ping` |
+| **Virtual Keys** | API | List w/ live budget bars; Create-Key sheet (alias, access, budget, rate limits, expiry, per-key routing override); revoke |
+| **Usage & Spend** | API | 24h/7d/30d range; totals incl. cache savings; spend by day/model/key |
+| **Settings** | mixed | Proxy connection + master-key status, reload-mechanism status, config.yaml viewer + **Export/Import snapshot (GitOps)**, admin password, theme (System/light/dark), version |
+
+## Design system
+
+- Full-viewport responsive layout; left sidebar (grouped: Overview /
+  Configuration / Access & Spend / System); content max-width ~960px.
+- System font stack (`-apple-system`, SF…); accent `#0a84ff`; **inset grouped
+  cards** (macOS Settings look); hairline separators; soft shadows; 12px radii;
+  translucent blurred sticky toolbar; Apple "pop-up button" controls.
+- Light + dark via system preference (dark mode is polish, can land last).
+- Svelte + CSS variables; no heavy component library.
+
+## Data flows
+
+1. **Config edit** (Models/Routing/Caching): UI form → `PATCH /api/config/*` →
+   backend validates (schema + guardrails) → writes `config.yaml` (backup
+   prev) → reloader SIGHUPs litellm → polls `/health` → UI shows "applied"
+   toast (or validation/reload error, with the file change rolled back on
+   reload failure).
+2. **Key create/revoke**: UI → `/api/keys/*` → `litellm_client` → proxy API →
+   Postgres. Generated `sk-…` shown once.
+3. **Spend/usage**: UI → `/api/usage/*` → proxy spend API → render charts.
+
+## Error handling
+
+- **Validation error** → shown inline in the form; nothing written.
+- **Reload failure** → surfaced clearly; offer retry; if the proxy doesn't come
+  back healthy, restore the backed-up `config.yaml` and reload again.
+- **API/auth errors** → toast + actionable message; 401 → re-login.
+- **Socket-proxy unreachable** → Settings shows the reload mechanism as
+  degraded; edits still save to file, reload deferred with a banner.
+
+## Security
+
+- Master key lives only in the UI backend env; never sent to the browser.
+- Admin password stored as a hash (argon2id); session cookie `HttpOnly`,
+  `SameSite=Lax`, `Secure` when behind TLS.
+- `socket-proxy` is the only thing with Docker access, allow-listed to one
+  action on one container; the UI reaches it over an internal network.
+- Intended for LAN/VPN; put behind a reverse proxy + TLS for any wider exposure.
+
+## Testing
+
+- **Backend unit:** `config_store` parse/validate/write incl. the **ssl-guard**
+  and **routing-enum** rejections; diff/rollback; `reloader` (mock socket-proxy
+  + health); `litellm_client` (mock proxy); `auth`.
+- **Frontend:** component tests for the form controls; **Playwright e2e** for
+  the two critical flows — *add a model → reload → appears in `/v1/models`* and
+  *create a key → it works against the proxy*.
+- **Integration:** `docker compose up` smoke test of the config-edit→reload
+  round trip and a key-create round trip.
+
+## Phasing (implementation order)
+
+1. **Scaffold** — container + compose wiring (UI + socket-proxy), auth,
+   `config_store` read/validate/view, Dashboard + health.
+2. **Models + Routing** editing with write→validate→reload.
+3. **Virtual Keys + budgets** (API) incl. Create-Key sheet + per-key routing.
+4. **Usage & Spend** dashboard.
+5. **Caching** config + **Export/Import snapshot** + dark-mode polish.
+
+## Risks / open questions
+
+- Exact LiteLLM spend/usage API endpoints + shapes (verify during Phase 4).
+- SIGHUP reload race with the bind-mounted file write (write atomically: temp
+  file + rename, then signal).
+- Precise `docker-socket-proxy` allow-list to permit only `kill?signal=SIGHUP`
+  on the litellm container (may need a thin wrapper if the proxy's granularity
+  is per-endpoint, not per-container).
+- `tecnativa/docker-socket-proxy` exposes API families, not per-container
+  scoping — may need a minimal custom reloader behind it, or accept
+  container-family scoping on a private network.
+
+## References
+
+- Prototype (visual source of truth): `2026-06-07-llm-proxy-ui-prototype.html`.
+- Brainstorm decisions: config-only · FastAPI+Svelte · admin-password auth ·
+  scoped socket-proxy reload · full-bleed Apple-HIG.
+- Background: `docs/cost-routing-guide.md`; memory notes on LiteLLM bugs
+  (#10949 SSL cache, router-settings no-setter, store_model_in_db precedence).

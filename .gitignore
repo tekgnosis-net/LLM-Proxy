@@ -8,6 +8,7 @@ data/
 .claude/
 .remember/
 supertool
+.superpowers/
 
 # Editor/OS junk
 *.swp

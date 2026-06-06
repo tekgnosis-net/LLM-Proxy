@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Proxy — clickable prototype</title>
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--text:#1d1d1f;--text2:#6e6e73;--sep:rgba(0,0,0,.08);
+    --accent:#0a84ff;--accent2:#0071e3;--green:#34c759;--red:#ff3b30;--amber:#ff9f0a;--radius:12px}
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;background:var(--card);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.45}
+  .app{display:grid;grid-template-columns:236px 1fr;height:100vh}
+  /* sidebar */
+  .sidebar{background:var(--bg);border-right:1px solid var(--sep);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
+  .brand{display:flex;align-items:center;gap:9px;padding:2px 8px 16px;font-weight:600;font-size:15px}
+  .brand .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#0a84ff,#5e5ce6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+  .navgroup{margin:12px 6px 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);font-weight:600}
+  .nav{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;font-weight:450;cursor:pointer}
+  .nav .ic{width:20px;text-align:center;opacity:.85}
+  .nav.active{background:var(--accent);color:#fff}.nav:not(.active):hover{background:rgba(0,0,0,.06)}
+  .spacer{flex:1}.statuspill{margin:6px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:7px;padding:6px 10px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(52,199,89,.18);flex:none}
+  /* main */
+  .main{overflow:auto}
+  .toolbar{position:sticky;top:0;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(20px);display:flex;align-items:center;gap:12px;padding:20px 30px 14px;border-bottom:1px solid var(--sep);z-index:5}
+  .toolbar h1{font-size:24px;font-weight:700;letter-spacing:-.015em;margin:0;flex:1}
+  .search{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.05);border-radius:8px;padding:7px 11px;color:var(--text2);font-size:13px;width:170px}
+  .seg{display:inline-flex;background:rgba(0,0,0,.06);border-radius:8px;padding:2px}
+  .seg span{padding:5px 12px;border-radius:6px;font-size:12.5px;font-weight:500;color:var(--text2)}
+  .seg span.on{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .ghost{background:rgba(0,0,0,.05);border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500;color:var(--text);cursor:pointer}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(10,132,255,.4);cursor:pointer}
+  .content{padding:24px 30px;max-width:960px}
+  .label{font-size:12px;color:var(--text2);font-weight:600;margin:20px 4px 9px;letter-spacing:.02em;text-transform:uppercase}.label:first-child{margin-top:0}
+  .card{background:var(--card);border:1px solid var(--sep);border-radius:var(--radius);box-shadow:0 1px 2px rgba(0,0,0,.04);overflow:hidden}
+  .row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-top:1px solid var(--sep)}.row:first-child{border-top:none}
+  .row .meta{flex:1;min-width:0}.row .name{font-weight:600}.row .sub{color:var(--text2);font-size:12.5px}
+  .popup{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid rgba(0,0,0,.14);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:500}.popup.accent{border-color:var(--accent);color:var(--accent2);background:rgba(10,132,255,.06)}.popup .chev{color:var(--text2)}
+  .badge{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+  .b-oa{background:#10a37f}.b-an{background:#d97757}.b-go{background:#4285f4}.b-vl{background:#5e5ce6}
+  .chev{color:#c7c7cc;font-size:18px}
+  .desc{color:var(--text2);font-size:12.5px;padding:2px 4px 0}
+  /* grids & stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .stat{background:var(--card);border:1px solid var(--sep);border-radius:var(--radius);padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .stat .k{color:var(--text2);font-size:12px;font-weight:600}.stat .v{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:6px}
+  .stat .d{font-size:12px;margin-top:4px}.up{color:var(--green)}.down{color:var(--red)}
+  .health{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .hpill{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--sep);border-radius:var(--radius);padding:13px 15px;font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  /* chart */
+  .chart{display:flex;align-items:flex-end;gap:10px;height:150px;padding:18px 16px 10px}
+  .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;height:100%}
+  .chart .bar2{width:60%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#5e9dff,#0a84ff)}
+  .chart .cl{font-size:11px;color:var(--text2)}
+  /* budgets */
+  .chips{display:flex;gap:5px;flex-wrap:wrap}.chip{font-size:11px;font-weight:600;background:rgba(0,0,0,.06);color:#444;padding:2px 8px;border-radius:20px}.chip.grp{background:rgba(10,132,255,.12);color:var(--accent2)}
+  .bar{height:6px;border-radius:4px;background:rgba(0,0,0,.08);overflow:hidden}.bar>i{display:block;height:100%;border-radius:4px;background:var(--green)}.bar>i.warn{background:var(--amber)}.bar>i.over{background:var(--red)}
+  .krow{display:grid;grid-template-columns:1.4fr 1.1fr 150px 80px 20px;align-items:center;gap:14px;padding:15px 16px;border-top:1px solid var(--sep)}.krow:first-child{border-top:none}
+  .kkey{color:var(--text2);font-size:12px;font-family:ui-monospace,Menlo,monospace}
+  .top{display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:5px}
+  /* form */
+  .field{padding:13px 16px;border-top:1px solid var(--sep)}.field:first-child{border-top:none}
+  .field label{display:block;font-weight:600;margin-bottom:3px}.field .fh{color:var(--text2);font-size:12px;margin-bottom:8px}
+  .input{width:100%;border:1px solid rgba(0,0,0,.16);border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+  .toggle{width:42px;height:26px;border-radius:20px;background:var(--green);position:relative;flex:none}.toggle::after{content:"";position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;top:2px;right:2px;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .toggle.off{background:rgba(0,0,0,.18)}.toggle.off::after{right:auto;left:2px}
+  .warnbox{background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.35);border-radius:10px;padding:11px 14px;font-size:12.5px;color:#8a5a00;margin:0 16px 14px}
+  /* modal */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.28);backdrop-filter:blur(2px);display:none;align-items:flex-start;justify-content:center;z-index:50}
+  .scrim.open{display:flex}
+  .sheet{background:var(--card);width:540px;max-width:94vw;margin-top:7vh;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.3);overflow:hidden;max-height:84vh;display:flex;flex-direction:column}
+  .sheet .sh{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--sep)}
+  .sheet .sh h3{margin:0;font-size:16px;flex:1}.sheet .sb{overflow:auto}
+  .sheet .sf{display:flex;gap:10px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--sep)}
+  .x{cursor:pointer;color:var(--text2);font-size:20px;line-height:1}
+  .screen{display:none}.screen.active{display:block}
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">LP</span> LLM Proxy</div>
+      <div class="navgroup">Overview</div>
+      <div class="nav active" data-s="dash"><span class="ic">▦</span> Dashboard</div>
+      <div class="navgroup">Configuration</div>
+      <div class="nav" data-s="models"><span class="ic">◈</span> Models</div>
+      <div class="nav" data-s="routing"><span class="ic">⇄</span> Routing</div>
+      <div class="nav" data-s="caching"><span class="ic">⚡</span> Caching</div>
+      <div class="navgroup">Access &amp; Spend</div>
+      <div class="nav" data-s="keys"><span class="ic">🔑</span> Virtual Keys</div>
+      <div class="nav" data-s="usage"><span class="ic">📊</span> Usage &amp; Spend</div>
+      <div class="spacer"></div>
+      <div class="navgroup">System</div>
+      <div class="nav" data-s="settings"><span class="ic">⚙</span> Settings</div>
+      <div class="statuspill"><span class="dot"></span> Healthy · synced 2m ago</div>
+    </aside>
+
+    <main class="main">
+      <div class="toolbar"><h1 id="ttl">Dashboard</h1><div class="search">⌕ Search</div><button class="btn" id="newkey" style="display:none">+ Create Key</button></div>
+      <div class="content">
+
+        <!-- DASHBOARD -->
+        <section class="screen active" data-s="dash">
+          <div class="label">Health</div>
+          <div class="health">
+            <div class="hpill"><span class="dot"></span> Proxy · healthy</div>
+            <div class="hpill"><span class="dot"></span> Postgres · connected</div>
+            <div class="hpill"><span class="dot"></span> Valkey · connected</div>
+            <div class="hpill"><span class="dot" style="background:var(--amber);box-shadow:0 0 0 3px rgba(255,159,10,.18)"></span> 1 key over budget</div>
+          </div>
+          <div class="label">This month</div>
+          <div class="stats">
+            <div class="stat"><div class="k">Spend</div><div class="v">$196.70</div><div class="d up">▲ 12% vs last</div></div>
+            <div class="stat"><div class="k">Requests today</div><div class="v">8,412</div><div class="d up">▲ 4%</div></div>
+            <div class="stat"><div class="k">Active keys</div><div class="v">4</div><div class="d">1 blocked</div></div>
+            <div class="stat"><div class="k">Cache hit rate</div><div class="v">37%</div><div class="d up">saved ~$72</div></div>
+          </div>
+          <div class="label">Spend · last 7 days</div>
+          <div class="card"><div class="chart">
+            <div class="col"><div class="bar2" style="height:40%"></div><div class="cl">Mon</div></div>
+            <div class="col"><div class="bar2" style="height:62%"></div><div class="cl">Tue</div></div>
+            <div class="col"><div class="bar2" style="height:48%"></div><div class="cl">Wed</div></div>
+            <div class="col"><div class="bar2" style="height:78%"></div><div class="cl">Thu</div></div>
+            <div class="col"><div class="bar2" style="height:90%"></div><div class="cl">Fri</div></div>
+            <div class="col"><div class="bar2" style="height:30%"></div><div class="cl">Sat</div></div>
+            <div class="col"><div class="bar2" style="height:55%"></div><div class="cl">Sun</div></div>
+          </div></div>
+        </section>
+
+        <!-- MODELS -->
+        <section class="screen" data-s="models">
+          <div class="label">Model group · cheap — cost-based-routing</div>
+          <div class="card">
+            <div class="row"><div class="badge b-oa">AI</div><div class="meta"><div class="name">gpt-4o-mini</div><div class="sub">openai/gpt-4o-mini · $0.15 / $0.60 per 1M</div></div><span class="dot"></span><span class="chev">›</span></div>
+            <div class="row"><div class="badge b-an">A</div><div class="meta"><div class="name">claude-haiku-4.5</div><div class="sub">anthropic/claude-haiku-4-5 · $1.00 / $5.00 per 1M</div></div><span class="dot"></span><span class="chev">›</span></div>
+            <div class="row"><div class="badge b-go">G</div><div class="meta"><div class="name">gemini-2.0-flash</div><div class="sub">gemini/gemini-2.0-flash · $0.10 / $0.40 per 1M</div></div><span class="dot"></span><span class="chev">›</span></div>
+          </div>
+          <div class="label">Model group · premium</div>
+          <div class="card">
+            <div class="row"><div class="badge b-oa">AI</div><div class="meta"><div class="name">o1-preview</div><div class="sub">openai/o1-preview</div></div><span class="chip">single</span><span class="chev">›</span></div>
+            <div class="row"><div class="badge b-vl">V</div><div class="meta"><div class="name">claude-opus-4.7</div><div class="sub">anthropic/claude-opus-4-7</div></div><span class="dot"></span><span class="chev">›</span></div>
+          </div>
+          <p class="desc">Grouped by public model name. Editing writes config.yaml → validates → SIGHUP reload.</p>
+        </section>
+
+        <!-- ROUTING -->
+        <section class="screen" data-s="routing">
+          <div class="label">Default strategy</div>
+          <div class="card"><div class="row"><div class="meta"><div class="name">Global routing strategy</div><div class="sub">Used by any group without its own strategy</div></div><span class="popup accent">cost-based-routing <span class="chev">▾</span></span></div></div>
+          <div class="label">Model groups</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">cheap</div><div class="sub">3 deployments</div></div><span class="popup accent">cost-based-routing <span class="chev">▾</span></span></div>
+            <div class="row"><div class="meta"><div class="name">mid</div><div class="sub">2 deployments</div></div><span class="popup">latency-based-routing <span class="chev">▾</span></span></div>
+            <div class="row"><div class="meta"><div class="name">premium</div><div class="sub">2 deployments</div></div><span class="popup">default (cost-based) <span class="chev">▾</span></span></div>
+          </div>
+          <div class="label">Fallbacks</div>
+          <div class="card">
+            <div class="row"><div class="chips"><span class="chip grp">cheap</span> <span style="color:var(--text2)">→</span> <span class="chip">mid</span> <span style="color:var(--text2)">→</span> <span class="chip">premium</span></div></div>
+            <div class="row"><span style="color:var(--accent2);font-weight:600;font-size:12.5px">+ Add fallback chain</span></div>
+          </div>
+        </section>
+
+        <!-- CACHING -->
+        <section class="screen" data-s="caching">
+          <div class="label">Response cache</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">Enabled</div><div class="sub">Cache identical completion/embedding requests</div></div><div class="toggle"></div></div>
+            <div class="row"><div class="meta"><div class="name">Backend</div><div class="sub">Redis (Valkey) · shared across replicas</div></div><span class="popup accent">redis (Valkey) <span class="chev">▾</span></span></div>
+            <div class="row"><div class="meta"><div class="name">Host · port</div><div class="sub">from REDIS_HOST / REDIS_PORT</div></div><span class="kkey">valkey : 6379</span></div>
+            <div class="row"><div class="meta"><div class="name">TTL</div></div><span class="kkey">3600s</span></div>
+          </div>
+          <div class="warnbox">⚠︎ TLS is intentionally <strong>OFF</strong>. LiteLLM bug #10949 turns any <code>ssl</code> key (even false) into a TLS handshake that hangs against plain Valkey. This UI never writes an <code>ssl</code> field — there's deliberately no toggle for it.</div>
+          <div class="label">Live stats</div>
+          <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat"><div class="k">Hit rate</div><div class="v">37%</div></div>
+            <div class="stat"><div class="k">Keys cached</div><div class="v">1,204</div></div>
+            <div class="stat"><div class="k">Memory</div><div class="v">6.4 MB</div></div>
+          </div>
+          <p class="desc" style="margin-top:14px"><span style="color:var(--accent2);font-weight:600">Test connection</span> — runs /cache/ping and shows the result.</p>
+        </section>
+
+        <!-- VIRTUAL KEYS -->
+        <section class="screen" data-s="keys">
+          <div class="card">
+            <div class="krow"><div><div class="name">production-app</div><div class="kkey">sk-…a91f · team: core</div></div><div class="chips"><span class="chip grp">cheap</span><span class="chip grp">mid</span></div><div><div class="top"><span>$142.50</span><span>/ $200</span></div><div class="bar"><i class="warn" style="width:71%"></i></div></div><div class="sub">28d</div><div class="chev">›</div></div>
+            <div class="krow"><div><div class="name">nightly-batch</div><div class="kkey">sk-…7c2e</div></div><div class="chips"><span class="chip grp">cheap</span></div><div><div class="top"><span>$4.20</span><span>/ $20</span></div><div class="bar"><i style="width:21%"></i></div></div><div class="sub">5d</div><div class="chev">›</div></div>
+            <div class="krow"><div><div class="name">experiments</div><div class="kkey">sk-…0d55 · team: labs</div></div><div class="chips"><span class="chip">all</span></div><div><div class="top"><span>$0.00</span><span>/ $50</span></div><div class="bar"><i style="width:2%"></i></div></div><div class="sub">∞</div><div class="chev">›</div></div>
+            <div class="krow"><div><div class="name">laptop-cli</div><div class="kkey">sk-…be30</div></div><div class="chips"><span class="chip grp">premium</span></div><div><div class="top"><span style="color:var(--red);font-weight:600">$50.00</span><span>/ $50</span></div><div class="bar"><i class="over" style="width:100%"></i></div></div><div class="sub" style="color:var(--red)">blocked</div><div class="chev">›</div></div>
+          </div>
+          <p class="desc">Click + Create Key (top right) to see the creation sheet. Per-key routing override lives in the key detail.</p>
+        </section>
+
+        <!-- USAGE -->
+        <section class="screen" data-s="usage">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div class="seg"><span>24h</span><span class="on">7 days</span><span>30 days</span></div><span style="color:var(--text2);font-size:12.5px">Apr 1 – Apr 7</span></div>
+          <div class="stats"><div class="stat"><div class="k">Total spend</div><div class="v">$196.70</div></div><div class="stat"><div class="k">Requests</div><div class="v">54,109</div></div><div class="stat"><div class="k">Avg cost / req</div><div class="v">$0.0036</div></div><div class="stat"><div class="k">Cache savings</div><div class="v">$72.10</div></div></div>
+          <div class="label">Spend by day</div>
+          <div class="card"><div class="chart">
+            <div class="col"><div class="bar2" style="height:40%"></div><div class="cl">Mon</div></div><div class="col"><div class="bar2" style="height:62%"></div><div class="cl">Tue</div></div><div class="col"><div class="bar2" style="height:48%"></div><div class="cl">Wed</div></div><div class="col"><div class="bar2" style="height:78%"></div><div class="cl">Thu</div></div><div class="col"><div class="bar2" style="height:90%"></div><div class="cl">Fri</div></div><div class="col"><div class="bar2" style="height:30%"></div><div class="cl">Sat</div></div><div class="col"><div class="bar2" style="height:55%"></div><div class="cl">Sun</div></div>
+          </div></div>
+          <div class="label">By model</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">gpt-4o</div></div><div style="width:50%"><div class="bar"><i style="width:64%;background:var(--accent)"></i></div></div><span class="sub">$92.10</span></div>
+            <div class="row"><div class="meta"><div class="name">claude-sonnet</div></div><div style="width:50%"><div class="bar"><i style="width:38%;background:var(--accent)"></i></div></div><span class="sub">$54.30</span></div>
+            <div class="row"><div class="meta"><div class="name">gpt-4o-mini</div></div><div style="width:50%"><div class="bar"><i style="width:18%;background:var(--accent)"></i></div></div><span class="sub">$28.00</span></div>
+          </div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section class="screen" data-s="settings">
+          <div class="label">Proxy connection</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">LiteLLM base URL</div></div><span class="kkey">http://litellm:4000</span></div>
+            <div class="row"><div class="meta"><div class="name">Master key</div><div class="sub">Held server-side · never sent to the browser</div></div><span class="kkey">sk-•••• ✓ valid</span></div>
+            <div class="row"><div class="meta"><div class="name">Reload mechanism</div><div class="sub">docker-socket-proxy (scoped) · reachable</div></div><span class="dot"></span></div>
+          </div>
+          <div class="label">Configuration (config.yaml)</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">View raw config.yaml</div><div class="sub">Read-only viewer with diff before apply</div></div><span class="chev">›</span></div>
+            <div class="row"><div class="meta"><div class="name">Export snapshot → git</div><div class="sub">Download / commit current config.yaml</div></div><button class="ghost">Export</button></div>
+            <div class="row"><div class="meta"><div class="name">Import snapshot</div><div class="sub">Apply a versioned config.yaml (validates first)</div></div><button class="ghost">Import…</button></div>
+          </div>
+          <div class="label">Admin</div>
+          <div class="card">
+            <div class="row"><div class="meta"><div class="name">Change admin password</div></div><span class="chev">›</span></div>
+            <div class="row"><div class="meta"><div class="name">Theme</div></div><span class="popup">System (auto) <span class="chev">▾</span></span></div>
+            <div class="row"><div class="meta"><div class="name">Version</div></div><span class="sub">UI v0.1 · LiteLLM 1.87.1</span></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- CREATE KEY SHEET -->
+  <div class="scrim" id="scrim">
+    <div class="sheet">
+      <div class="sh"><h3>Create virtual key</h3><span class="x" id="closex">✕</span></div>
+      <div class="sb">
+        <div class="field"><label>Key alias</label><input class="input" value="mobile-app"></div>
+        <div class="field"><label>Model access</label><div class="fh">Pick public model names or access groups</div><div class="chips"><span class="chip grp">cheap ✓</span><span class="chip grp">mid ✓</span><span class="chip">premium</span><span class="chip">+ all</span></div></div>
+        <div class="field"><label>Max budget</label><div style="display:flex;gap:10px"><input class="input" value="$50" style="flex:1"><span class="popup">per 30 days <span class="chev">▾</span></span></div></div>
+        <div class="field"><label>Rate limits</label><div style="display:flex;gap:10px"><input class="input" placeholder="RPM"><input class="input" placeholder="TPM"></div></div>
+        <div class="field"><label>Expiry</label><span class="popup">90 days <span class="chev">▾</span></span></div>
+        <div class="field"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1"><label>Per-key routing override</label><div class="fh">Optional — overrides global/group strategy for this key (the routing path that works)</div></div><div class="toggle off"></div></div></div>
+      </div>
+      <div class="sf"><button class="ghost" id="cancel">Cancel</button><button class="btn">Create key</button></div>
+    </div>
+  </div>
+
+<script>
+  var navs=document.querySelectorAll('.nav'), screens=document.querySelectorAll('.screen'),
+      ttl=document.getElementById('ttl'), newkey=document.getElementById('newkey'),
+      titles={dash:'Dashboard',models:'Models',routing:'Routing',caching:'Caching',keys:'Virtual Keys',usage:'Usage & Spend',settings:'Settings'};
+  navs.forEach(function(n){n.addEventListener('click',function(){
+    var s=n.getAttribute('data-s');
+    navs.forEach(function(x){x.classList.toggle('active',x===n)});
+    screens.forEach(function(x){x.classList.toggle('active',x.getAttribute('data-s')===s)});
+    ttl.textContent=titles[s]; newkey.style.display = s==='keys' ? 'inline-block':'none';
+    document.querySelector('.main').scrollTo(0,0);
+  })});
+  var scrim=document.getElementById('scrim');
+  function close(){scrim.classList.remove('open')}
+  newkey.addEventListener('click',function(){scrim.classList.add('open')});
+  document.getElementById('closex').addEventListener('click',close);
+  document.getElementById('cancel').addEventListener('click',close);
+  scrim.addEventListener('click',function(e){if(e.target===scrim)close()});
+</script>
+</body>
+</html>
