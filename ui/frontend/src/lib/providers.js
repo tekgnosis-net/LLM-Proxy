@@ -34,6 +34,8 @@ export const SPECIAL_PROVIDER_FIELDS = {
   azure: ['api_base', 'api_version'],
   bedrock: ['aws_region_name'],
   vertex_ai: ['vertex_project', 'vertex_location'],
+  openai_compatible: ['api_base'],   // no default URL — operator must supply the endpoint
+  hosted_vllm: ['api_base'],
 }
 
 // Build litellm_params from the chosen provider slug + form. Secrets are emitted as

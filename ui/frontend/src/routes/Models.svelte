@@ -63,6 +63,10 @@
   function specialFields() { return SPECIAL_PROVIDER_FIELDS[providerSlug] || [] }
   function onProviderChange() {
     testResult = null; autofilled = false
+    // clear special/deployment fields so a previous provider's values can't leak into params
+    form.api_base = ''; form.api_version = ''; form.aws_region_name = ''
+    form.vertex_project = ''; form.vertex_location = ''
+    showAdvanced = false
     const modes = providerModes()
     if (!modes.includes(form.mode)) form.mode = modes[0] || 'chat'
   }
@@ -139,7 +143,7 @@
       <label>Provider
         <input list="provider-list" bind:value={providerSlug} onchange={onProviderChange} placeholder="search providers…" />
         <datalist id="provider-list">
-          {#each providers as p}<option value={p.provider}>{p.display_name || p.provider}</option>{/each}
+          {#each providers as p}<option value={p.provider} label={p.display_name || p.provider}></option>{/each}
         </datalist>
       </label>
       <label>Public model name <input bind:value={form.modelName} placeholder="e.g. gpt-4o" /></label>
