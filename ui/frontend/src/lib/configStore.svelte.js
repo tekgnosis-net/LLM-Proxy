@@ -1,36 +1,44 @@
 import { api } from './api.js'
 
 export function createConfigStore() {
-  let config = $state(null)      // the full config object (source of truth in memory)
-  let loading = $state(false)
-  let applying = $state(false)   // true during the ~25s PUT (proxy restart)
-  let error = $state('')
-  let notice = $state('')
+  let config = $state(null), loading = $state(false), saving = $state(false)
+  let applying = $state(false), error = $state(''), notice = $state('')
+  let pending = $state(false), pendingSummary = $state([])
 
+  async function refreshPending() {
+    try { const s = await api.applyStatus(); pending = s.pending; pendingSummary = s.summary || [] } catch {}
+  }
   async function load() {
     loading = true; error = ''
-    try { config = await api.config() } catch (e) { error = e.message } finally { loading = false }
+    try { config = await api.config(); await refreshPending() } catch (e) { error = e.message } finally { loading = false }
   }
-  // Replace one top-level section then PUT the FULL config (never partial).
   async function saveSection(section, value) {
-    if (!config) return
+    if (!config) return false
     const candidate = { ...config, [section]: value }
-    applying = true; error = ''; notice = ''
+    saving = true; error = ''; notice = ''
     try {
       const res = await api.putConfig(candidate)
-      config = candidate
-      notice = `Applied — ${(res.models || []).length} model(s), routing: ${res.routing_strategy || '—'}`
+      config = candidate; pending = res.pending; pendingSummary = res.summary || []
+      notice = 'Saved. Click Apply to restart the proxy and make it live.'
       return true
+    } catch (e) { error = e.status === 422 ? `Rejected: ${e.message}` : e.message; return false }
+    finally { saving = false }
+  }
+  async function apply() {
+    applying = true; error = ''; notice = ''
+    try {
+      const res = await api.apply()
+      notice = `Applied — ${(res.models||[]).length} model(s), routing ${res.routing_strategy||'—'}`
+      await refreshPending(); return true
     } catch (e) {
-      if (e.status === 422) error = `Rejected (not applied): ${e.message}`
-      else if (e.status === 409) error = `Reload failed — rolled back to the previous config: ${e.message}`
-      else error = e.message
-      return false
+      error = e.status === 409 ? `Reload failed — rolled back: ${e.message}` : e.message
+      await refreshPending(); return false
     } finally { applying = false }
   }
   return {
-    get config() { return config }, get loading() { return loading },
-    get applying() { return applying }, get error() { return error }, get notice() { return notice },
-    load, saveSection,
+    get config(){return config}, get loading(){return loading}, get saving(){return saving},
+    get applying(){return applying}, get error(){return error}, get notice(){return notice},
+    get pending(){return pending}, get pendingSummary(){return pendingSummary},
+    load, saveSection, apply, refreshPending,
   }
 }

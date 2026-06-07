@@ -25,7 +25,7 @@
 
   function setTheme(t) { theme = t }
 
-  onMount(async () => { authed = (await api.me()).authed })
+  onMount(async () => { authed = (await api.me()).authed; store.refreshPending() })
   async function onLogin() { authed = true }
   async function logout() { await api.logout(); authed = false }
 </script>
@@ -53,6 +53,12 @@
       <button class="nav" onclick={logout}>⎋ Sign out</button>
     </aside>
     <main class="main">
+      {#if store.pending}
+        <div class="applybar">
+          <span><strong>{store.pendingSummary.length || ''}</strong> unapplied change{store.pendingSummary.length === 1 ? '' : 's'}{store.pendingSummary.length ? ` (${store.pendingSummary.join(', ')})` : ''}</span>
+          <button class="apply" onclick={() => store.apply()} disabled={store.applying}>{store.applying ? 'Applying… (~25s)' : 'Apply'}</button>
+        </div>
+      {/if}
       {#if screen==='dash'}<Dashboard />
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
@@ -79,4 +85,8 @@
   .nav.active{background:#0a84ff;color:#fff}
   .spacer{flex:1}
   .main{overflow:auto;background:var(--bg)}
+  .applybar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;justify-content:space-between;
+    background:#fff7e6;border-bottom:1px solid #ffe1a8;padding:8px 16px;font-size:13px;color:#7a5b00}
+  .applybar .apply{background:#ff9f0a;color:#fff;border:0;border-radius:8px;padding:6px 14px;font-weight:600;cursor:pointer}
+  .applybar .apply:disabled{opacity:.6}
 </style>

@@ -20,4 +20,6 @@ export const api = {
   housekeeping: () => req('/api/housekeeping'),
   runHousekeeping: () => req('/api/housekeeping/run', { method: 'POST' }),
   exportConfigUrl: '/api/config/export',
+  applyStatus: () => req('/api/apply/status'),
+  apply: () => req('/api/apply', { method: 'POST' }),
 }
