@@ -23,4 +23,7 @@ export const api = {
   applyStatus: () => req('/api/apply/status'),
   apply: () => req('/api/apply', { method: 'POST' }),
   cacheInfo: () => req('/api/cache/info'),
+  credentials: () => req('/api/credentials'),
+  createCredential: (b) => req('/api/credentials', { method: 'POST', body: JSON.stringify(b) }),
+  deleteCredential: (n) => req(`/api/credentials/${encodeURIComponent(n)}`, { method: 'DELETE' }),
 }

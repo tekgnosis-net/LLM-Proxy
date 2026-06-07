@@ -7,6 +7,7 @@
   import Models from './routes/Models.svelte'
   import Routing from './routes/Routing.svelte'
   import Keys from './routes/Keys.svelte'
+  import ProviderKeys from './routes/ProviderKeys.svelte'
   import Usage from './routes/Usage.svelte'
   import Caching from './routes/Caching.svelte'
   import Housekeeping from './routes/Housekeeping.svelte'
@@ -46,6 +47,7 @@
       <button class="nav" class:active={screen==='config'} onclick={() => screen='config'}>◈ config.yaml</button>
       <div class="navgroup">Access</div>
       <button class="nav" class:active={screen==='keys'} onclick={() => screen='keys'}>🔑 Virtual Keys</button>
+      <button class="nav" class:active={screen==='providerkeys'} onclick={() => screen='providerkeys'}>🗝 Provider Keys</button>
       <div class="navgroup">System</div>
       <button class="nav" class:active={screen==='housekeeping'} onclick={() => screen='housekeeping'}>🧹 Housekeeping</button>
       <button class="nav" class:active={screen==='settings'} onclick={() => screen='settings'}>⚙ Settings</button>
@@ -64,6 +66,7 @@
       {:else if screen==='routing'}<Routing {store} />
       {:else if screen==='caching'}<Caching />
       {:else if screen==='keys'}<Keys />
+      {:else if screen==='providerkeys'}<ProviderKeys {store} />
       {:else if screen==='usage'}<Usage />
       {:else if screen==='housekeeping'}<Housekeeping />
       {:else if screen==='settings'}<Settings {store} {theme} {setTheme} />
