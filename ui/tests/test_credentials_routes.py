@@ -45,3 +45,17 @@ def test_get_config_redacts_credential_values(tmp_path):
 
 def test_delete(tmp_path):
     f=FakeStore(); c=_client(tmp_path,f); assert c.request("DELETE","/api/credentials/openai").status_code==200 and f.deleted=="openai"
+
+
+def test_put_strips_client_sent_credential_list(tmp_path):
+    """A client cannot inject credentials via PUT — credential_list comes only from the vault."""
+    class EmptyStore(FakeStore):
+        async def list_decrypted(self): return []
+    c = _client(tmp_path, EmptyStore())
+    c.put("/api/config", json={"model_list": [],
+          "credential_list": [{"credential_name": "evil",
+                               "credential_values": {"api_key": "sk-INJECT"},
+                               "credential_info": {}}]})
+    import yaml
+    d = yaml.safe_load(open(os.environ["CONFIG_PATH"]))
+    assert not d.get("credential_list")   # client-sent list dropped; empty vault → none injected
