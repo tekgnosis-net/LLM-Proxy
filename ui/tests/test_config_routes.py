@@ -65,3 +65,16 @@ def test_export_returns_yaml_attachment(tmp_path):
     assert r.status_code == 200
     assert "attachment" in r.headers.get("content-disposition", "")
     assert "routing_strategy" in r.text or "model_list" in r.text
+
+
+def test_cache_info(tmp_path):
+    c = _client(tmp_path)
+    r = c.get("/api/cache/info")
+    assert r.status_code == 200
+    d = r.json()
+    assert "enabled" in d and d["host"] and d["port"]
+
+
+def test_cache_info_requires_login(tmp_path):
+    c = _client(tmp_path); c.cookies.clear()
+    assert c.get("/api/cache/info").status_code == 401

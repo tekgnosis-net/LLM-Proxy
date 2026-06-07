@@ -62,7 +62,7 @@
       {#if screen==='dash'}<Dashboard />
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
-      {:else if screen==='caching'}<Caching {store} />
+      {:else if screen==='caching'}<Caching />
       {:else if screen==='keys'}<Keys />
       {:else if screen==='usage'}<Usage />
       {:else if screen==='housekeeping'}<Housekeeping />

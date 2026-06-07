@@ -53,6 +53,17 @@ def apply_status():
     return pending_status(get_settings().config_path)
 
 
+@router.get("/cache/info", dependencies=[Depends(login_required)])
+def cache_info():
+    s = get_settings()
+    cfg = load_config(s.config_path)
+    cp = cfg.litellm_settings.cache_params
+    return {"enabled": bool(cfg.litellm_settings.cache),
+            "type": getattr(cp, "type", None) if cp else None,
+            "ttl": getattr(cp, "ttl", None) if cp else None,
+            "host": s.redis_host or "valkey", "port": s.redis_port or "6379"}
+
+
 @router.post("/apply", dependencies=[Depends(login_required)])
 async def apply():
     s = get_settings()

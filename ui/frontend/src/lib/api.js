@@ -22,4 +22,5 @@ export const api = {
   exportConfigUrl: '/api/config/export',
   applyStatus: () => req('/api/apply/status'),
   apply: () => req('/api/apply', { method: 'POST' }),
+  cacheInfo: () => req('/api/cache/info'),
 }
