@@ -1,3 +1,17 @@
+# [1.9.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.8.0...v1.9.0) (2026-06-07)
+
+
+### Features
+
+* **ui:** apply_config with baseline rollback ([8680178](https://github.com/tekgnosis-net/LLM-Proxy/commit/86801783915f927e30432daa4c2d00eb8eb524aa))
+* **ui:** config baseline + pending_status (staged-save support) ([6f40e79](https://github.com/tekgnosis-net/LLM-Proxy/commit/6f40e7916ea20092c0c3d9b88f1e20db738c62c6))
+* **ui:** dashboard rebuild with KPI cards ([99b1070](https://github.com/tekgnosis-net/LLM-Proxy/commit/99b1070db0914f87f34d4db7eb809befc71f1cc4))
+* **ui:** expose redis host/port for caching display; ignore .applied.yaml ([ee47ab0](https://github.com/tekgnosis-net/LLM-Proxy/commit/ee47ab0d4d0624a5dc2ab8fe619e9e3cb131b7a9))
+* **ui:** PUT=save-only, POST /api/apply, GET /api/apply/status ([6c4e5ea](https://github.com/tekgnosis-net/LLM-Proxy/commit/6c4e5eaa8b403f4a9ccf3d23b75b880ccd3fd833))
+* **ui:** read-only caching status panel ([7d3a0f4](https://github.com/tekgnosis-net/LLM-Proxy/commit/7d3a0f4b6b456e0c8b55f8596441d483ac5ef061))
+* **ui:** routing timeout/cooldown/allowed_fails/retry_after ([7c48d0d](https://github.com/tekgnosis-net/LLM-Proxy/commit/7c48d0d4be76ed3c216d1e988c6856d50882dea9))
+* **ui:** staged-save store + global Apply bar ([3699c00](https://github.com/tekgnosis-net/LLM-Proxy/commit/3699c0093eebefd293e0f7e101011b38907f6299))
+
 # [1.8.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.7.0...v1.8.0) (2026-06-07)
 
 
