@@ -253,3 +253,44 @@ def test_general_settings_health_keys_roundtrip(tmp_path):
                                           "health_check_interval": 300}, "model_list": []})
     gs = load_config(p).model_dump(exclude_none=True)["general_settings"]
     assert gs["background_health_checks"] is True and gs["health_check_interval"] == 300
+
+
+# --- write_config_atomic tests ---
+
+from app.config_store import write_config_atomic
+
+
+def test_write_config_atomic_writes_0600(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "hello: world\n")
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+
+def test_write_config_atomic_content_readable(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "router_settings:\n  routing_strategy: least-busy\n")
+    assert Path(p).read_text() == "router_settings:\n  routing_strategy: least-busy\n"
+
+
+def test_write_config_atomic_creates_backup_on_overwrite(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "first: true\n")
+    write_config_atomic(p, "second: true\n")
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert len(backups) >= 1
+
+
+def test_write_config_atomic_backup_is_0600(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "first: true\n")
+    write_config_atomic(p, "second: true\n")
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert backups
+    for b in backups:
+        assert stat.S_IMODE(os.stat(b).st_mode) == 0o600
+
+
+def test_write_config_atomic_leaves_no_tmp(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "hello: world\n")
+    assert not list(tmp_path.glob("*.tmp"))

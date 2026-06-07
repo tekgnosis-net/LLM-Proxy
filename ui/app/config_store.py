@@ -140,6 +140,29 @@ _HEADER = """\
 """
 
 
+def write_config_atomic(path: str, text: str) -> None:
+    """Atomically write `text` to `path` (backup *.bak.* at 0600, temp file,
+    os.replace, chmod 0600). No validation — caller is responsible for content.
+    This is the low-level primitive used by write_config and apply_config."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if p.exists():
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        bak = p.with_name(f"{p.name}.bak.{ts}")
+        bak.write_text(p.read_text())
+        os.chmod(bak, 0o600)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, str(p))
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     """Validate, then atomically write `raw` to `path` (header + yaml). Backs up the
     prior file. Returns the validated ProxyConfig. Raises ConfigError on invalid input."""
