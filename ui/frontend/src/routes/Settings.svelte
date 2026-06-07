@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   let { store, theme, setTheme } = $props()
   let importErr = $state(''), importMsg = $state('')
@@ -11,6 +12,20 @@
     if (!store.config) await store.load()
     try { await api.putConfig(cfg); importMsg = 'Imported & applied.'; await store.load() }
     catch (er) { importErr = (er.status === 422 ? 'Rejected: ' : er.status === 409 ? 'Reload failed, rolled back: ' : '') + er.message }
+  }
+
+  let catStatus = $state(null), catBusy = $state(false), catMsg = $state('')
+  onMount(() => {
+    api.catalogStatus().then(s => catStatus = s).catch(() => {})
+  })
+  async function syncCatalog() {
+    catBusy = true; catMsg = ''
+    try {
+      const r = await api.catalogSync()
+      catMsg = `Synced ${r.models} models, ${r.providers} providers`
+      catStatus = await api.catalogStatus()
+    } catch (e) { catMsg = e.message }
+    finally { catBusy = false }
   }
 </script>
 <div class="page"><h1>Settings</h1>
@@ -27,6 +42,13 @@
     {#if importMsg}<div class="banner ok">{importMsg}</div>{/if}
     {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
   </div>
+  <div class="card"><h2>LiteLLM catalog</h2>
+    <p class="hint">Model prices/context + provider endpoints, synced from the LiteLLM repo and used to auto-fill Models.</p>
+    {#if catStatus}<p>Last synced: <strong>{catStatus.last_synced ? new Date(catStatus.last_synced).toLocaleString() : 'never'}</strong>
+      · {catStatus.models} models · {catStatus.providers} providers{catStatus.last_error ? ` · last error: ${catStatus.last_error}` : ''}</p>{/if}
+    <button onclick={syncCatalog} disabled={catBusy}>{catBusy ? 'Syncing…' : 'Sync now'}</button>
+    {#if catMsg}<div class="banner ok">{catMsg}</div>{/if}
+  </div>
 </div>
 <style>
   .page{padding:24px 30px;max-width:680px}h2{font-size:15px;margin:0 0 10px}
@@ -36,4 +58,6 @@
   .btn{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;text-decoration:none;font-size:14px}
   .banner{padding:10px 12px;border-radius:8px;font-size:13px;margin-top:10px}.banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}
   .hint{font-size:12px;color:var(--muted)}
+  button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
 </style>

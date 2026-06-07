@@ -10,6 +10,8 @@
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
   let testResult = $state(null)  // { ok: bool, msg: string } | null
+  let autofilled = $state(false)
+  let autofillBusy = $state(false)
 
   onMount(async () => {
     if (!store.config) store.load()
@@ -38,6 +40,23 @@
     provider = PROVIDERS[0]
     showAdd = false
     testResult = null
+    autofilled = false
+  }
+
+  async function tryAutofill() {
+    if (!form.modelId) return
+    const full = (provider.prefix || '') + form.modelId
+    autofillBusy = true
+    try {
+      const m = await api.catalogModel(full)
+      if (m) {
+        if (!form.input_cost) form.input_cost = m.input_cost_per_token ?? ''
+        if (!form.output_cost) form.output_cost = m.output_cost_per_token ?? ''
+        if (m.mode) form.mode = m.mode
+        autofilled = true
+      }
+    } catch (_) { /* 404 = not in catalog; leave fields */ }
+    finally { autofillBusy = false }
   }
 
   function buildParams() {
@@ -100,10 +119,16 @@
   {#if showAdd}
     <div class="card add">
       <label>Provider
-        <select bind:value={provider} onchange={() => { testResult = null }}>{#each PROVIDERS as p}<option value={p}>{p.label}</option>{/each}</select>
+        <select bind:value={provider} onchange={() => { testResult = null; autofilled = false }}>{#each PROVIDERS as p}<option value={p}>{p.label}</option>{/each}</select>
       </label>
       <label>Public model name <input bind:value={form.modelName} placeholder="e.g. gpt-4o" /></label>
-      <label>Provider model id <input bind:value={form.modelId} placeholder="e.g. gpt-4o (→ {provider.prefix}…)" /></label>
+      <label>Provider model id
+        <div class="lookup-row">
+          <input bind:value={form.modelId} placeholder="e.g. gpt-4o (→ {provider.prefix}…)" onblur={tryAutofill} />
+          <button type="button" onclick={tryAutofill} disabled={autofillBusy || !form.modelId} title="Look up pricing from LiteLLM catalog">{autofillBusy ? '…' : 'Look up pricing'}</button>
+        </div>
+        {#if autofilled}<span class="autofill-hint">auto-filled from catalog</span>{/if}
+      </label>
 
       <label>Credential
         <select bind:value={form.credential}>
@@ -188,4 +213,8 @@
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}
   .hint{font-size:12px;color:#6e6e73}.empty{color:#6e6e73}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .lookup-row{display:flex;gap:6px;align-items:stretch}
+  .lookup-row input{flex:1}
+  .lookup-row button{white-space:nowrap;padding:8px 10px;font-size:12px}
+  .autofill-hint{font-size:11px;color:#1d7a33;margin-top:2px}
 </style>

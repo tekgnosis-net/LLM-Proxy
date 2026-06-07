@@ -28,4 +28,8 @@ export const api = {
   deleteCredential: (n) => req(`/api/credentials/${encodeURIComponent(n)}`, { method: 'DELETE' }),
   testModel: (b) => req('/api/models/test', { method: 'POST', body: JSON.stringify(b) }),
   modelsHealth: () => req('/api/models/health'),
+  catalogModel: (name) => req(`/api/catalog/model/${encodeURIComponent(name)}`),
+  catalogProviders: () => req('/api/catalog/providers'),
+  catalogStatus: () => req('/api/catalog/status'),
+  catalogSync: () => req('/api/catalog/sync', { method: 'POST' }),
 }
