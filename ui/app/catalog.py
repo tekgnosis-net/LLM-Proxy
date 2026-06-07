@@ -97,6 +97,7 @@ class Catalog:
     async def get_model(self, name: str) -> Optional[dict]:
         conn = await self._conn()
         try:
+            await self.ensure_schema(conn)   # safe before first sync (relation may not exist yet)
             row = await conn.fetchrow("SELECT * FROM ui_model_pricing WHERE model_name=$1", name)
             if not row and "/" in name:                       # try the unprefixed name
                 row = await conn.fetchrow("SELECT * FROM ui_model_pricing WHERE model_name=$1", name.split("/", 1)[1])
@@ -107,6 +108,7 @@ class Catalog:
     async def get_providers(self) -> list[dict]:
         conn = await self._conn()
         try:
+            await self.ensure_schema(conn)   # safe before first sync (relation may not exist yet)
             rows = await conn.fetch("SELECT * FROM ui_provider_endpoints ORDER BY provider")
             return [dict(r) for r in rows]
         finally:
