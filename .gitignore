@@ -20,3 +20,5 @@ supertool
 # UI-generated config backups
 config/*.bak.*
 config/.applied.yaml
+
+config/config.yaml

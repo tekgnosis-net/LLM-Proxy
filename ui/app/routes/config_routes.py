@@ -1,4 +1,5 @@
 from pathlib import Path
+import yaml
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from app.auth import login_required
@@ -8,6 +9,17 @@ from app.apply import apply_config, ApplyError
 from app.reloader import Reloader
 
 router = APIRouter(prefix="/api")
+
+
+def _redact(cfg: dict) -> dict:
+    """Mask credential_values in credential_list so secrets are never sent to the browser."""
+    cl = cfg.get("credential_list")
+    if isinstance(cl, list):
+        cfg = {**cfg, "credential_list": [
+            {**c, "credential_values": {k: "***" for k in (c.get("credential_values") or {})}}
+            for c in cl
+        ]}
+    return cfg
 
 
 def make_reloader() -> Reloader:
@@ -23,16 +35,20 @@ def get_config():
         cfg = load_config(s.config_path)
     except ConfigError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return cfg.model_dump(exclude_none=True)
+    return _redact(cfg.model_dump(exclude_none=True))
 
 
 @router.get("/config/export", dependencies=[Depends(login_required)])
 def export_config():
     s = get_settings()
     try:
-        text = Path(s.config_path).read_text()
+        raw = yaml.safe_load(Path(s.config_path).read_text()) or {}
     except OSError as e:
         raise HTTPException(status_code=404, detail=f"config not found: {e}")
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=422, detail=f"invalid YAML: {e}")
+    redacted = _redact(raw if isinstance(raw, dict) else {})
+    text = yaml.safe_dump(redacted, sort_keys=False, default_flow_style=False)
     return PlainTextResponse(text, media_type="text/yaml",
                              headers={"Content-Disposition": 'attachment; filename="config.yaml"'})
 

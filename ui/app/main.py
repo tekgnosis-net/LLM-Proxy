@@ -37,6 +37,8 @@ async def lifespan(app):
 
 def create_app() -> FastAPI:
     s = get_settings()
+    from app.config_store import seed_config_from_example
+    seed_config_from_example(s.config_path)
     app = FastAPI(title="LLM Proxy UI", lifespan=lifespan)
     app.add_middleware(SessionMiddleware, secret_key=s.session_secret,
                        same_site="lax", https_only=False)

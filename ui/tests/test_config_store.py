@@ -209,3 +209,26 @@ def test_pending_false_when_identical(tmp_path):
     pending_status(p)
     write_config(p, {"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
     assert pending_status(p)["pending"] is False
+
+
+# --- Task 2: secret-bearing config.yaml foundation ---
+
+import os, stat
+
+
+def test_write_config_is_0600(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config(p, {"model_list": []})
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+
+def test_credential_list_literals_are_allowed(tmp_path):
+    # the no-literal-secrets guardrail must EXEMPT credential_list (UI materializes literals there)
+    cfg = validate_config({"credential_list": [
+        {"credential_name": "openai", "credential_values": {"api_key": "sk-REAL"}, "credential_info": {}}]})
+    assert cfg is not None
+
+
+def test_model_list_literal_secret_still_rejected(tmp_path):
+    with pytest.raises(ConfigError):
+        validate_config({"model_list": [{"model_name": "x", "litellm_params": {"model": "openai/gpt-4o", "api_key": "sk-LITERAL"}}]})

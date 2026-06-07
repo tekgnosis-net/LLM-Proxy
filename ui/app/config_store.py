@@ -24,9 +24,12 @@ SECRET_FIELDS = {
 
 
 def _check_no_literal_secrets(node) -> None:
-    """Recursively reject any secret field whose value is a literal string."""
+    """Recursively reject any secret field whose value is a literal string.
+    credential_list is exempt: the UI materializes literal credential values there by design."""
     if isinstance(node, dict):
         for k, v in node.items():
+            if k == "credential_list":
+                continue  # UI materializes literal credential values here by design
             if k in SECRET_FIELDS and isinstance(v, str) and v and not v.startswith("os.environ/"):
                 raise ConfigError(
                     f"secret field {k!r} must be an os.environ/<VAR> reference, not a literal value"
@@ -152,7 +155,7 @@ def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     try:
         with os.fdopen(fd, "w") as f:
             f.write(content)
-        os.chmod(tmp, 0o644)   # host-readable (config.yaml holds no secrets — only os.environ/ refs)
+        os.chmod(tmp, 0o600)   # config.yaml may hold materialized credential secrets — owner-only
         os.replace(tmp, str(p))
     except BaseException:
         if os.path.exists(tmp):
@@ -166,6 +169,18 @@ APPLIED_SUFFIX = ".applied.yaml"
 
 def _applied_path(config_path: str) -> Path:
     return Path(config_path).parent / APPLIED_SUFFIX
+
+
+def seed_config_from_example(config_path: str) -> None:
+    """If config_path is missing and <dir>/config.yaml.example exists, copy example → config_path at 0600."""
+    p = Path(config_path)
+    if p.exists():
+        return
+    example = p.parent / "config.yaml.example"
+    if example.exists():
+        import shutil
+        shutil.copy2(str(example), str(p))
+        os.chmod(str(p), 0o600)
 
 
 def seed_baseline_if_missing(config_path: str) -> None:
