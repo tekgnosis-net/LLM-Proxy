@@ -4,6 +4,10 @@
   const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
   let strategy = $state('simple-shuffle')
   let numRetries = $state('')
+  let timeout = $state('')
+  let cooldown = $state('')
+  let allowedFails = $state('')
+  let retryAfter = $state('')
   let fallbacksText = $state('[]')
   let parseErr = $state('')
   onMount(async () => { if (!store.config) await store.load(); sync() })
@@ -11,6 +15,10 @@
     const rs = store.config?.router_settings ?? {}
     strategy = rs.routing_strategy ?? 'simple-shuffle'
     numRetries = rs.num_retries ?? ''
+    timeout = rs.timeout ?? ''
+    cooldown = rs.cooldown_time ?? ''
+    allowedFails = rs.allowed_fails ?? ''
+    retryAfter = rs.retry_after ?? ''
     fallbacksText = JSON.stringify(rs.fallbacks ?? [], null, 2)
   }
   async function save() {
@@ -19,6 +27,10 @@
     try { fallbacks = JSON.parse(fallbacksText) } catch (e) { parseErr = 'Fallbacks must be valid JSON'; return }
     const rs = { ...(store.config?.router_settings ?? {}), routing_strategy: strategy, fallbacks }
     if (numRetries !== '' && numRetries != null) rs.num_retries = Number(numRetries); else delete rs.num_retries
+    if (timeout !== '' && timeout != null) rs.timeout = Number(timeout); else delete rs.timeout
+    if (cooldown !== '' && cooldown != null) rs.cooldown_time = Number(cooldown); else delete rs.cooldown_time
+    if (allowedFails !== '' && allowedFails != null) rs.allowed_fails = Number(allowedFails); else delete rs.allowed_fails
+    if (retryAfter !== '' && retryAfter != null) rs.retry_after = Number(retryAfter); else delete rs.retry_after
     const ok = await store.saveSection('router_settings', rs)
     if (ok) sync()   // reflect the canonical saved config
   }
@@ -35,6 +47,10 @@
     </label>
     <p class="hint">Cost-based picks the cheapest deployment in a model group. <code>lowest-cost</code> is not valid and is rejected.</p>
     <label>Num retries <input type="number" min="0" bind:value={numRetries} placeholder="default 3" /></label>
+    <label>Timeout (s) <input type="number" min="0" step="0.1" bind:value={timeout} placeholder="default 600" /></label>
+    <label>Cooldown time (s) <input type="number" min="0" bind:value={cooldown} placeholder="after allowed_fails" /></label>
+    <label>Allowed fails <input type="number" min="0" bind:value={allowedFails} placeholder="per minute before cooldown" /></label>
+    <label>Retry after (s) <input type="number" min="0" bind:value={retryAfter} placeholder="min before retry" /></label>
     <label>Fallbacks (JSON, e.g. <code>[{'{'}"gpt-4": ["gpt-4o"]{'}'}]</code>)
       <textarea rows="5" bind:value={fallbacksText}></textarea>
     </label>
