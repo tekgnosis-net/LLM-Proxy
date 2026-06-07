@@ -1,3 +1,17 @@
+# [1.11.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.10.0...v1.11.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* **ui:** ensure_schema in catalog get_model/get_providers (safe before first sync) ([0d2fa44](https://github.com/tekgnosis-net/LLM-Proxy/commit/0d2fa44432587b90608dff7943a9b30fb3fc5beb))
+
+
+### Features
+
+* **ui:** /api/catalog routes + scheduled sync (default weekly + boot) ([2181723](https://github.com/tekgnosis-net/LLM-Proxy/commit/2181723119d7e36df8e26dcaf8b9c52e64e14ecb))
+* **ui:** catalog parse fns + Catalog (pricing/endpoints sync) ([e4257cf](https://github.com/tekgnosis-net/LLM-Proxy/commit/e4257cf07d367a367991a77ec801a9a7ca53536f))
+* **ui:** Models catalog auto-fill + Settings catalog panel ([ac162b0](https://github.com/tekgnosis-net/LLM-Proxy/commit/ac162b0998695a7882d54f81e3820f0f04a81601))
+
 # [1.10.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.9.0...v1.10.0) (2026-06-07)
 
 
