@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from app.settings import get_settings
 from app.routes import auth_routes, health_routes, config_routes, keys_routes, usage_routes
-from app.routes import housekeeping_routes, credentials_routes, models_routes
+from app.routes import housekeeping_routes, credentials_routes, models_routes, catalog_routes
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -13,6 +13,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app):
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from datetime import datetime, timezone
     from app.db_admin import DbAdmin
     s = get_settings()
     sched = None
@@ -27,6 +28,21 @@ async def lifespan(app):
                 pass   # cron is best-effort; manual run surfaces errors
 
         sched.add_job(job, "interval", hours=s.housekeeping_interval_hours, id="housekeeping")
+
+    if s.catalog_sync_enabled and s.database_url:
+        from app.catalog import Catalog
+        sched = sched or AsyncIOScheduler()
+
+        async def catalog_job():
+            try:
+                await Catalog(s.database_url, s.catalog_pricing_url, s.catalog_endpoints_url).sync()
+            except Exception:
+                pass   # cron is best-effort; fetch failures keep last-good data
+
+        sched.add_job(catalog_job, "interval", days=s.catalog_sync_interval_days, id="catalog",
+                      next_run_time=datetime.now(timezone.utc))
+
+    if sched:
         sched.start()
     try:
         yield
@@ -50,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(housekeeping_routes.router)
     app.include_router(credentials_routes.router)
     app.include_router(models_routes.router)
+    app.include_router(catalog_routes.router)
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app
