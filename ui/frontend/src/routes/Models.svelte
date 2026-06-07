@@ -1,11 +1,13 @@
 <script>
   import { onMount } from 'svelte'
-  import { PROVIDERS, buildLitellmParams } from '../lib/providers.js'
+  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, buildLitellmParams } from '../lib/providers.js'
   import { api } from '../lib/api.js'
   let { store } = $props()
   let showAdd = $state(false)
-  let provider = $state(PROVIDERS[0])
-  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' })
+  let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
+  let providerSlug = $state('openai')
+  let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
+  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' })
   let credentials = $state([])
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
@@ -31,21 +33,43 @@
       }
       healthMap = map
     } catch (_) { healthMap = {} }
+    // Load catalog providers (fallback on error)
+    try {
+      const ps = await api.catalogProviders()
+      if (Array.isArray(ps) && ps.length) {
+        const pinned = PINNED_PROVIDERS.map(s => ps.find(p => p.provider === s)).filter(Boolean)
+        const rest = ps.filter(p => !PINNED_PROVIDERS.includes(p.provider)).sort((a,b)=> (a.display_name||a.provider).localeCompare(b.display_name||b.provider))
+        providers = [...pinned, ...rest]
+      }
+    } catch (_) { providers = FALLBACK_PROVIDERS }
   })
 
   function models() { return store.config?.model_list ?? [] }
 
   function resetForm() {
-    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' }
-    provider = PROVIDERS[0]
+    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' }
+    providerSlug = 'openai'
+    showAdvanced = false
     showAdd = false
     testResult = null
     autofilled = false
   }
 
+  function currentProvider() { return providers.find(p => p.provider === providerSlug) || { provider: providerSlug } }
+  function providerModes() {
+    const m = currentProvider().modes
+    return (Array.isArray(m) && m.length) ? m : ALL_MODES
+  }
+  function specialFields() { return SPECIAL_PROVIDER_FIELDS[providerSlug] || [] }
+  function onProviderChange() {
+    testResult = null; autofilled = false
+    const modes = providerModes()
+    if (!modes.includes(form.mode)) form.mode = modes[0] || 'chat'
+  }
+
   async function tryAutofill() {
     if (!form.modelId) return
-    const full = (provider.prefix || '') + form.modelId
+    const full = providerSlug + '/' + form.modelId
     autofillBusy = true
     try {
       const m = await api.catalogModel(full)
@@ -60,14 +84,8 @@
   }
 
   function buildParams() {
-    const lp = buildLitellmParams(provider, form)
-    // Credential path: if a named credential is selected, add litellm_credential_name and
-    // remove any api_key the env-var path may have emitted (the two paths are mutually exclusive).
-    if (form.credential) {
-      delete lp.api_key
-      lp.litellm_credential_name = form.credential
-    }
-    // Custom costs (optional)
+    const lp = buildLitellmParams(providerSlug, form)
+    if (form.credential) { delete lp.api_key; lp.litellm_credential_name = form.credential }
     if (form.input_cost !== '' && form.input_cost !== null) lp.input_cost_per_token = Number(form.input_cost)
     if (form.output_cost !== '' && form.output_cost !== null) lp.output_cost_per_token = Number(form.output_cost)
     return lp
@@ -119,13 +137,17 @@
   {#if showAdd}
     <div class="card add">
       <label>Provider
-        <select bind:value={provider} onchange={() => { testResult = null; autofilled = false }}>{#each PROVIDERS as p}<option value={p}>{p.label}</option>{/each}</select>
+        <input list="provider-list" bind:value={providerSlug} onchange={onProviderChange} placeholder="search providers…" />
+        <datalist id="provider-list">
+          {#each providers as p}<option value={p.provider}>{p.display_name || p.provider}</option>{/each}
+        </datalist>
       </label>
       <label>Public model name <input bind:value={form.modelName} placeholder="e.g. gpt-4o" /></label>
       <label>Provider model id
         <div class="lookup-row">
-          <input bind:value={form.modelId} placeholder="e.g. gpt-4o (→ {provider.prefix}…)" onblur={tryAutofill} />
-          <button type="button" onclick={tryAutofill} disabled={autofillBusy || !form.modelId} title="Look up pricing from LiteLLM catalog">{autofillBusy ? '…' : 'Look up pricing'}</button>
+          <span class="prefix">{providerSlug}/</span>
+          <input bind:value={form.modelId} placeholder="e.g. gpt-4o" onblur={tryAutofill} />
+          <button type="button" onclick={tryAutofill} disabled={autofillBusy || !form.modelId}>{autofillBusy ? '…' : 'Look up pricing'}</button>
         </div>
         {#if autofilled}<span class="autofill-hint">auto-filled from catalog</span>{/if}
       </label>
@@ -136,27 +158,28 @@
           {#each credentials as c}<option value={c.credential_name}>{c.credential_name}</option>{/each}
         </select>
       </label>
-
       {#if !form.credential}
-        {#if provider.fields.includes('api_key')}
-          <label>API key env var <input bind:value={form.api_key_env} placeholder={provider.keyEnv || 'MY_API_KEY'} /></label>
-        {/if}
+        <label>API key env var <input bind:value={form.api_key_env} placeholder="e.g. OPENAI_API_KEY" /></label>
       {/if}
 
-      {#if provider.fields.includes('api_base')}<label>API base <input bind:value={form.api_base} placeholder="https://…" /></label>{/if}
-      {#if provider.fields.includes('api_version')}<label>API version <input bind:value={form.api_version} placeholder="2024-02-15-preview" /></label>{/if}
-      {#if provider.fields.includes('aws_region_name')}<label>AWS region <input bind:value={form.aws_region_name} placeholder="us-east-1" /></label>{/if}
+      <!-- Special per-provider deployment fields (curated) -->
+      {#if specialFields().includes('api_version')}<label>API version <input bind:value={form.api_version} placeholder="2024-02-15-preview" /></label>{/if}
+      {#if specialFields().includes('aws_region_name')}<label>AWS region <input bind:value={form.aws_region_name} placeholder="us-east-1" /></label>{/if}
+      {#if specialFields().includes('vertex_project')}<label>Vertex project <input bind:value={form.vertex_project} placeholder="my-gcp-project" /></label>{/if}
+      {#if specialFields().includes('vertex_location')}<label>Vertex location <input bind:value={form.vertex_location} placeholder="us-central1" /></label>{/if}
 
       <label>Mode
-        <select bind:value={form.mode}>
-          {#each ['chat','embedding','completion','image_generation','audio_transcription','rerank','moderations'] as m}
-            <option value={m}>{m}</option>
-          {/each}
-        </select>
+        <select bind:value={form.mode}>{#each providerModes() as m}<option value={m}>{m}</option>{/each}</select>
       </label>
 
-      <label>Input cost/token <input type="number" step="1e-9" min="0" bind:value={form.input_cost} placeholder="auto (v2.3)" /></label>
-      <label>Output cost/token <input type="number" step="1e-9" min="0" bind:value={form.output_cost} placeholder="auto (v2.3)" /></label>
+      <!-- Advanced: custom endpoint (LiteLLM resolves the URL from the prefix otherwise) -->
+      <button type="button" class="link" onclick={() => showAdvanced = !showAdvanced}>{showAdvanced ? '▾' : '▸'} Advanced: custom endpoint</button>
+      {#if showAdvanced || specialFields().includes('api_base')}
+        <label>API base (override / self-hosted) <input bind:value={form.api_base} placeholder="https://your-endpoint/v1 — leave blank to let LiteLLM resolve" /></label>
+      {/if}
+
+      <label>Input cost/token <input type="number" step="1e-9" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
+      <label>Output cost/token <input type="number" step="1e-9" min="0" bind:value={form.output_cost} placeholder="auto from catalog" /></label>
 
       <div class="row">
         <button onclick={testConn} disabled={busy || !form.modelName || !form.modelId}>Test connection</button>
@@ -167,7 +190,7 @@
       {#if testResult}<div class="banner {testResult.ok ? 'ok' : 'err'}">{testResult.msg}</div>{/if}
 
       {#if !form.credential}
-        <p class="hint">Secrets are stored as <code>os.environ/VAR</code> — set the real value in <code>.env</code>. Config holds no secrets.</p>
+        <p class="hint">Secrets are stored as <code>os.environ/VAR</code> — set the real value in <code>.env</code>. LiteLLM resolves the endpoint URL from the provider prefix; set API base only for self-hosted or custom deployments. Config holds no secrets.</p>
       {:else}
         <p class="hint">Using saved credential <strong>{form.credential}</strong> — no env var needed. Apply to activate.</p>
       {/if}
@@ -217,4 +240,7 @@
   .lookup-row input{flex:1}
   .lookup-row button{white-space:nowrap;padding:8px 10px;font-size:12px}
   .autofill-hint{font-size:11px;color:#1d7a33;margin-top:2px}
+  .prefix{display:inline-flex;align-items:center;padding:0 8px;background:#f0f0f3;border:1px solid #ccc;border-right:0;border-radius:8px 0 0 8px;font:inherit;color:#6e6e73;white-space:nowrap}
+  .lookup-row .prefix + input{border-radius:0}
+  button.link{background:none;border:0;color:#0a84ff;cursor:pointer;font-size:12px;padding:0;text-align:left;width:fit-content}
 </style>

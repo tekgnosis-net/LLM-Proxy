@@ -1,20 +1,51 @@
-// Provider presets: how to build litellm_params.model + which fields/secret env var.
-export const PROVIDERS = [
-  { id: 'openai',     label: 'OpenAI',            prefix: 'openai/',     keyEnv: 'OPENAI_API_KEY',    fields: ['api_key'] },
-  { id: 'anthropic',  label: 'Anthropic',         prefix: 'anthropic/',  keyEnv: 'ANTHROPIC_API_KEY', fields: ['api_key'] },
-  { id: 'azure',      label: 'Azure OpenAI',      prefix: 'azure/',      keyEnv: 'AZURE_API_KEY',     fields: ['api_key', 'api_base', 'api_version'] },
-  { id: 'gemini',     label: 'Google Gemini',     prefix: 'gemini/',     keyEnv: 'GEMINI_API_KEY',    fields: ['api_key'] },
-  { id: 'bedrock',    label: 'AWS Bedrock',       prefix: 'bedrock/',    keyEnv: null,                fields: ['aws_region_name'] },
-  { id: 'openai_compat', label: 'OpenAI-compatible / local (vLLM, Ollama)', prefix: 'openai/', keyEnv: null, fields: ['api_base', 'api_key'], customProvider: 'openai' },
+// Catalog-driven providers. The live list comes from /api/catalog/providers
+// (synced provider_endpoints_support.json). This static list is the COLD-START
+// fallback only (before first catalog sync / offline) — a snapshot of LiteLLM's
+// common chat providers. The slug is the litellm `provider/` prefix.
+export const FALLBACK_PROVIDERS = [
+  { provider: 'openai', display_name: 'OpenAI' },
+  { provider: 'anthropic', display_name: 'Anthropic' },
+  { provider: 'azure', display_name: 'Azure OpenAI' },
+  { provider: 'gemini', display_name: 'Google Gemini' },
+  { provider: 'vertex_ai', display_name: 'Google Vertex AI' },
+  { provider: 'bedrock', display_name: 'AWS Bedrock' },
+  { provider: 'cohere', display_name: 'Cohere' },
+  { provider: 'mistral', display_name: 'Mistral' },
+  { provider: 'groq', display_name: 'Groq' },
+  { provider: 'deepseek', display_name: 'DeepSeek' },
+  { provider: 'xai', display_name: 'xAI' },
+  { provider: 'openrouter', display_name: 'OpenRouter' },
+  { provider: 'together_ai', display_name: 'Together AI' },
+  { provider: 'fireworks_ai', display_name: 'Fireworks AI' },
+  { provider: 'perplexity', display_name: 'Perplexity' },
+  { provider: 'ollama', display_name: 'Ollama (local)' },
+  { provider: 'hosted_vllm', display_name: 'vLLM (hosted)' },
+  { provider: 'openai_compatible', display_name: 'OpenAI-compatible / custom' },
 ]
-// Secrets are emitted as os.environ/<VAR>, never literals (config.yaml has no secrets).
-export function buildLitellmParams(provider, form) {
-  const p = { model: provider.prefix + form.modelId }
-  if (provider.customProvider) p.custom_llm_provider = provider.customProvider
+
+// Common providers pinned to the top of the picker.
+export const PINNED_PROVIDERS = ['openai', 'anthropic', 'azure', 'bedrock', 'gemini', 'vertex_ai']
+
+// Full mode list (fallback when a provider has no catalog modes).
+export const ALL_MODES = ['chat','embedding','completion','image_generation','audio_transcription','audio_speech','rerank','moderations','responses']
+
+// Special deployment fields LiteLLM doesn't expose as data — shown only for these slugs.
+export const SPECIAL_PROVIDER_FIELDS = {
+  azure: ['api_base', 'api_version'],
+  bedrock: ['aws_region_name'],
+  vertex_ai: ['vertex_project', 'vertex_location'],
+}
+
+// Build litellm_params from the chosen provider slug + form. Secrets are emitted as
+// os.environ/<VAR> only (config holds no literal secrets; credentials use the vault).
+export function buildLitellmParams(slug, form) {
+  const p = { model: `${slug}/${form.modelId}` }
   if (form.api_base) p.api_base = form.api_base
   if (form.api_version) p.api_version = form.api_version
   if (form.aws_region_name) p.aws_region_name = form.aws_region_name
-  // api_key: store as an env reference the operator sets in .env (never the literal)
-  if (provider.fields.includes('api_key') && form.api_key_env) p.api_key = `os.environ/${form.api_key_env}`
+  if (form.vertex_project) p.vertex_project = form.vertex_project
+  if (form.vertex_location) p.vertex_location = form.vertex_location
+  // api_key env-var path (only when no saved credential is selected)
+  if (!form.credential && form.api_key_env) p.api_key = `os.environ/${form.api_key_env}`
   return p
 }

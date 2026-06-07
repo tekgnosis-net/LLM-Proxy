@@ -1,12 +1,16 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { PROVIDERS } from '../lib/providers.js'
+  import { FALLBACK_PROVIDERS } from '../lib/providers.js'
   let { store } = $props()
   let creds = $state([]), err = $state(''), busy = $state(false), showAdd = $state(false)
   let form = $state({ credential_name:'', provider:'openai', api_key:'' })
+  let providers = $state(FALLBACK_PROVIDERS)
   async function load(){ try{ creds = await api.credentials() }catch(e){ err=e.message } }
-  onMount(load)
+  onMount(async () => {
+    await load()
+    try { const ps = await api.catalogProviders(); if (Array.isArray(ps) && ps.length) providers = ps } catch (_) {}
+  })
   async function add(){ busy=true; err=''
     try{ await api.createCredential({credential_name:form.credential_name,provider:form.provider,api_key:form.api_key});
       form={credential_name:'',provider:'openai',api_key:''}; showAdd=false; await load(); await store?.refreshPending?.() }
@@ -19,7 +23,7 @@
   <p class="hint">Keys are encrypted at rest in the app database and written into <code>config.yaml</code> on Apply. Values are never shown again. Saving or deleting a key stages a change — click <strong>Apply</strong> to activate.</p>
   {#if showAdd}<div class="card add">
     <label>Name <input bind:value={form.credential_name} placeholder="e.g. openai_prod" /></label>
-    <label>Provider <select bind:value={form.provider}>{#each PROVIDERS as p}<option value={p.id}>{p.label}</option>{/each}</select></label>
+    <label>Provider <select bind:value={form.provider}>{#each providers as p}<option value={p.provider}>{p.display_name || p.provider}</option>{/each}</select></label>
     <label>API key <input type="password" bind:value={form.api_key} placeholder="sk-…" /></label>
     <div class="row"><button class="primary" onclick={add} disabled={busy||!form.credential_name||!form.api_key}>Save key</button><button onclick={()=>showAdd=false}>Cancel</button></div>
   </div>{/if}
