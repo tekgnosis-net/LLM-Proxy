@@ -3,10 +3,14 @@
 A purpose-built, Apple-HIG admin UI for this LiteLLM proxy stack — a reliable
 replacement for the bundled LiteLLM UI.
 
-> **Status: shipped** (Phases 1–5). Foundation/auth, models + routing with
-> safe-apply, virtual keys + budgets, usage & spend, and caching + housekeeping +
-> export/import + dark mode are all live and released to GHCR. Design:
-> the [spec](superpowers/specs/2026-06-07-llm-proxy-ui-design.md),
+> **Status: shipped** (Phases 1–5 + v2). Foundation/auth, models + routing,
+> virtual keys + budgets, usage & spend, and caching + housekeeping +
+> export/import + dark mode, plus the **v2** refinements: a staged **Save → Apply**
+> workflow, a **Dashboard** with KPI cards, a **Provider Keys** vault, **Models v2**
+> (test-connection / health / costs / credentials), and a **LiteLLM catalog sync**.
+> All live and released to GHCR. Design: the v1
+> [spec](superpowers/specs/2026-06-07-llm-proxy-ui-design.md) +
+> [v2 spec](superpowers/specs/2026-06-07-llm-proxy-ui-v2-design.md),
 > [clickable prototype](superpowers/specs/2026-06-07-llm-proxy-ui-prototype.html),
 > the [config schema](../config-schema.md), and the per-phase
 > [plans](superpowers/plans/). Screenshots: [`../README.md`](../README.md).
@@ -29,13 +33,31 @@ This UI fixes all three by design (guardrails + a single source of truth).
 
 - **One container** (`llm-proxy-ui`): a FastAPI backend serving a Svelte SPA.
 - **`config.yaml` is the single source of truth** for models / routing /
-  caching (`store_model_in_db: false`). The UI is a validating editor for that
-  file; changes are applied via a controlled **container restart** (~25s; SIGHUP
-  is a no-op on this LiteLLM image) through a scoped `docker-socket-proxy`, with
-  health-verify and auto-rollback.
+  caching (`store_model_in_db: false`). The UI is a validating editor for that file.
+- **Staged Save → global Apply (v2).** Each screen's **Save** validates and writes
+  its section to `config.yaml` *without restarting* — the change is staged. A global
+  **Apply** bar (top-left) appears whenever the on-disk config differs from the
+  last-applied baseline (`config/.applied.yaml`); clicking it restarts the proxy
+  **once** (~25s; SIGHUP is a no-op on this image) through a scoped
+  `docker-socket-proxy`, verifies health + `/v1/models`, and on failure **rolls back**
+  to the baseline and restarts onto it. So many edits apply in a single restart, and
+  a bad config never sticks.
+- **Provider Keys (v2):** a **UI-owned, encrypted credential vault** (an app DB
+  table; keys typed in the UI, encrypted at rest via Fernet). On apply the vault is
+  **materialized into `config.yaml`'s `credential_list`** (LiteLLM reloads config on
+  restart, so credentials persist — LiteLLM's own DB credentials do *not* reload in
+  config-only mode). Models reference a credential by name. Because of this,
+  `config.yaml` now holds secrets — see "ownership" below.
+- **Models v2:** add/edit gains a credential dropdown, mode/endpoint, custom
+  input/output costs, a pre-save **Test connection** (`/health/test_connection`),
+  and a per-model **health** dot (cached `background_health_checks`).
+- **LiteLLM catalog sync (v2):** a scheduled (default weekly + on boot) +
+  on-demand sync of LiteLLM's `model_prices_and_context_window.json` and
+  `provider_endpoints_support.json` into Postgres, used to **auto-fill** model
+  cost/context/mode in the Models form.
 - **Virtual keys, budgets, and spend** are read/written through the LiteLLM
   management API. The master key stays **server-side only** (never in the
-  browser).
+  browser); credential values are returned **masked** (`***`), never in plaintext.
 - **DB housekeeping:** an opt-in UI-managed maintenance cron (APScheduler) that
   trims spend logs past a retention window and deletes expired keys, plus DB
   stats (size, row counts) and a manual "Run now". Cron is off unless
@@ -83,26 +105,48 @@ For local UI development, change the `llm-proxy-ui` service from `image:` to
 
 ## Screens (all live)
 
-- **Dashboard** — proxy health (reachable, DB connected).
+- **Dashboard** — KPI cards: proxy health (reachable, DB), model count, virtual-key
+  count, 30-day spend, cache on/off.
 - **Usage & Spend** — total spend, by model, by key, daily activity (last 30d).
-- **Models** — provider-driven CRUD (OpenAI/Anthropic/Azure/Bedrock/Gemini/local); secrets emitted as `os.environ/<VAR>`.
-- **Routing** — strategy (valid enum only), retries, fallbacks.
-- **Caching** — Redis/Valkey cache config (never an `ssl` key).
-- **config.yaml** — read-only view of the effective config.
+- **Models** — provider-driven CRUD (OpenAI/Anthropic/Azure/Bedrock/Gemini/local)
+  with credential dropdown, mode/endpoint, custom input/output costs (catalog
+  auto-fill), pre-save **Test connection**, and a per-model **health** dot.
+- **Provider Keys** — UI-owned encrypted credential vault (add/list-masked/delete);
+  materialized into `config.yaml` on Apply.
+- **Routing** — strategy (valid enum only), retries, **timeout / cooldown /
+  allowed_fails / retry_after**, fallbacks.
+- **Caching** — **read-only** status panel (effective `valkey:6379`); the cache
+  backend is provisioned in `docker-compose.yml`, not edited here.
+- **config.yaml** — read-only view of the effective config (credential values
+  redacted).
 - **Virtual Keys** — create (one-time plaintext shown once) / list / delete with budgets, model allowlist, expiry.
 - **Housekeeping** — DB stats + maintenance.
-- **Settings** — export/import config + dark mode.
+- **Settings** — export/import config (credentials redacted), **LiteLLM catalog
+  sync** (last-synced + "Sync now"), and dark mode.
 
-Config-editing screens use the **safe-apply pipeline**: validate (schema +
-guardrails) → atomic write + backup → restart proxy → verify health & `/v1/models`
-→ auto-rollback on failure.
+Each config screen's **Save** validates (schema + guardrails) and atomically writes
+its section + a timestamped backup — staging the change. The global **Apply** then
+restarts the proxy once, verifies health & `/v1/models`, and **rolls back to the
+last-applied baseline** on failure.
 
-## A note on `config.yaml` ownership
+## A note on `config.yaml` (now secret-bearing)
 
-The UI writes `config.yaml` from inside its container (running as root), so after
-the first UI save the file is `root`-owned, mode `0644` — host-readable (it holds
-no secrets, only `os.environ/` refs) but not host-writable. To hand-edit, use the
-UI, or `sudo` (or `rm` + restore from git, since the host owns the `config/` dir).
+Since v2 the UI materializes provider keys into `config.yaml`'s `credential_list`
+as **literal values** (so they survive the restart-based Apply — LiteLLM reloads
+config on restart but does *not* reload its DB credential vault in config-only
+mode). Consequences:
+
+- The live **`config/config.yaml` is `git`-ignored** and written **mode `0600`**,
+  `root`-owned (it holds secrets). The repo commits **`config/config.yaml.example`**
+  — a secret-free bootstrap (only `os.environ/` refs) that the app copies to
+  `config.yaml` on first run.
+- Timestamped backups (`config.yaml.bak.*`) and the apply baseline
+  (`config/.applied.yaml`) are likewise `0600` and git-ignored.
+- The UI never returns credential plaintext to the browser: `GET /api/config` and
+  config **export** redact `credential_list` values to `***`.
+- To hand-edit, use the UI, or `sudo` (the file is root-owned `0600`). Keep
+  `LITELLM_SALT_KEY`/`SESSION_SECRET` stable — the vault's encryption key derives
+  from `SESSION_SECRET`, so rotating it makes stored keys undecryptable.
 
 ## CI/CD
 

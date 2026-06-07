@@ -7,11 +7,13 @@ single, version-controlled `config.yaml` (config-only mode); the UI is a
 validating editor for it, plus a friendly front-end over the proxy's API for
 virtual keys, budgets, usage, and DB housekeeping.
 
-> **Status: shipped.** The admin UI (`llm-proxy-ui`) is complete — Phases 1–5:
-> foundation/auth, models + routing with safe-apply, virtual keys + budgets,
-> usage & spend, and caching + housekeeping + export/import + dark mode. Released
-> via CI to GHCR. See **[`docs/admin-ui.md`](docs/admin-ui.md)** and the
-> [design spec](docs/superpowers/specs/2026-06-07-llm-proxy-ui-design.md).
+> **Status: shipped.** The admin UI (`llm-proxy-ui`) is complete — Phases 1–5 plus
+> **v2**: a staged **Save → Apply** workflow (one restart, baseline rollback), a KPI
+> **Dashboard**, a **Provider Keys** vault, **Models v2** (test-connection / health /
+> custom costs / credentials), and a **LiteLLM catalog sync** (auto-fill model
+> pricing). Released via CI to GHCR. See **[`docs/admin-ui.md`](docs/admin-ui.md)**
+> and the [v1](docs/superpowers/specs/2026-06-07-llm-proxy-ui-design.md) +
+> [v2](docs/superpowers/specs/2026-06-07-llm-proxy-ui-v2-design.md) design specs.
 
 ## The admin UI
 
@@ -27,12 +29,14 @@ Dark mode included:
 
 ![Dark mode](docs/images/dark-mode.png)
 
-**Screens:** Dashboard (proxy health) · Usage & Spend · Models (provider-driven
-CRUD) · Routing (strategy + fallbacks) · Caching · config.yaml viewer · Virtual
-Keys (create/budget/delete) · DB Housekeeping · Settings (export/import + dark
-mode). Every config change goes through a **safe-apply pipeline**: validate →
-atomic write + backup → restart the proxy → verify health & `/v1/models` →
-**auto-rollback** on failure.
+**Screens:** Dashboard (KPI cards) · Usage & Spend · Models (provider CRUD +
+test/health/costs/credentials) · Provider Keys (encrypted vault) · Routing (strategy,
+timeout/cooldown, fallbacks) · Caching (read-only status) · config.yaml viewer ·
+Virtual Keys (create/budget/delete) · DB Housekeeping · Settings (export/import,
+catalog sync, dark mode). Each screen's **Save** validates + atomically writes +
+backs up its section (staged, no restart); the global **Apply** bar then restarts the
+proxy **once**, verifies health & `/v1/models`, and **rolls back to the last-applied
+baseline** on failure.
 
 ## Why a custom UI?
 
@@ -41,8 +45,10 @@ LiteLLM's bundled UI was unreliable on this stack, so the guardrails are designe
 - It **never writes an `ssl` key** into `cache_params` → LiteLLM bug #10949 (SSL
   handshake hangs against plain Valkey) is impossible.
 - `routing_strategy` is constrained to the valid enum (the bogus `lowest-cost` is
-  rejected); secrets are only ever written as `os.environ/<VAR>` references —
-  literal secrets in config are rejected.
+  rejected). Model/general secrets must be `os.environ/<VAR>` references — literal
+  secrets there are rejected. The one exception is the **Provider Keys vault**
+  (encrypted at rest, typed in the UI), which materializes into a `0600`,
+  git-ignored `config.yaml` so keys survive the restart-based Apply.
 - `config.yaml` is the **single source of truth** (`store_model_in_db: false`),
   so the effective config is never silently overridden by the DB.
 
@@ -90,15 +96,17 @@ password. Proxy health: `curl -fsS http://localhost:4000/health/readiness`.
 .
 ├── docker-compose.yml
 ├── .env                 ← secrets (NOT in git)
-├── config/config.yaml   ← single source of truth (models, routing, cache) — UI-managed
+├── config/config.yaml.example  ← secret-free bootstrap (committed; seeds config.yaml)
+├── config/config.yaml   ← single source of truth (models/routing/cache + materialized provider keys) — UI-managed, git-ignored, mode 0600
 ├── ui/                  ← the custom admin UI (FastAPI + Svelte)
 └── data/{postgres,valkey}/  ← persistent state
 ```
 
 You can still hand-edit `config/config.yaml` and `docker compose restart litellm`
-to apply (~25s; SIGHUP is a no-op on this image). Note: once the UI has written
-the file it's owned by the UI container (`root`, mode `0644` — readable on the
-host; edit via the UI, or `sudo`, for changes).
+to apply (~25s; SIGHUP is a no-op on this image). Note: since v2 the file holds
+**materialized provider-key secrets**, so it's written `root`-owned mode **`0600`**
+and is **git-ignored** — the repo commits `config/config.yaml.example` (secret-free)
+and the app seeds `config.yaml` from it on first run. Edit via the UI, or `sudo`.
 
 ## Secrets in `.env`
 
@@ -108,7 +116,9 @@ host; edit via the UI, or `sudo`, for changes).
   rotate** after adding keys (makes them undecryptable). Back it up.
 - **`ADMIN_PASSWORD_HASH`** (argon2), **`SESSION_SECRET`** — admin UI login +
   cookie signing. The hash's `$` must be escaped as `$$` in `.env` (see
-  [`docs/admin-ui.md`](docs/admin-ui.md)).
+  [`docs/admin-ui.md`](docs/admin-ui.md)). **`SESSION_SECRET` also derives the
+  Provider Keys vault's encryption key — don't rotate it after saving keys**
+  (makes them undecryptable), or set a dedicated `CREDENTIALS_KEY`.
 
 `.env` is `.gitignore`d — share `.env.example` only.
 
