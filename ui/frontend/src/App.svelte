@@ -29,6 +29,12 @@
   onMount(async () => { authed = (await api.me()).authed; store.refreshPending() })
   async function onLogin() { authed = true }
   async function logout() { await api.logout(); authed = false }
+  function confirmDiscard() {
+    const n = store.pendingSummary.length
+    if (confirm(`Discard ${n} unapplied change${n === 1 ? '' : 's'}? This reverts config.yaml to the last applied state.`)) {
+      store.discard()
+    }
+  }
 </script>
 
 {#if !authed}
@@ -58,7 +64,10 @@
       {#if store.pending}
         <div class="applybar">
           <span><strong>{store.pendingSummary.length || ''}</strong> unapplied change{store.pendingSummary.length === 1 ? '' : 's'}{store.pendingSummary.length ? ` (${store.pendingSummary.join(', ')})` : ''}</span>
-          <button class="apply" onclick={() => store.apply()} disabled={store.applying}>{store.applying ? 'Applying… (~25s)' : 'Apply'}</button>
+          <div class="applybar-actions">
+            <button class="discard" onclick={confirmDiscard} disabled={store.saving || store.applying}>Discard</button>
+            <button class="apply" onclick={() => store.apply()} disabled={store.applying || store.saving}>{store.applying ? 'Applying… (~25s)' : 'Apply'}</button>
+          </div>
         </div>
       {/if}
       {#if screen==='dash'}<Dashboard />
@@ -90,6 +99,9 @@
   .main{overflow:auto;background:var(--bg)}
   .applybar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;justify-content:space-between;
     background:#fff7e6;border-bottom:1px solid #ffe1a8;padding:8px 16px;font-size:13px;color:#7a5b00}
+  .applybar-actions{display:flex;gap:8px;align-items:center}
   .applybar .apply{background:#ff9f0a;color:#fff;border:0;border-radius:8px;padding:6px 14px;font-weight:600;cursor:pointer}
   .applybar .apply:disabled{opacity:.6}
+  .applybar .discard{background:transparent;color:#7a5b00;border:1px solid #e0c074;border-radius:8px;padding:6px 12px;font-weight:600;cursor:pointer}
+  .applybar .discard:disabled{opacity:.5}
 </style>

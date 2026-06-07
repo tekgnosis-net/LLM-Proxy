@@ -22,6 +22,7 @@ export const api = {
   exportConfigUrl: '/api/config/export',
   applyStatus: () => req('/api/apply/status'),
   apply: () => req('/api/apply', { method: 'POST' }),
+  discard: () => req('/api/discard', { method: 'POST' }),
   cacheInfo: () => req('/api/cache/info'),
   credentials: () => req('/api/credentials'),
   createCredential: (b) => req('/api/credentials', { method: 'POST', body: JSON.stringify(b) }),

@@ -35,10 +35,21 @@ export function createConfigStore() {
       await refreshPending(); return false
     } finally { applying = false }
   }
+  async function discard() {
+    saving = true; error = ''; notice = ''
+    try {
+      await api.discard()
+      config = await api.config()
+      await refreshPending()
+      notice = 'Discarded unapplied changes — reverted to the last applied config.'
+      return true
+    } catch (e) { error = e.message; await refreshPending(); return false }
+    finally { saving = false }
+  }
   return {
     get config(){return config}, get loading(){return loading}, get saving(){return saving},
     get applying(){return applying}, get error(){return error}, get notice(){return notice},
     get pending(){return pending}, get pendingSummary(){return pendingSummary},
-    load, saveSection, apply, refreshPending,
+    load, saveSection, apply, discard, refreshPending,
   }
 }
