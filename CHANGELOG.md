@@ -1,3 +1,22 @@
+# [1.10.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.9.0...v1.10.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* **ui:** 0600 on baseline/restore files (they may hold secrets) + redaction test ([4f623c7](https://github.com/tekgnosis-net/LLM-Proxy/commit/4f623c7c33a141395a1bb092f6a6ced6de3cd81d))
+* **ui:** require non-empty credentials secret (drop weak fallback) ([fed1feb](https://github.com/tekgnosis-net/LLM-Proxy/commit/fed1feb55de399cae9daeb440c10d6edfc71c805))
+
+
+### Features
+
+* **ui:** /api/credentials vault + materialize into config (GET redacts, PUT injects) ([c6d794a](https://github.com/tekgnosis-net/LLM-Proxy/commit/c6d794ada0056c866535933e38ceab20ae345255))
+* **ui:** /api/models/test (pre-save) + /api/models/health (cached) ([d8c3c0b](https://github.com/tekgnosis-net/LLM-Proxy/commit/d8c3c0b2cb842b2994a9ffffc42ca3ffeac43514))
+* **ui:** config.yaml secret-bearing (0600, gitignored, .example, credential_list exempt + redacted) ([327178a](https://github.com/tekgnosis-net/LLM-Proxy/commit/327178a0f4b5770ce018adf4d7c7d03160cd4b06))
+* **ui:** credentials_store (encrypted ui vault + materialize) ([9d100bb](https://github.com/tekgnosis-net/LLM-Proxy/commit/9d100bb6459a274c1c777854490da74241cefbce))
+* **ui:** enable cached background health checks in config bootstrap ([2c04259](https://github.com/tekgnosis-net/LLM-Proxy/commit/2c04259c205bb1a4f7d433061a95a84bc5e84b96))
+* **ui:** Models v2 — credential/mode/costs/test-connection/health ([7b707ae](https://github.com/tekgnosis-net/LLM-Proxy/commit/7b707aeda7947b9e6fa28f98b4aa2d9d8e128955))
+* **ui:** Provider Keys screen (UI-owned encrypted vault) ([74aeb62](https://github.com/tekgnosis-net/LLM-Proxy/commit/74aeb628bddf4e6a826e0f0519b749c8b7aa3282))
+
 # [1.9.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.8.0...v1.9.0) (2026-06-07)
 
 
