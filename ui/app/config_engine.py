@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import yaml
-from pathlib import Path
 
 from app.config_render import effective, render_config
 from app.config_store import validate_config, ConfigError, write_config_atomic
@@ -42,17 +41,27 @@ async def apply_config(config_path, store, reloader, *, decrypt) -> dict:
     except ConfigError as e:
         raise ApplyError(f"invalid config, not applied: {e}") from e
 
-    # 3. Atomic write + read-back + re-parse (pre-commit — raise ApplyError on failure)
+    # 3. Atomic write + read-back + re-parse (pre-commit — raise ApplyError on failure).
+    #    write_config_atomic now owns the readback: it reads the temp file and
+    #    yaml.safe_loads it BEFORE os.replace, so the live file is untouched on
+    #    any readback failure.
     text = yaml.safe_dump(cfg, sort_keys=False)
     try:
         write_config_atomic(config_path, text)
-        readback = yaml.safe_load(Path(config_path).read_text())
-        assert readback is not None, "read-back returned None"
     except Exception as e:
         raise ApplyError(f"write/readback failed, not applied: {e}") from e
 
-    # 4. COMMIT: fold staged into applied, clear staged
-    await store.fold()
+    # 4. COMMIT: fold staged into applied, clear staged.
+    #    The file is live and verified-good at this point.  A fold() failure
+    #    means the file is correct but the DB staging table wasn't cleared —
+    #    staged is intact (fold is transactional), so a re-Apply will re-fold.
+    try:
+        await store.fold()
+    except Exception as e:
+        raise ApplyError(
+            f"config written to file but staging not cleared (DB error): {e}; "
+            "re-Apply to finalize"
+        ) from e
 
     # 5. Restart + verify (post-commit — reported, NOT rolled back)
     expected = _expected_models(cfg)

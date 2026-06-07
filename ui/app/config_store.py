@@ -142,8 +142,20 @@ _HEADER = """\
 
 def write_config_atomic(path: str, text: str) -> None:
     """Atomically write `text` to `path` (backup *.bak.* at 0600, temp file,
-    os.replace, chmod 0600). No validation — caller is responsible for content.
-    This is the low-level primitive used by write_config and apply_config."""
+    readback+parse temp, os.replace, chmod 0600).
+
+    Order of operations (safety-critical):
+      1. Backup current live file at 0600.
+      2. Write temp file.
+      3. Read temp back and yaml.safe_load it — raise ValueError if None or
+         unparseable.  The live file is UNTOUCHED until this succeeds.
+      4. os.replace(temp → live).
+      5. chmod live to 0600.
+
+    On ANY failure before os.replace the temp is unlinked and the live file is
+    never touched.  BaseException is caught so KeyboardInterrupt / SystemExit
+    also clean up the temp.
+    """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists():
@@ -155,8 +167,14 @@ def write_config_atomic(path: str, text: str) -> None:
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
-        os.chmod(tmp, 0o600)
+        # Read back and parse the TEMP file before touching the live file.
+        readback_text = Path(tmp).read_text()
+        parsed = yaml.safe_load(readback_text)
+        if parsed is None:
+            raise ValueError("temp file read-back returned None (empty or null YAML)")
+        # Live file is untouched until here — now atomically promote.
         os.replace(tmp, str(p))
+        os.chmod(str(p), 0o600)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)

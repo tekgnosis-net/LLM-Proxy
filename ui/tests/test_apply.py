@@ -1,3 +1,4 @@
+"""Legacy v2 app.apply (file-diff rollback) — superseded by app.config_engine in v3; kept until v3.2 removes the v2 config routes."""
 import pytest
 from pathlib import Path
 from app.config_store import write_config, pending_status, load_config
