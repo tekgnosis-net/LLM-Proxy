@@ -29,3 +29,12 @@ def test_status_and_sync(tmp_path):
     c=_client(tmp_path,FakeCatalog())
     assert c.get("/api/catalog/status").json()["models"]==2775
     assert c.post("/api/catalog/sync").json()["models"]==2775
+
+
+def test_get_model_path_allows_slash(tmp_path):
+    """The {name:path} param must capture provider-prefixed names like openai/gpt-4o."""
+    class SlashCat(FakeCatalog):
+        async def get_model(self, n): return {"model_name": n}
+    c = _client(tmp_path, SlashCat())
+    r = c.get("/api/catalog/model/openai/gpt-4o")
+    assert r.status_code == 200 and r.json()["model_name"] == "openai/gpt-4o"
