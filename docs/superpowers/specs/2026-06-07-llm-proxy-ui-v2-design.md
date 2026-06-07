@@ -16,13 +16,13 @@ v2 closes that gap and adds the workflow/feature depth below.
 2. **Dashboard** rebuilt to the prototype (KPI cards + health summary).
 3. **Routing** exposes timeout / cooldown / allowed_fails / retry_after.
 4. **Caching** screen becomes a clear **read-only** status panel.
-5. **Provider Keys** vault (DB-backed credentials, typed in the UI) + Models picking from it.
+5. **Provider Keys** vault — UI-owned encrypted credentials in an app DB table, **materialized into `config.yaml`** on apply (LiteLLM reloads config on restart, so they persist) — Models pick from it.
 6. **Models** gain mode/endpoint, custom costs, and a pre-save **Test connection** + per-model **health**.
 7. Two **LiteLLM catalog syncs** (pricing + provider-endpoints) feeding Models auto-fill.
 
 ## Non-goals
 
-- No change to the config-only model (`store_model_in_db: false`; `config.yaml` authoritative for models/routing/caching).
+- No change to the config-only model (`store_model_in_db: false`; `config.yaml` authoritative for models/routing/caching). NOTE: `config.yaml` now also carries materialized provider-key secrets (see Provider Keys) — so it becomes a secret-bearing, gitignored file.
 - No editing of cache backend connection from the UI (it's compose infrastructure).
 - No `api_base` auto-population (the provider JSON has no URLs; only custom/self-hosted set it, manually).
 
@@ -80,10 +80,11 @@ Replace the editable form with a **read-only** panel:
 
 ## Phase v2.2 — Provider Keys + Models v2
 
-### Provider Keys (new screen, DB-backed credentials)
-- New `credentials_client` + `/api/credentials` routes (login-gated; master key server-side) proxying LiteLLM `POST /credentials` (create — typed key, encrypted in Postgres via `LITELLM_SALT_KEY`), `GET /credentials` (list, masked), `DELETE /credentials/{name}`.
-- **Provider Keys screen**: add a credential (name + provider + key), list (masked), delete.
-- **v2.2 spike (do first):** verify a DB-created credential survives a proxy restart and is usable by a config-only model (`store_model_in_db: false`). If it does not reload, fallback: the UI also writes the credential *name → `os.environ/` ref* into `config.yaml`'s `credential_list` (key value still in the DB or `.env`). Decide from the spike result before building the screen.
+### Provider Keys (new screen, UI-owned vault → materialized into config.yaml)
+- **Spike finding (done):** in config-only mode LiteLLM's own `POST /credentials` writes the DB row but does **NOT** reload it on restart — so a pure LiteLLM-DB vault vanishes on every Apply (= restart). Therefore **the UI owns the vault.**
+- New `credentials_store` (app DB table `ui_credentials`: name, provider, **encrypted** value — Fernet, key derived from `SESSION_SECRET`) + `/api/credentials` routes (login-gated): create (type the key → encrypted at rest), list (masked), delete. The UI — not LiteLLM — is the source of truth.
+- **Materialization:** on save/apply the backend renders the vault into `config.yaml`'s `credential_list` with **literal** values (decrypted); models reference them via `litellm_credential_name`. LiteLLM reloads `config.yaml` on restart → credentials persist and reload. Adding/removing a credential re-materializes → marks pending.
+- **Consequence — `config.yaml` becomes secret-bearing:** written `0600` (not 0644); the live `config/config.yaml` is **gitignored** (commit `config/config.yaml.example`, a secret-free bootstrap; seed the live file from it on first run); the no-literal-secrets guardrail **exempts** the materialized `credential_list`; config **export redacts** credential values.
 
 ### Models v2 (add/edit form gains)
 - **Credential**: a dropdown of saved provider keys (→ `litellm_credential_name`), with **+ New key** that opens the Provider-Keys create flow (DB-backed, the primary path). Advanced/escape hatch: reference an env var directly (`api_key: os.environ/<VAR>`) for the config-only/no-DB style — never a literal key (the guardrail rejects those).
@@ -119,8 +120,8 @@ Replace the editable form with a **read-only** panel:
 
 ## Security
 
-- Master key + DB stay server-side; credential **values** are write-only to the proxy (create), never returned un-masked by `GET /credentials`.
-- No-literal-secrets guardrail still applies to `config.yaml` (inline model keys become `os.environ/` refs); typed credential values go to the DB credential vault (encrypted), not `config.yaml`.
+- Master key + DB stay server-side. Provider keys are stored **encrypted at rest** in the UI's `ui_credentials` table (Fernet, key derived from `SESSION_SECRET`); `GET /api/credentials` returns them **masked** (never the plaintext).
+- The vault is **materialized into `config.yaml`'s `credential_list` as literals** on apply — so **`config.yaml` is secret-bearing**: written `0600`, the live file is gitignored (committed secret-free `.example` instead), the no-literal-secrets guardrail **exempts** `credential_list`, and config **export redacts** credential values. Model entries themselves stay secret-free (they reference `litellm_credential_name`).
 - Catalog fetch is over HTTPS from the pinned `raw.githubusercontent.com/BerriAI/litellm/main` URLs; parsed as data (no code execution).
 
 ## Testing
@@ -130,7 +131,7 @@ Replace the editable form with a **read-only** panel:
 
 ## Risks / spikes
 
-- **v2.2 — DB credentials across restart in config-only mode** (spike before building; fallback = `credential_list` in config.yaml). The keystone unknown.
+- **v2.2 credentials (spike DONE):** LiteLLM does NOT reload DB credentials on restart in config-only mode → the UI owns the vault (`ui_credentials`, encrypted) and materializes it into `config.yaml`'s `credential_list` (which LiteLLM *does* reload). Consequence accepted: `config.yaml` becomes secret-bearing (0600 / gitignored live / committed `.example` / export-redacted). This reverses the v2.1 `0644` + git-tracked + no-secrets stance for `config.yaml` (which only held while config was secret-free).
 - **Background health cost** — live provider calls; mitigate with `background_health_checks` cache + a sane interval; document it's opt-in-ish.
 - **Catalog size** — 1.5 MB pricing JSON; store parsed rows in Postgres, not the blob; refresh weekly.
 - **`.applied.yaml` baseline** must be gitignored + handled on first run (seed from current config).
