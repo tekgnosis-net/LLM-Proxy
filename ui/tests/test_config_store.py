@@ -143,6 +143,18 @@ def test_write_creates_timestamped_backup(tmp_path):
     assert len(backups) >= 1
 
 
+def test_write_backup_is_0600(tmp_path):
+    # backups mirror config.yaml, which may hold materialized credential secrets — must be owner-only
+    import os, stat
+    path = str(tmp_path / "config.yaml")
+    write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})
+    write_config(path, {"router_settings": {"routing_strategy": "least-busy"}})
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert backups
+    for b in backups:
+        assert stat.S_IMODE(os.stat(b).st_mode) == 0o600
+
+
 def test_write_is_atomic_leaves_no_tmp(tmp_path):
     path = str(tmp_path / "config.yaml")
     write_config(path, {"router_settings": {"routing_strategy": "simple-shuffle"}})

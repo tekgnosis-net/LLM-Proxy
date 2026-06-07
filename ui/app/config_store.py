@@ -150,7 +150,9 @@ def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     p.parent.mkdir(parents=True, exist_ok=True)
     if backup and p.exists():
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")  # microseconds: avoid same-second collision
-        p.with_name(f"{p.name}.bak.{ts}").write_text(p.read_text())
+        bak = p.with_name(f"{p.name}.bak.{ts}")
+        bak.write_text(p.read_text())
+        os.chmod(bak, 0o600)   # backup mirrors config.yaml (may hold materialized credential secrets) — owner-only
     fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
