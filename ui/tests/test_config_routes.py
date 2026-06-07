@@ -29,25 +29,34 @@ def test_put_config_requires_login(tmp_path):
     assert c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}}).status_code == 401
 
 
-def test_put_config_applies(tmp_path):
-    c = _client(tmp_path, reloader_ok=True)
-    r = c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"},
-                                   "model_list": [{"model_name": "cheap", "litellm_params": {"model": "openai/gpt-4o-mini"}}]})
-    assert r.status_code == 200
-    assert c.get("/api/config").json()["router_settings"]["routing_strategy"] == "simple-shuffle"
-
-
-def test_put_config_invalid_returns_422(tmp_path):
+def test_put_config_saves_without_apply(tmp_path):
     c = _client(tmp_path)
-    r = c.put("/api/config", json={"router_settings": {"routing_strategy": "lowest-cost"}})
-    assert r.status_code == 422
+    r = c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
+    assert r.status_code == 200 and r.json()["pending"] is True
+    assert c.get("/api/apply/status").json()["pending"] is True
 
 
-def test_put_config_rollback_returns_409(tmp_path):
+def test_put_config_invalid_422(tmp_path):
+    c = _client(tmp_path)
+    assert c.put("/api/config", json={"router_settings": {"routing_strategy": "lowest-cost"}}).status_code == 422
+
+
+def test_apply_ok(tmp_path):
+    c = _client(tmp_path, reloader_ok=True)
+    c.put("/api/config", json={"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
+    assert c.post("/api/apply").status_code == 200
+    assert c.get("/api/apply/status").json()["pending"] is False
+
+
+def test_apply_rollback_409(tmp_path):
     c = _client(tmp_path, reloader_ok=False)
-    r = c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}})
-    assert r.status_code == 409
-    assert c.get("/api/config").json()["router_settings"]["routing_strategy"] == "least-busy"
+    c.put("/api/config", json={"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
+    assert c.post("/api/apply").status_code == 409
+
+
+def test_apply_requires_login(tmp_path):
+    c = _client(tmp_path); c.cookies.clear()
+    assert c.post("/api/apply").status_code == 401
 
 
 def test_export_returns_yaml_attachment(tmp_path):

@@ -2,9 +2,9 @@ from pathlib import Path
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from app.auth import login_required
-from app.config_store import load_config, ConfigError
+from app.config_store import load_config, ConfigError, write_config, pending_status, seed_baseline_if_missing
 from app.settings import get_settings
-from app.safe_apply import safe_apply, SafeApplyError
+from app.apply import apply_config, ApplyError
 from app.reloader import Reloader
 
 router = APIRouter(prefix="/api")
@@ -38,12 +38,26 @@ def export_config():
 
 
 @router.put("/config", dependencies=[Depends(login_required)])
-async def put_config(raw: dict = Body(...)):
+def put_config(raw: dict = Body(...)):
+    s = get_settings()
+    seed_baseline_if_missing(s.config_path)     # capture pre-write state as baseline if first save
+    try:
+        write_config(s.config_path, raw)        # validate + stage (NO restart)
+    except ConfigError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, **pending_status(s.config_path)}
+
+
+@router.get("/apply/status", dependencies=[Depends(login_required)])
+def apply_status():
+    return pending_status(get_settings().config_path)
+
+
+@router.post("/apply", dependencies=[Depends(login_required)])
+async def apply():
     s = get_settings()
     try:
-        cfg = await safe_apply(s.config_path, raw, make_reloader())
-    except SafeApplyError as e:
-        code = 422 if "invalid config" in str(e) else 409
+        return await apply_config(s.config_path, make_reloader())
+    except ApplyError as e:
+        code = 422 if "invalid" in str(e) else 409     # apply_config says "config invalid…" or "reload failed…"
         raise HTTPException(status_code=code, detail=str(e))
-    return {"ok": True, "models": [m.model_name for m in cfg.model_list],
-            "routing_strategy": cfg.router_settings.routing_strategy}
