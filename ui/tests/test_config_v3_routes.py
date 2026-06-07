@@ -108,3 +108,20 @@ def test_rendered_redacted(tmp_path):
     # credential rendered then redacted
     assert d["config"]["credential_list"][0]["credential_values"]["api_key"]=="***"
     assert d["config"]["router_settings"]["routing_strategy"]=="least-busy"
+
+# Task 4: GET/PUT /api/config/passthrough
+
+def test_get_passthrough_empty(tmp_path):
+    d=_client(tmp_path, FakeStore()).get("/api/config/passthrough").json()
+    assert d["yaml"] == "" or d["yaml"] == "{}\n" or d["data"] == {}
+
+def test_put_passthrough_parses_and_stages(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    r=c.put("/api/config/passthrough", json={"yaml":"callbacks:\n  - langfuse\n"})
+    assert r.status_code==200
+    kind,name,data,deleted=s.staged_calls[-1]
+    assert kind=="passthrough" and name=="_" and data=={"callbacks":["langfuse"]} and deleted is False
+
+def test_put_passthrough_bad_yaml_422(tmp_path):
+    c=_client(tmp_path, FakeStore())
+    assert c.put("/api/config/passthrough", json={"yaml":"key: [unterminated"}).status_code==422
