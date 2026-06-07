@@ -3,7 +3,7 @@ import yaml
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from app.auth import login_required
-from app.config_store import load_config, ConfigError, write_config, pending_status, seed_baseline_if_missing
+from app.config_store import load_config, ConfigError, write_config, pending_status, seed_baseline_if_missing, restore_baseline
 from app.credentials_store import materialize_credentials
 from app.settings import get_settings
 from app.apply import apply_config, ApplyError
@@ -97,3 +97,11 @@ async def apply():
     except ApplyError as e:
         code = 422 if "invalid" in str(e) else 409     # apply_config says "config invalid…" or "reload failed…"
         raise HTTPException(status_code=code, detail=str(e))
+
+
+@router.post("/discard", dependencies=[Depends(login_required)])
+def discard():
+    s = get_settings()
+    seed_baseline_if_missing(s.config_path)   # ensure a baseline exists (first-run no-op safety)
+    restore_baseline(s.config_path)           # copy .applied.yaml -> config.yaml (no proxy restart needed)
+    return pending_status(s.config_path)

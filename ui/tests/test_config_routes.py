@@ -94,3 +94,26 @@ def test_get_and_export_redact_credential_values(tmp_path):
     assert r.json()["credential_list"][0]["credential_values"]["api_key"] == "***"
     e = c.get("/api/config/export")
     assert "sk-LEAKME" not in e.text
+
+
+def test_discard_clears_pending_and_reverts(tmp_path):
+    import os
+    from app.config_store import load_config
+    c = _client(tmp_path)
+    c.get("/api/apply/status")  # seeds .applied.yaml from the current config (least-busy)
+    c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
+    assert c.get("/api/apply/status").json()["pending"] is True
+    r = c.post("/api/discard")
+    assert r.status_code == 200 and r.json()["pending"] is False
+    assert load_config(os.environ["CONFIG_PATH"]).router_settings.routing_strategy == "least-busy"  # reverted
+
+
+def test_discard_requires_login(tmp_path):
+    c = _client(tmp_path); c.cookies.clear()
+    assert c.post("/api/discard").status_code == 401
+
+
+def test_discard_no_baseline_is_noop(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/api/discard")
+    assert r.status_code == 200 and "pending" in r.json()
