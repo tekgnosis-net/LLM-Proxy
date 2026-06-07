@@ -63,24 +63,24 @@ of config parameters the UI generates and validates.
 
 ## Quickstart
 
+No build step — the images are pulled (the UI image is published publicly to GHCR).
+
 ```bash
-# 1. secrets (a .env with random keys was generated; review it)
-$EDITOR .env
+# 1. configure secrets interactively — creates/updates .env with everything
+#    docker-compose.yml needs (auto-generates keys, hashes + escapes the admin
+#    password, etc.). Re-run any time to change values.
+./setup_env_helper.sh
 
-# 2. generate the admin UI login (argon2 hash — note the $$ escaping for compose)
-SESSION_SECRET=$(openssl rand -hex 32)
-docker compose build llm-proxy-ui
-HASH=$(docker compose run --rm --no-deps llm-proxy-ui \
-  python -c "from app.auth import hash_password; print(hash_password('YOUR_PASSWORD'))" \
-  | sed 's/[$]/$$/g')
-printf "UI_PORT=8081\nADMIN_PASSWORD_HASH=%s\nSESSION_SECRET=%s\n" "$HASH" "$SESSION_SECRET" >> .env
-
-# 3. bring it up
+# 2. start the stack (pulls the published images)
 docker compose up -d        # wait for (healthy)
 ```
 
 Open the **admin UI** at `http://<host>:${UI_PORT:-8081}` and log in with your
 password. Proxy health: `curl -fsS http://localhost:4000/health/readiness`.
+
+> Prefer to set `.env` by hand? Copy `.env.example` to `.env` and fill it in —
+> note the admin hash's `$` must be escaped as `$$` (the helper does this for you).
+> Pull updates later with `docker compose pull && docker compose up -d`.
 
 ## Bind-mounted layout
 

@@ -78,7 +78,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   llm-proxy-ui:
-    build: ./ui
+    # Published (public) image from CI. For local UI development instead, replace
+    # this line with `build: ./ui` and run `docker compose up -d --build`.
+    image: ghcr.io/tekgnosis-net/llm-proxy-ui:latest
     container_name: litellm-ui
     restart: unless-stopped
     environment:

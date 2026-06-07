@@ -56,22 +56,29 @@ This UI fixes all three by design (guardrails + a single source of truth).
 
 ## Running it
 
-The UI ships as a service in the root [`docker-compose.yml`](../docker-compose.yml):
+The UI runs as the `llm-proxy-ui` service in the root
+[`docker-compose.yml`](../docker-compose.yml), pulled from GHCR
+(`ghcr.io/tekgnosis-net/llm-proxy-ui:latest`) — no local build needed.
 
 ```bash
-# generate an admin password hash + session secret (one-time)
-SESSION_SECRET=$(openssl rand -hex 32)
-docker compose build llm-proxy-ui
-# NOTE: argon2 hashes contain `$`, which docker compose interpolates in .env
-# values — the `sed` escapes each `$` as `$$`, or login fails silently.
-HASH=$(docker compose run --rm --no-deps llm-proxy-ui \
-  python -c "from app.auth import hash_password; print(hash_password('YOUR_PASSWORD'))" \
-  | sed 's/[$]/$$/g')
-printf "UI_PORT=8081\nADMIN_PASSWORD_HASH=%s\nSESSION_SECRET=%s\n" "$HASH" "$SESSION_SECRET" >> .env
-
-docker compose up -d
+./setup_env_helper.sh    # interactive: fills .env (keys, admin hash $$-escaped, …)
+docker compose up -d     # pulls the images and starts the stack
 # open http://<host>:8081  and log in
 ```
+
+The `setup_env_helper.sh` helper generates the argon2 admin hash and escapes its
+`$` as `$$` (docker compose interpolates `$` in `.env`, so an un-escaped hash
+mangles to blank → silent login failure). To set it by hand instead, escape the
+hash yourself:
+
+```bash
+docker compose run --rm --no-deps llm-proxy-ui \
+  python -c "from app.auth import hash_password; print(hash_password('YOUR_PASSWORD'))" \
+  | sed 's/[$]/$$/g'      # paste the $$-escaped result into ADMIN_PASSWORD_HASH
+```
+
+For local UI development, change the `llm-proxy-ui` service from `image:` to
+`build: ./ui` and run `docker compose up -d --build`.
 
 ## Screens (all live)
 
