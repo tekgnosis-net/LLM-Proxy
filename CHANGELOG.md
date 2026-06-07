@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.7.0...v1.8.0) (2026-06-07)
+
+
+### Features
+
+* add setup_env_helper.sh — interactive .env creator/updater ([dafeb69](https://github.com/tekgnosis-net/LLM-Proxy/commit/dafeb69d858f84a1545a709c9a3c5c6a242667aa))
+
 # [1.7.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.6.0...v1.7.0) (2026-06-06)
 
 
