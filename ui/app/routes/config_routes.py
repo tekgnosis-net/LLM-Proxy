@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from app.auth import login_required
 from app.config_store import load_config, ConfigError, write_config, pending_status, seed_baseline_if_missing
+from app.credentials_store import materialize_credentials
 from app.settings import get_settings
 from app.apply import apply_config, ApplyError
 from app.reloader import Reloader
@@ -54,11 +55,19 @@ def export_config():
 
 
 @router.put("/config", dependencies=[Depends(login_required)])
-def put_config(raw: dict = Body(...)):
+async def put_config(raw: dict = Body(...)):
     s = get_settings()
+    # Never trust client-sent credential_list (it's redacted in GET anyway); strip it and
+    # re-inject from the vault so model saves never drop or expose credentials.
+    raw = {k: v for k, v in raw.items() if k != "credential_list"}
+    try:
+        from app.routes.credentials_routes import make_credentials_store
+        decrypted = await make_credentials_store().list_decrypted()
+    except Exception:
+        decrypted = []   # no DB or vault error → degrade gracefully (existing tests w/o DB still pass)
     seed_baseline_if_missing(s.config_path)     # capture pre-write state as baseline if first save
     try:
-        write_config(s.config_path, raw)        # validate + stage (NO restart)
+        write_config(s.config_path, materialize_credentials(raw, decrypted))   # validate + stage (NO restart)
     except ConfigError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, **pending_status(s.config_path)}
