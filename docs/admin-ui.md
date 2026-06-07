@@ -80,7 +80,7 @@ This UI fixes all three by design (guardrails + a single source of truth).
 
 The UI runs as the `llm-proxy-ui` service in the root
 [`docker-compose.yml`](../docker-compose.yml), pulled from GHCR (pinned to an
-immutable release tag, e.g. `ghcr.io/tekgnosis-net/llm-proxy-ui:1.11.0`) — no
+immutable release tag, e.g. `ghcr.io/tekgnosis-net/llm-proxy-ui:1.12.0`) — no
 local build needed. To update, bump the tag (or use `:latest`).
 
 ```bash

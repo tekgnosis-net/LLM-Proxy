@@ -17,17 +17,17 @@ virtual keys, budgets, usage, and DB housekeeping.
 
 ## The admin UI
 
-![Dashboard](docs/images/dashboard.png)
+![Dashboard — KPI cards with the staged-change Apply bar](docs/images/dashboard.png)
 
 | | |
 |---|---|
-| ![Models](docs/images/models-applied.png) | ![Routing](docs/images/routing.png) |
-| ![Virtual Keys](docs/images/keys.png) | ![Usage & Spend](docs/images/usage.png) |
-| ![Caching](docs/images/caching.png) | ![Housekeeping](docs/images/housekeeping.png) |
+| ![Models — credential / mode / costs / test / health](docs/images/models.png) | ![Provider Keys — encrypted vault](docs/images/provider-keys.png) |
+| ![Routing — strategy, timeout, cooldown, retries](docs/images/routing.png) | ![Settings — LiteLLM catalog sync](docs/images/settings.png) |
+| ![Caching — read-only status](docs/images/caching.png) | ![Usage & Spend](docs/images/usage.png) |
 
-Dark mode included:
-
-![Dark mode](docs/images/dark-mode.png)
+Shown in dark mode (a light theme is included too). The amber **Apply** bar (top)
+appears whenever there are staged changes — one restart applies them all, with
+auto-rollback on failure.
 
 **Screens:** Dashboard (KPI cards) · Usage & Spend · Models (provider CRUD +
 test/health/costs/credentials) · Provider Keys (encrypted vault) · Routing (strategy,
