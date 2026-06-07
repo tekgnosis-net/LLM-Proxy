@@ -1,4 +1,4 @@
-from app.catalog import parse_pricing, parse_endpoints
+from app.catalog import parse_pricing, parse_endpoints, endpoints_to_modes
 
 
 def test_parse_pricing_skips_sample_spec_and_extracts_fields():
@@ -32,3 +32,19 @@ def test_parse_endpoints_extracts_provider_matrix():
     r = next(x for x in rows if x["provider"] == "anthropic")
     assert r["display_name"] == "Anthropic" and r["endpoints"]["chat_completions"] is True
     assert all(x["provider"] not in ("_comment", "_schema", "endpoints") for x in rows)
+
+
+def test_endpoints_to_modes_maps_supported_only():
+    eps = {"chat_completions": True, "embeddings": True, "rerank": False, "image_generation": True}
+    modes = endpoints_to_modes(eps)
+    assert "chat" in modes and "embedding" in modes and "image_generation" in modes
+    assert "rerank" not in modes
+
+
+def test_endpoints_to_modes_accepts_json_string():
+    import json
+    assert "chat" in endpoints_to_modes(json.dumps({"chat_completions": True}))
+
+
+def test_endpoints_to_modes_empty():
+    assert endpoints_to_modes(None) == [] and endpoints_to_modes({}) == []

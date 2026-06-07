@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.auth import login_required
-from app.catalog import Catalog
+from app.catalog import Catalog, endpoints_to_modes
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api")
@@ -29,7 +29,10 @@ async def catalog_model(name: str):
 @router.get("/catalog/providers", dependencies=[Depends(login_required)])
 async def catalog_providers():
     try:
-        return await make_catalog().get_providers()
+        rows = await make_catalog().get_providers()
+        for r in rows:
+            r["modes"] = endpoints_to_modes(r.get("endpoints"))
+        return rows
     except HTTPException:
         raise
     except Exception as e:
