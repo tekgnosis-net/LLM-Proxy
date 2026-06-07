@@ -2,11 +2,13 @@ from __future__ import annotations
 import base64, hashlib
 import asyncpg
 from cryptography.fernet import Fernet
-from typing import Any, Optional
+from typing import Any
 
 
 def fernet_from_secret(secret: str) -> Fernet:
-    key = base64.urlsafe_b64encode(hashlib.sha256((secret or "change-me").encode()).digest())
+    if not secret:
+        raise ValueError("credentials encryption secret must not be empty")  # no weak default
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
     return Fernet(key)
 
 
