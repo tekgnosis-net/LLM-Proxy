@@ -41,3 +41,30 @@ def test_state_returns_effective_with_flags_redacted(tmp_path):
     cred=items[("credential","openai")]
     assert cred["data"].get("provider")=="openai"
     assert "value_encrypted" not in cred["data"] and cred["data"].get("api_key") in (None,"***")
+
+def test_put_item_stages_plain(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    r=c.put("/api/config/item", json={"kind":"router_setting","name":"num_retries","data":3})
+    assert r.status_code==200 and r.json()["pending"] is True
+    assert ("router_setting","num_retries",3,False) in s.staged_calls
+
+def test_put_item_credential_encrypts_key(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    r=c.put("/api/config/item", json={"kind":"credential","name":"anthropic","data":{"provider":"anthropic","api_key":"sk-NEW"}})
+    assert r.status_code==200
+    kind,name,data,deleted=s.staged_calls[-1]
+    assert kind=="credential" and name=="anthropic" and deleted is False
+    assert data["provider"]=="anthropic" and data["value_encrypted"]=="ENC:sk-NEW" and "api_key" not in data
+
+def test_put_item_credential_requires_key(tmp_path):
+    c=_client(tmp_path, FakeStore())
+    assert c.put("/api/config/item", json={"kind":"credential","name":"x","data":{"provider":"openai"}}).status_code==422
+
+def test_delete_item_stages_deleted(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    assert c.request("DELETE","/api/config/item/model/gpt").status_code==200
+    assert ("model","gpt",{},True) in s.staged_calls
+
+def test_item_requires_login(tmp_path):
+    c=_client(tmp_path, FakeStore()); c.cookies.clear()
+    assert c.put("/api/config/item", json={"kind":"router_setting","name":"x","data":1}).status_code==401

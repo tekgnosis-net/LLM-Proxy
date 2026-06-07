@@ -32,3 +32,26 @@ async def config_state():
     except HTTPException: raise
     except Exception as e: raise HTTPException(status_code=502, detail=f"config state error: {e}")
     return {"items": [_redact_item(i) for i in eff], "pending": n > 0, "count": n}
+
+@router.put("/config/item", dependencies=[Depends(login_required)])
+async def stage_item(body: dict = Body(...)):
+    kind, name, data = body.get("kind"), body.get("name"), body.get("data")
+    if not kind or not name: raise HTTPException(status_code=422, detail="kind and name required")
+    if kind == "credential":
+        api_key = (data or {}).get("api_key")
+        if not api_key: raise HTTPException(status_code=422, detail="credential api_key required")
+        data = {"provider": (data or {}).get("provider"),
+                "value_encrypted": _fernet().encrypt(api_key.encode()).decode()}
+    try:
+        await make_config_store().stage(kind, name, data)
+        return await pending_status(make_config_store())
+    except HTTPException: raise
+    except Exception as e: raise HTTPException(status_code=502, detail=f"stage error: {e}")
+
+@router.delete("/config/item/{kind}/{name}", dependencies=[Depends(login_required)])
+async def delete_item(kind: str, name: str):
+    try:
+        await make_config_store().stage(kind, name, {}, deleted=True)
+        return await pending_status(make_config_store())
+    except HTTPException: raise
+    except Exception as e: raise HTTPException(status_code=502, detail=f"stage error: {e}")
