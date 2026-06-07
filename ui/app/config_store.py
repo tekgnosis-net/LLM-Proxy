@@ -159,3 +159,51 @@ def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
             os.unlink(tmp)
         raise
     return cfg
+
+
+APPLIED_SUFFIX = ".applied.yaml"
+
+
+def _applied_path(config_path: str) -> Path:
+    return Path(config_path).parent / APPLIED_SUFFIX
+
+
+def seed_baseline_if_missing(config_path: str) -> None:
+    """Seed the baseline from the current config (fresh deploy / first run)."""
+    applied = _applied_path(config_path)
+    cur = Path(config_path)
+    if not applied.exists() and cur.exists():
+        applied.write_text(cur.read_text())
+        os.chmod(applied, 0o644)
+
+
+def promote_baseline(config_path: str) -> None:
+    """Mark the current config as the applied baseline (after a successful apply)."""
+    applied = _applied_path(config_path)
+    applied.write_text(Path(config_path).read_text())
+    os.chmod(applied, 0o644)
+
+
+def restore_baseline(config_path: str) -> None:
+    """Restore config.yaml from the applied baseline (rollback)."""
+    applied = _applied_path(config_path)
+    if applied.exists():
+        Path(config_path).write_text(applied.read_text())
+        os.chmod(config_path, 0o644)
+
+
+def pending_status(config_path: str) -> dict:
+    """Compare current config to the applied baseline (semantic). Seeds baseline if missing."""
+    applied = _applied_path(config_path)
+    if not applied.exists():
+        seed_baseline_if_missing(config_path)
+        return {"pending": False, "summary": []}
+    try:
+        cur = load_config(config_path).model_dump(exclude_none=True)
+        base = load_config(str(applied)).model_dump(exclude_none=True)
+    except ConfigError:
+        return {"pending": True, "summary": ["(unparseable config)"]}
+    if cur == base:
+        return {"pending": False, "summary": []}
+    keys = sorted(set(cur) | set(base))
+    return {"pending": True, "summary": [k for k in keys if cur.get(k) != base.get(k)]}

@@ -175,3 +175,37 @@ def test_bootstrap_config_with_all_env_refs_passes():
         "router_settings": {"routing_strategy": "simple-shuffle"},
         "model_list": [],
     })  # must not raise
+
+
+# --- pending_status / baseline tests ---
+
+from app.config_store import pending_status, APPLIED_SUFFIX
+
+
+def _seed(tmp_path, routing="simple-shuffle"):
+    p = str(tmp_path / "config.yaml")
+    write_config(p, {"router_settings": {"routing_strategy": routing}, "model_list": []})
+    return p
+
+
+def test_pending_false_when_no_baseline_seeds_it(tmp_path):
+    p = _seed(tmp_path)
+    st = pending_status(p)
+    assert st["pending"] is False
+    assert (tmp_path / ".applied.yaml").exists()
+
+
+def test_pending_true_after_edit(tmp_path):
+    p = _seed(tmp_path)
+    pending_status(p)
+    write_config(p, {"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
+    st = pending_status(p)
+    assert st["pending"] is True
+    assert "router_settings" in st["summary"]
+
+
+def test_pending_false_when_identical(tmp_path):
+    p = _seed(tmp_path)
+    pending_status(p)
+    write_config(p, {"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
+    assert pending_status(p)["pending"] is False
