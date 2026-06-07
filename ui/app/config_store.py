@@ -189,14 +189,14 @@ def seed_baseline_if_missing(config_path: str) -> None:
     cur = Path(config_path)
     if not applied.exists() and cur.exists():
         applied.write_text(cur.read_text())
-        os.chmod(applied, 0o644)
+        os.chmod(applied, 0o600)   # baseline mirrors config.yaml (may hold materialized secrets)
 
 
 def promote_baseline(config_path: str) -> None:
     """Mark the current config as the applied baseline (after a successful apply)."""
     applied = _applied_path(config_path)
     applied.write_text(Path(config_path).read_text())
-    os.chmod(applied, 0o644)
+    os.chmod(applied, 0o600)   # baseline mirrors config.yaml (may hold materialized secrets)
 
 
 def restore_baseline(config_path: str) -> None:
@@ -204,7 +204,7 @@ def restore_baseline(config_path: str) -> None:
     applied = _applied_path(config_path)
     if applied.exists():
         Path(config_path).write_text(applied.read_text())
-        os.chmod(config_path, 0o644)
+        os.chmod(config_path, 0o600)   # restored config may hold materialized secrets
 
 
 def pending_status(config_path: str) -> dict:

@@ -78,3 +78,19 @@ def test_cache_info(tmp_path):
 def test_cache_info_requires_login(tmp_path):
     c = _client(tmp_path); c.cookies.clear()
     assert c.get("/api/cache/info").status_code == 401
+
+
+def test_get_and_export_redact_credential_values(tmp_path):
+    c = _client(tmp_path)
+    open(os.environ["CONFIG_PATH"], "w").write(
+        "model_list: []\n"
+        "credential_list:\n"
+        "- credential_name: openai\n"
+        "  credential_values:\n"
+        "    api_key: sk-LEAKME\n"
+        "  credential_info: {}\n")
+    r = c.get("/api/config")
+    assert "sk-LEAKME" not in r.text
+    assert r.json()["credential_list"][0]["credential_values"]["api_key"] == "***"
+    e = c.get("/api/config/export")
+    assert "sk-LEAKME" not in e.text
