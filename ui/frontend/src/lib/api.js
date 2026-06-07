@@ -26,4 +26,6 @@ export const api = {
   credentials: () => req('/api/credentials'),
   createCredential: (b) => req('/api/credentials', { method: 'POST', body: JSON.stringify(b) }),
   deleteCredential: (n) => req(`/api/credentials/${encodeURIComponent(n)}`, { method: 'DELETE' }),
+  testModel: (b) => req('/api/models/test', { method: 'POST', body: JSON.stringify(b) }),
+  modelsHealth: () => req('/api/models/health'),
 }
