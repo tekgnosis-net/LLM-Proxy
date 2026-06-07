@@ -39,3 +39,19 @@ def test_test_422_missing_model(tmp_path):
 def test_health_requires_login(tmp_path):
     c=_client(tmp_path,FakeModels()); c.cookies.clear()
     assert c.get("/api/models/health").status_code==401
+
+
+def test_test_connection_502_on_upstream_error(tmp_path):
+    class Boom:
+        async def test_connection(self, lp, mode): raise RuntimeError("conn refused")
+        async def health_all(self): return {}
+    c = _client(tmp_path, Boom())
+    assert c.post("/api/models/test", json={"litellm_params": {"model": "openai/gpt-4o"}}).status_code == 502
+
+
+def test_health_502_on_upstream_error(tmp_path):
+    class Boom:
+        async def test_connection(self, lp, mode): return {}
+        async def health_all(self): raise RuntimeError("down")
+    c = _client(tmp_path, Boom())
+    assert c.get("/api/models/health").status_code == 502
