@@ -21,12 +21,13 @@ class FakeStore:
         self._applied=[{"kind":"router_setting","name":"routing_strategy","data":"simple-shuffle"},
                        {"kind":"credential","name":"openai","data":{"provider":"openai","value_encrypted":"ENC:sk-REAL"}}]
         self._staged=[{"kind":"router_setting","name":"routing_strategy","data":"least-busy","flag":"changed"}]
-        self.staged_calls=[]; self.cleared=None
+        self.staged_calls=[]; self.cleared=None; self.folded=False
     async def applied(self): return list(self._applied)
     async def staged(self): return list(self._staged)
     async def staged_count(self): return len(self._staged)
     async def stage(self, kind, name, data, *, deleted=False): self.staged_calls.append((kind,name,data,deleted))
     async def clear_staged(self, kind=None, name=None): self.cleared=(kind,name)
+    async def fold(self): self.folded=True; self._staged=[]
 
 def test_state_requires_login(tmp_path):
     c=_client(tmp_path, FakeStore()); c.cookies.clear(); assert c.get("/api/config/state").status_code==401
@@ -68,3 +69,42 @@ def test_delete_item_stages_deleted(tmp_path):
 def test_item_requires_login(tmp_path):
     c=_client(tmp_path, FakeStore()); c.cookies.clear()
     assert c.put("/api/config/item", json={"kind":"router_setting","name":"x","data":1}).status_code==401
+
+# Task 3: POST /api/apply + POST /api/discard + GET /api/config/rendered
+
+class FakeReloader:
+    def __init__(self, ok=True): self.ok=ok
+    async def reload_and_verify(self, expected):
+        if not self.ok:
+            from app.reloader import ReloadError; raise ReloadError("sim")
+        return True
+
+def _client_apply(tmp_path, store, ok=True):
+    c=_client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_reloader = lambda: FakeReloader(ok)
+    return c
+
+def test_apply_ok(tmp_path):
+    s=FakeStore(); c=_client_apply(tmp_path, s, ok=True)
+    r=c.post("/api/apply"); assert r.status_code==200 and r.json()["applied"] is True and r.json()["servant"]=="healthy"
+    assert s.folded is True
+    import yaml; assert yaml.safe_load(open(os.environ["CONFIG_PATH"]))["router_settings"]["routing_strategy"]=="least-busy"
+
+def test_apply_servant_unhealthy_200_committed(tmp_path):
+    s=FakeStore(); c=_client_apply(tmp_path, s, ok=False)
+    r=c.post("/api/apply"); assert r.status_code==200 and r.json()["servant"]=="unhealthy" and s.folded is True
+
+def test_discard_all(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    r=c.post("/api/discard"); assert r.status_code==200 and s.cleared==(None,None)
+
+def test_discard_one(tmp_path):
+    s=FakeStore(); c=_client(tmp_path, s)
+    c.post("/api/discard?kind=router_setting&name=routing_strategy"); assert s.cleared==("router_setting","routing_strategy")
+
+def test_rendered_redacted(tmp_path):
+    d=_client(tmp_path, FakeStore()).get("/api/config/rendered").json()
+    # credential rendered then redacted
+    assert d["config"]["credential_list"][0]["credential_values"]["api_key"]=="***"
+    assert d["config"]["router_settings"]["routing_strategy"]=="least-busy"

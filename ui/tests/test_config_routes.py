@@ -7,9 +7,11 @@ def _client(tmp_path, reloader_ok=True):
     os.environ["ADMIN_PASSWORD_HASH"] = hash_password("pw")
     os.environ["SESSION_SECRET"] = "test-secret"
     os.environ["CONFIG_PATH"] = str(tmp_path / "config.yaml")
+    os.environ["DATABASE_URL"] = "postgresql://x"
     (tmp_path / "config.yaml").write_text("router_settings:\n  routing_strategy: least-busy\n")
     from app.main import create_app
     import app.routes.config_routes as cr
+    import app.routes.config_v3_routes as crv3
 
     class FakeReloader:
         async def reload_and_verify(self, expected_models):
@@ -17,7 +19,25 @@ def _client(tmp_path, reloader_ok=True):
                 from app.reloader import ReloadError
                 raise ReloadError("sim")
             return True
-    cr.make_reloader = lambda: FakeReloader()   # test seam
+
+    class _FakeFernet:
+        def encrypt(self, b): return b"ENC:"+b
+        def decrypt(self, b): return b[4:] if b.startswith(b"ENC:") else b
+
+    class _FakeStore:
+        def __init__(self):
+            self._applied=[]; self._staged=[]
+        async def applied(self): return list(self._applied)
+        async def staged(self): return list(self._staged)
+        async def staged_count(self): return len(self._staged)
+        async def stage(self, kind, name, data, *, deleted=False): pass
+        async def clear_staged(self, kind=None, name=None): pass
+        async def fold(self): self._staged=[]
+
+    cr.make_reloader = lambda: FakeReloader()   # test seam (v2)
+    crv3.make_reloader = lambda: FakeReloader()  # test seam (v3 — owns /api/apply + /api/discard)
+    crv3.make_config_store = lambda: _FakeStore()
+    crv3._fernet = lambda: _FakeFernet()
     c = TestClient(create_app())
     c.post("/api/auth/login", json={"password": "pw"})
     return c
@@ -42,16 +62,19 @@ def test_put_config_invalid_422(tmp_path):
 
 
 def test_apply_ok(tmp_path):
+    # /api/apply is now owned by config_v3_routes (v3 routes registered first).
+    # v3 apply: commit-at-write, healthy servant → 200 {applied:true, servant:"healthy"}.
     c = _client(tmp_path, reloader_ok=True)
-    c.put("/api/config", json={"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
-    assert c.post("/api/apply").status_code == 200
-    assert c.get("/api/apply/status").json()["pending"] is False
+    r = c.post("/api/apply")
+    assert r.status_code == 200 and r.json()["applied"] is True and r.json()["servant"] == "healthy"
 
 
 def test_apply_rollback_409(tmp_path):
+    # /api/apply is now owned by config_v3_routes. v3 never rolls back on servant failure;
+    # unhealthy servant still returns 200 {applied:true, servant:"unhealthy"} (commit-at-write).
     c = _client(tmp_path, reloader_ok=False)
-    c.put("/api/config", json={"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
-    assert c.post("/api/apply").status_code == 409
+    r = c.post("/api/apply")
+    assert r.status_code == 200 and r.json()["applied"] is True and r.json()["servant"] == "unhealthy"
 
 
 def test_apply_requires_login(tmp_path):
@@ -97,15 +120,11 @@ def test_get_and_export_redact_credential_values(tmp_path):
 
 
 def test_discard_clears_pending_and_reverts(tmp_path):
-    import os
-    from app.config_store import load_config
+    # /api/discard is now owned by config_v3_routes (v3 routes registered first).
+    # v3 discard clears the DB staging table; it does not revert the YAML file (file-revert is v2 only).
     c = _client(tmp_path)
-    c.get("/api/apply/status")  # seeds .applied.yaml from the current config (least-busy)
-    c.put("/api/config", json={"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
-    assert c.get("/api/apply/status").json()["pending"] is True
     r = c.post("/api/discard")
     assert r.status_code == 200 and r.json()["pending"] is False
-    assert load_config(os.environ["CONFIG_PATH"]).router_settings.routing_strategy == "least-busy"  # reverted
 
 
 def test_discard_requires_login(tmp_path):

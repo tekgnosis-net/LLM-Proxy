@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
                        same_site="lax", https_only=False)
     app.include_router(auth_routes.router)
     app.include_router(health_routes.router)
+    app.include_router(config_v3_routes.router)  # v3 routes first (shadow v2 /api/apply + /api/discard)
     app.include_router(config_routes.router)
     app.include_router(keys_routes.router)
     app.include_router(usage_routes.router)
@@ -92,7 +93,6 @@ def create_app() -> FastAPI:
     app.include_router(credentials_routes.router)
     app.include_router(models_routes.router)
     app.include_router(catalog_routes.router)
-    app.include_router(config_v3_routes.router)
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app
