@@ -232,3 +232,12 @@ def test_credential_list_literals_are_allowed(tmp_path):
 def test_model_list_literal_secret_still_rejected(tmp_path):
     with pytest.raises(ConfigError):
         validate_config({"model_list": [{"model_name": "x", "litellm_params": {"model": "openai/gpt-4o", "api_key": "sk-LITERAL"}}]})
+
+
+def test_general_settings_health_keys_roundtrip(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config(p, {"general_settings": {"master_key": "os.environ/LITELLM_MASTER_KEY",
+                                          "background_health_checks": True,
+                                          "health_check_interval": 300}, "model_list": []})
+    gs = load_config(p).model_dump(exclude_none=True)["general_settings"]
+    assert gs["background_health_checks"] is True and gs["health_check_interval"] == 300
