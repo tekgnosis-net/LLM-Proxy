@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     housekeeping_delete_expired_keys: bool = True
     redis_host: str = ""    # display only (resolved from compose), e.g. "valkey"
     redis_port: str = ""    # display only, e.g. "6379"
+    credentials_key: str = ""   # Fernet key (urlsafe-b64, 32 bytes); empty → derived from session_secret
 
 
 @lru_cache
