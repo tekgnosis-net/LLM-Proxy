@@ -59,3 +59,18 @@ def test_put_strips_client_sent_credential_list(tmp_path):
     import yaml
     d = yaml.safe_load(open(os.environ["CONFIG_PATH"]))
     assert not d.get("credential_list")   # client-sent list dropped; empty vault → none injected
+
+
+def test_delete_credential_in_use_409(tmp_path):
+    """Deleting a credential a model still references is rejected (would break the model)."""
+    f = FakeStore()
+    c = _client(tmp_path, f)
+    open(os.environ["CONFIG_PATH"], "w").write(
+        "model_list:\n"
+        "- model_name: gpt\n"
+        "  litellm_params:\n"
+        "    model: openai/gpt-4o\n"
+        "    litellm_credential_name: openai\n")
+    r = c.request("DELETE", "/api/credentials/openai")
+    assert r.status_code == 409
+    assert f.deleted is None   # not deleted while in use
