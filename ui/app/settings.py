@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     redis_host: str = ""    # display only (resolved from compose), e.g. "valkey"
     redis_port: str = ""    # display only, e.g. "6379"
     credentials_key: str = ""   # Fernet key (urlsafe-b64, 32 bytes); empty → derived from session_secret
+    catalog_sync_enabled: bool = True
+    catalog_sync_interval_days: int = 7
+    catalog_pricing_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+    catalog_endpoints_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/provider_endpoints_support.json"
 
 
 @lru_cache
