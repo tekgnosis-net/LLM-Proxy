@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     housekeeping_interval_hours: int = 24
     housekeeping_spendlog_retention_days: int = 90
     housekeeping_delete_expired_keys: bool = True
+    redis_host: str = ""    # display only (resolved from compose), e.g. "valkey"
+    redis_port: str = ""    # display only, e.g. "6379"
 
 
 @lru_cache

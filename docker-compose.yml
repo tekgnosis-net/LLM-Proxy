@@ -99,6 +99,8 @@ services:
       HOUSEKEEPING_INTERVAL_HOURS: "${HOUSEKEEPING_INTERVAL_HOURS:-24}"
       HOUSEKEEPING_SPENDLOG_RETENTION_DAYS: "${HOUSEKEEPING_SPENDLOG_RETENTION_DAYS:-90}"
       HOUSEKEEPING_DELETE_EXPIRED_KEYS: "${HOUSEKEEPING_DELETE_EXPIRED_KEYS:-true}"
+      REDIS_HOST: ${REDIS_HOST:-valkey}
+      REDIS_PORT: ${REDIS_PORT:-6379}
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:
