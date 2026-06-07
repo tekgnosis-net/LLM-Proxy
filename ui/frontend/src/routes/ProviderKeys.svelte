@@ -8,8 +8,8 @@
   async function load(){ try{ creds = await api.credentials() }catch(e){ err=e.message } }
   onMount(load)
   async function add(){ busy=true; err=''
-    try{ const r=await api.createCredential({credential_name:form.credential_name,provider:form.provider,api_key:form.api_key});
-      if (store) { store.pending = true } ; form={credential_name:'',provider:'openai',api_key:''}; showAdd=false; await load(); store?.refreshPending?.() }
+    try{ await api.createCredential({credential_name:form.credential_name,provider:form.provider,api_key:form.api_key});
+      form={credential_name:'',provider:'openai',api_key:''}; showAdd=false; await load(); await store?.refreshPending?.() }
     catch(e){ err=e.message } finally{ busy=false } }
   async function del(n){ if(!confirm(`Delete "${n}"? Models using it will fail after the next Apply.`))return; busy=true
     try{ await api.deleteCredential(n); await load(); store?.refreshPending?.() }catch(e){ err=e.message } finally{ busy=false } }
