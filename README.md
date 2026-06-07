@@ -80,7 +80,9 @@ password. Proxy health: `curl -fsS http://localhost:4000/health/readiness`.
 
 > Prefer to set `.env` by hand? Copy `.env.example` to `.env` and fill it in —
 > note the admin hash's `$` must be escaped as `$$` (the helper does this for you).
-> Pull updates later with `docker compose pull && docker compose up -d`.
+> The UI image is **pinned** to a release tag in `docker-compose.yml`; to update,
+> bump that tag to a newer release (or switch it to `:latest` for auto-updates),
+> then `docker compose pull && docker compose up -d`.
 
 ## Bind-mounted layout
 

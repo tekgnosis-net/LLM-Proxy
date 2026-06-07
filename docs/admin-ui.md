@@ -57,8 +57,9 @@ This UI fixes all three by design (guardrails + a single source of truth).
 ## Running it
 
 The UI runs as the `llm-proxy-ui` service in the root
-[`docker-compose.yml`](../docker-compose.yml), pulled from GHCR
-(`ghcr.io/tekgnosis-net/llm-proxy-ui:latest`) — no local build needed.
+[`docker-compose.yml`](../docker-compose.yml), pulled from GHCR (pinned to an
+immutable release tag, e.g. `ghcr.io/tekgnosis-net/llm-proxy-ui:1.8.0`) — no
+local build needed. To update, bump the tag (or use `:latest`).
 
 ```bash
 ./setup_env_helper.sh    # interactive: fills .env (keys, admin hash $$-escaped, …)
