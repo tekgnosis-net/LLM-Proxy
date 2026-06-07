@@ -1,3 +1,15 @@
+# [1.12.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.11.0...v1.12.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* **ui:** chmod config backups 0600 (they mirror the secret-bearing config) ([db9fb91](https://github.com/tekgnosis-net/LLM-Proxy/commit/db9fb91ae6c4b39d4351e1e225ff509e514d9fd7))
+
+
+### Features
+
+* **ui:** reject deleting a credential still referenced by a model (409) ([9c82031](https://github.com/tekgnosis-net/LLM-Proxy/commit/9c8203165a56ba06397ae72a84a6e5c2e3517de0))
+
 # [1.11.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.10.0...v1.11.0) (2026-06-07)
 
 
