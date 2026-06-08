@@ -28,15 +28,34 @@ services:
       timeout: 3s
       retries: 10
 
+  # One-shot init: guarantee config/config.yaml exists before LiteLLM starts.
+  # config.yaml is git-ignored (a rendered, secret-bearing artifact the UI owns);
+  # a fresh checkout has only config.yaml.example. Without this, LiteLLM would start
+  # with no config file and the UI (which would seed it) can't run first — it
+  # depends_on litellm-healthy, a deadlock. This seeds it deterministically, then exits.
+  config-init:
+    image: postgres:16-alpine   # already pulled by this stack; any tiny image works
+    container_name: litellm-config-init
+    restart: "no"
+    volumes:
+      - ./config:/config
+    command: ["sh", "-c", "test -f /config/config.yaml || (cp /config/config.yaml.example /config/config.yaml && chmod 600 /config/config.yaml && echo seeded config.yaml)"]
+
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: litellm-proxy
     restart: unless-stopped
-    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "1"]
     ports:
       - "4000:4000"
     volumes:
-      - ./config/config.yaml:/app/config.yaml:ro
+      # Mount the config DIRECTORY (not the file): if config.yaml is absent (fresh
+      # deploy — it's git-ignored), Docker would otherwise create the missing
+      # bind-source as a directory and LiteLLM crashes with IsADirectoryError.
+      # The dir always exists; the UI (llm-proxy-ui) seeds config.yaml from
+      # config.yaml.example on first boot, and LiteLLM's restart policy retries
+      # until it's there.
+      - ./config:/etc/litellm:ro
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
@@ -47,6 +66,8 @@ services:
       UI_USERNAME: admin
       UI_PASSWORD: ${LITELLM_MASTER_KEY}
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       valkey:
