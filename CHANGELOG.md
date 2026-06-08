@@ -1,3 +1,37 @@
+# [1.13.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.12.0...v1.13.0) (2026-06-08)
+
+
+### Bug Fixes
+
+* **ui:** Provider Keys save crashed with 'assign to readonly property' ([0a652ec](https://github.com/tekgnosis-net/LLM-Proxy/commit/0a652ec886e0f57552e2a5d8227eee150a8469a6))
+* **ui:** provider picker — clear stale deployment fields on switch; api_base for openai-compatible; datalist labels ([ccae7c0](https://github.com/tekgnosis-net/LLM-Proxy/commit/ccae7c0380f0ee4841a754065a660c23d032bfec))
+* **ui:** tighten apply commit boundary — readback temp before os.replace; guard fold; abort tests ([63547cb](https://github.com/tekgnosis-net/LLM-Proxy/commit/63547cb58077d7b9a81327311712f0283448b0d6))
+
+
+### Features
+
+* **ui:** App apply/discard bar on item-model store ([d9ddac9](https://github.com/tekgnosis-net/LLM-Proxy/commit/d9ddac9a6b6f27210066a3764a09e0307cef5719))
+* **ui:** bootstrap-import config.yaml into the config DB on first run ([a5cb119](https://github.com/tekgnosis-net/LLM-Proxy/commit/a5cb119f5ccbe3abba220cb1d2809d99b2f20342))
+* **ui:** Caching read-only panel from litellm_setting items ([6422f85](https://github.com/tekgnosis-net/LLM-Proxy/commit/6422f8558f741cb9ba9faa8a741089d20ecd7d68))
+* **ui:** catalog providers expose supported modes (endpoints->modes) ([e4c5390](https://github.com/tekgnosis-net/LLM-Proxy/commit/e4c5390fe4a121d559c22b69868c416fb5a935ce))
+* **ui:** catalog-driven provider picker (full list, modes filter, advanced api_base) ([e670e1c](https://github.com/tekgnosis-net/LLM-Proxy/commit/e670e1cc0460c78f7c98a35028330eee41a7fe7d))
+* **ui:** config_db ConfigStore (applied/staged tables, stage/fold/clear/seed) ([e4c8835](https://github.com/tekgnosis-net/LLM-Proxy/commit/e4c8835c5dac11044f61c0716922ae745dd0c550))
+* **ui:** config_engine.apply_config (commit-at-write, fold, no rollback) + pending ([1bd9064](https://github.com/tekgnosis-net/LLM-Proxy/commit/1bd9064d1fea842866dcd20aa7ddef59b8c68354))
+* **ui:** config_import.split_config (config.yaml → items + passthrough) ([26cfc65](https://github.com/tekgnosis-net/LLM-Proxy/commit/26cfc65e5cd358f0720afc0affa31ff06ca62a4e))
+* **ui:** config_render.effective (applied ⊕ staged with flags) ([eda4d99](https://github.com/tekgnosis-net/LLM-Proxy/commit/eda4d9918c0c048e00f9af0051e6c18579b443d6))
+* **ui:** config_render.render_config + redact (items → config.yaml dict) ([ddf714c](https://github.com/tekgnosis-net/LLM-Proxy/commit/ddf714c82ae83101eb66b3b6c82f271fe290bb2a))
+* **ui:** Discard button — revert staged changes (no restart) ([bd578e1](https://github.com/tekgnosis-net/LLM-Proxy/commit/bd578e10222d6d6197c3b9b9befa7a1b3df70916))
+* **ui:** GET /api/config/state (effective items + flags, redacted) ([7be1712](https://github.com/tekgnosis-net/LLM-Proxy/commit/7be171223eaf939c23d4a142073aea43c9a4ed9b))
+* **ui:** GET/PUT /api/config/passthrough (raw advanced config) ([2b1e126](https://github.com/tekgnosis-net/LLM-Proxy/commit/2b1e126628df12a445968a6f7922b4d8f6294526))
+* **ui:** item-model config store + /api/config/* helpers (v3) ([fece4f6](https://github.com/tekgnosis-net/LLM-Proxy/commit/fece4f6ab9ac0aed5d845207b62312888b656ff2))
+* **ui:** Models screen on model items (flags + strikethrough delete + undo); catalog picker preserved ([a127581](https://github.com/tekgnosis-net/LLM-Proxy/commit/a12758162b35ffb7667f787f9e836eb1d3805831))
+* **ui:** POST /api/apply + /api/discard + GET /api/config/rendered ([9ea81d5](https://github.com/tekgnosis-net/LLM-Proxy/commit/9ea81d5a6f5700fd82ffbf62c55425ad3f68a36c))
+* **ui:** POST /api/discard — revert staged changes to last-applied baseline ([1c23258](https://github.com/tekgnosis-net/LLM-Proxy/commit/1c2325891d41096b2cd145c1e9fa2aeaf57fd0af))
+* **ui:** ProviderKeys on credential items (flags + strikethrough delete + undo) ([a240ce5](https://github.com/tekgnosis-net/LLM-Proxy/commit/a240ce5df09ff81d8ad8a89141952f36c66857e9))
+* **ui:** PUT/DELETE /api/config/item (stage; credential key encrypted) ([aa838df](https://github.com/tekgnosis-net/LLM-Proxy/commit/aa838df9f1a52f4ab50c72f95d5d2f4c14ea68e0))
+* **ui:** Routing screen on router_setting items + flag indicators ([25725f8](https://github.com/tekgnosis-net/LLM-Proxy/commit/25725f8491deb91bc341b6e3536e1152ee6a68fb))
+* **ui:** Settings passthrough editor + ConfigViewer rendered preview + Dashboard on items; frontend build green ([571370a](https://github.com/tekgnosis-net/LLM-Proxy/commit/571370a186101ef62a9faab8c082456194198cfb))
+
 # [1.12.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.11.0...v1.12.0) (2026-06-07)
 
 
