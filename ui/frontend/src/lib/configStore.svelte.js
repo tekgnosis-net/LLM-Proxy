@@ -1,55 +1,53 @@
 import { api } from './api.js'
 
 export function createConfigStore() {
-  let config = $state(null), loading = $state(false), saving = $state(false)
-  let applying = $state(false), error = $state(''), notice = $state('')
-  let pending = $state(false), pendingSummary = $state([])
+  let items = $state([])        // [{kind,name,data,flag}]
+  let loading = $state(false), saving = $state(false), applying = $state(false)
+  let error = $state(''), notice = $state('')
+  let pending = $state(false), count = $state(0)
 
-  async function refreshPending() {
-    try { const s = await api.applyStatus(); pending = s.pending; pendingSummary = s.summary || [] } catch {}
-  }
   async function load() {
     loading = true; error = ''
-    try { config = await api.config(); await refreshPending() } catch (e) { error = e.message } finally { loading = false }
+    try { const s = await api.configState(); items = s.items || []; pending = s.pending; count = s.count }
+    catch (e) { error = e.message } finally { loading = false }
   }
-  async function saveSection(section, value) {
-    if (!config) return false
-    const candidate = { ...config, [section]: value }
+  function itemsOfKind(kind) { return items.filter(i => i.kind === kind) }
+  function itemNamed(kind, name) { return items.find(i => i.kind === kind && i.name === name) }
+
+  async function stageItem(kind, name, data) {
     saving = true; error = ''; notice = ''
-    try {
-      const res = await api.putConfig(candidate)
-      config = candidate; pending = res.pending; pendingSummary = res.summary || []
-      notice = 'Saved. Click Apply to restart the proxy and make it live.'
-      return true
-    } catch (e) { error = e.status === 422 ? `Rejected: ${e.message}` : e.message; return false }
+    try { const r = await api.stageItem(kind, name, data); pending = r.pending; count = r.count; await load()
+      notice = 'Staged. Click Apply to make it live.'; return true }
+    catch (e) { error = e.status === 422 ? `Rejected: ${e.message}` : e.message; return false }
     finally { saving = false }
+  }
+  async function deleteItem(kind, name) {
+    saving = true; error = ''; notice = ''
+    try { const r = await api.deleteItem(kind, name); pending = r.pending; count = r.count; await load(); return true }
+    catch (e) { error = e.message; return false } finally { saving = false }
   }
   async function apply() {
     applying = true; error = ''; notice = ''
     try {
-      const res = await api.apply()
-      notice = `Applied — ${(res.models||[]).length} model(s), routing ${res.routing_strategy||'—'}`
-      await refreshPending(); return true
-    } catch (e) {
-      error = e.status === 409 ? `Reload failed — rolled back: ${e.message}` : e.message
-      await refreshPending(); return false
-    } finally { applying = false }
+      const r = await api.apply()
+      notice = r.servant === 'healthy'
+        ? 'Applied — proxy restarted and healthy.'
+        : `Applied, but the proxy is unhealthy: ${r.detail || ''} — fix the setting and re-Apply.`
+      await load(); return true
+    } catch (e) { error = e.status === 422 ? `Invalid config: ${e.message}` : e.message; await load(); return false }
+    finally { applying = false }
   }
-  async function discard() {
+  async function discard(kind, name) {
     saving = true; error = ''; notice = ''
     try {
-      await api.discard()
-      config = await api.config()
-      await refreshPending()
-      notice = 'Discarded unapplied changes — reverted to the last applied config.'
-      return true
-    } catch (e) { error = e.message; await refreshPending(); return false }
-    finally { saving = false }
+      const q = kind && name ? `?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}` : ''
+      await api.discard(q); await load(); notice = 'Discarded staged changes.'; return true
+    } catch (e) { error = e.message; await load(); return false } finally { saving = false }
   }
   return {
-    get config(){return config}, get loading(){return loading}, get saving(){return saving},
+    get items(){return items}, get loading(){return loading}, get saving(){return saving},
     get applying(){return applying}, get error(){return error}, get notice(){return notice},
-    get pending(){return pending}, get pendingSummary(){return pendingSummary},
-    load, saveSection, apply, discard, refreshPending,
+    get pending(){return pending}, get count(){return count},
+    load, itemsOfKind, itemNamed, stageItem, deleteItem, apply, discard,
   }
 }
