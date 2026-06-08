@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.13.0...v1.13.1) (2026-06-08)
+
+
+### Bug Fixes
+
+* **deploy:** config-init service + dir-mount so a fresh deploy can't crash on missing config.yaml ([e69d77a](https://github.com/tekgnosis-net/LLM-Proxy/commit/e69d77adaa508ee14e947f42bd2c7d78259b6455))
+
 # [1.13.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.12.0...v1.13.0) (2026-06-08)
 
 
