@@ -38,3 +38,11 @@ def test_get_model_path_allows_slash(tmp_path):
     c = _client(tmp_path, SlashCat())
     r = c.get("/api/catalog/model/openai/gpt-4o")
     assert r.status_code == 200 and r.json()["model_name"] == "openai/gpt-4o"
+
+
+def test_providers_include_modes(tmp_path):
+    class ModeCat(FakeCatalog):
+        async def get_providers(self): return [{"provider":"openai","display_name":"OpenAI","endpoints":{"chat_completions":True,"embeddings":True}}]
+    r = _client(tmp_path, ModeCat()).get("/api/catalog/providers")
+    p = r.json()[0]
+    assert set(["chat","embedding"]).issubset(set(p["modes"]))

@@ -4,19 +4,44 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from app.settings import get_settings
-from app.routes import auth_routes, health_routes, config_routes, keys_routes, usage_routes
-from app.routes import housekeeping_routes, credentials_routes, models_routes, catalog_routes
+from app.routes import auth_routes, health_routes, keys_routes, usage_routes
+from app.routes import housekeeping_routes, models_routes, catalog_routes
+from app.routes import config_v3_routes
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
 async def lifespan(app):
+    import logging
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from datetime import datetime, timezone
     from app.db_admin import DbAdmin
     s = get_settings()
     sched = None
+
+    # Bootstrap import: seed the config DB from config.yaml on first run (idempotent).
+    # seed_applied() is a no-op if ui_config_applied already has rows, so this is safe
+    # across every restart.
+    if s.database_url:
+        try:
+            from app.config_store import load_config
+            from app.config_import import split_config
+            from app.config_db import ConfigStore
+            from app.credentials_store import fernet_from_secret
+            cfg = load_config(s.config_path).model_dump(exclude_none=True)
+            f = fernet_from_secret(s.credentials_key or s.session_secret)
+            enc = lambda v: f.encrypt((v or "").encode()).decode()
+            items, passthrough = split_config(cfg, encrypt=enc)
+            if passthrough:
+                items.append({"kind": "passthrough", "name": "_", "data": passthrough})
+            await ConfigStore(s.database_url).seed_applied(items)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "bootstrap import failed — DB may be temporarily unavailable; will retry on next restart",
+                exc_info=True,
+            )
+
     if s.housekeeping_enabled and s.database_url:
         sched = AsyncIOScheduler()
 
@@ -60,11 +85,10 @@ def create_app() -> FastAPI:
                        same_site="lax", https_only=False)
     app.include_router(auth_routes.router)
     app.include_router(health_routes.router)
-    app.include_router(config_routes.router)
+    app.include_router(config_v3_routes.router)
     app.include_router(keys_routes.router)
     app.include_router(usage_routes.router)
     app.include_router(housekeeping_routes.router)
-    app.include_router(credentials_routes.router)
     app.include_router(models_routes.router)
     app.include_router(catalog_routes.router)
     if STATIC_DIR.exists():

@@ -1,10 +1,34 @@
 from __future__ import annotations
 import json
+import json as _json
 import httpx
 import asyncpg
 from typing import Any, Optional
 
 _SUPPORTS_PREFIX = "supports_"
+
+_ENDPOINT_MODE = {
+    "chat_completions": "chat", "completion": "completion", "embeddings": "embedding",
+    "rerank": "rerank", "image_generation": "image_generation",
+    "audio_transcription": "audio_transcription", "audio_speech": "audio_speech",
+    "moderations": "moderations", "moderation": "moderations", "responses": "responses",
+}
+
+
+def endpoints_to_modes(endpoints) -> list[str]:
+    """Map a provider's endpoint-support map to litellm `mode` values (supported only).
+    Accepts a dict or a JSON string (asyncpg returns jsonb as text)."""
+    if isinstance(endpoints, str):
+        try:
+            endpoints = _json.loads(endpoints)
+        except Exception:
+            return []
+    out = []
+    for k, v in (endpoints or {}).items():
+        m = _ENDPOINT_MODE.get(k)
+        if v and m and m not in out:
+            out.append(m)
+    return out
 _PRICING_FIELDS = ("input_cost_per_token", "output_cost_per_token", "max_input_tokens",
                    "max_output_tokens", "max_tokens", "mode", "litellm_provider")
 

@@ -30,11 +30,13 @@ def _client(tmp_path):
 
 def test_health_requires_login(tmp_path):
     c = _client(tmp_path)
-    assert c.get("/api/config").status_code == 401
+    # /api/config/state requires auth (v3 route); no session → 401
+    assert c.get("/api/config/state").status_code == 401
 
 
 def test_login_then_access(tmp_path):
     c = _client(tmp_path)
     assert c.post("/api/auth/login", json={"password": "wrong"}).status_code == 401
     assert c.post("/api/auth/login", json={"password": "letmein"}).status_code == 200
-    assert c.get("/api/config").status_code == 200
+    # After login, auth passes; no DATABASE_URL in test env → 503 (not 401)
+    assert c.get("/api/config/state").status_code != 401

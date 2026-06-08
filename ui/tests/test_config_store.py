@@ -189,40 +189,6 @@ def test_bootstrap_config_with_all_env_refs_passes():
     })  # must not raise
 
 
-# --- pending_status / baseline tests ---
-
-from app.config_store import pending_status, APPLIED_SUFFIX
-
-
-def _seed(tmp_path, routing="simple-shuffle"):
-    p = str(tmp_path / "config.yaml")
-    write_config(p, {"router_settings": {"routing_strategy": routing}, "model_list": []})
-    return p
-
-
-def test_pending_false_when_no_baseline_seeds_it(tmp_path):
-    p = _seed(tmp_path)
-    st = pending_status(p)
-    assert st["pending"] is False
-    assert (tmp_path / ".applied.yaml").exists()
-
-
-def test_pending_true_after_edit(tmp_path):
-    p = _seed(tmp_path)
-    pending_status(p)
-    write_config(p, {"router_settings": {"routing_strategy": "least-busy"}, "model_list": []})
-    st = pending_status(p)
-    assert st["pending"] is True
-    assert "router_settings" in st["summary"]
-
-
-def test_pending_false_when_identical(tmp_path):
-    p = _seed(tmp_path)
-    pending_status(p)
-    write_config(p, {"router_settings": {"routing_strategy": "simple-shuffle"}, "model_list": []})
-    assert pending_status(p)["pending"] is False
-
-
 # --- Task 2: secret-bearing config.yaml foundation ---
 
 import os, stat
@@ -253,3 +219,44 @@ def test_general_settings_health_keys_roundtrip(tmp_path):
                                           "health_check_interval": 300}, "model_list": []})
     gs = load_config(p).model_dump(exclude_none=True)["general_settings"]
     assert gs["background_health_checks"] is True and gs["health_check_interval"] == 300
+
+
+# --- write_config_atomic tests ---
+
+from app.config_store import write_config_atomic
+
+
+def test_write_config_atomic_writes_0600(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "hello: world\n")
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+
+def test_write_config_atomic_content_readable(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "router_settings:\n  routing_strategy: least-busy\n")
+    assert Path(p).read_text() == "router_settings:\n  routing_strategy: least-busy\n"
+
+
+def test_write_config_atomic_creates_backup_on_overwrite(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "first: true\n")
+    write_config_atomic(p, "second: true\n")
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert len(backups) >= 1
+
+
+def test_write_config_atomic_backup_is_0600(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "first: true\n")
+    write_config_atomic(p, "second: true\n")
+    backups = list(tmp_path.glob("config.yaml.bak.*"))
+    assert backups
+    for b in backups:
+        assert stat.S_IMODE(os.stat(b).st_mode) == 0o600
+
+
+def test_write_config_atomic_leaves_no_tmp(tmp_path):
+    p = str(tmp_path / "config.yaml")
+    write_config_atomic(p, "hello: world\n")
+    assert not list(tmp_path.glob("*.tmp"))

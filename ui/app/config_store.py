@@ -140,6 +140,47 @@ _HEADER = """\
 """
 
 
+def write_config_atomic(path: str, text: str) -> None:
+    """Atomically write `text` to `path` (backup *.bak.* at 0600, temp file,
+    readback+parse temp, os.replace, chmod 0600).
+
+    Order of operations (safety-critical):
+      1. Backup current live file at 0600.
+      2. Write temp file.
+      3. Read temp back and yaml.safe_load it — raise ValueError if None or
+         unparseable.  The live file is UNTOUCHED until this succeeds.
+      4. os.replace(temp → live).
+      5. chmod live to 0600.
+
+    On ANY failure before os.replace the temp is unlinked and the live file is
+    never touched.  BaseException is caught so KeyboardInterrupt / SystemExit
+    also clean up the temp.
+    """
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if p.exists():
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        bak = p.with_name(f"{p.name}.bak.{ts}")
+        bak.write_text(p.read_text())
+        os.chmod(bak, 0o600)
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        # Read back and parse the TEMP file before touching the live file.
+        readback_text = Path(tmp).read_text()
+        parsed = yaml.safe_load(readback_text)
+        if parsed is None:
+            raise ValueError("temp file read-back returned None (empty or null YAML)")
+        # Live file is untouched until here — now atomically promote.
+        os.replace(tmp, str(p))
+        os.chmod(str(p), 0o600)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     """Validate, then atomically write `raw` to `path` (header + yaml). Backs up the
     prior file. Returns the validated ProxyConfig. Raises ConfigError on invalid input."""
@@ -166,13 +207,6 @@ def write_config(path: str, raw: dict, *, backup: bool = True) -> "ProxyConfig":
     return cfg
 
 
-APPLIED_SUFFIX = ".applied.yaml"
-
-
-def _applied_path(config_path: str) -> Path:
-    return Path(config_path).parent / APPLIED_SUFFIX
-
-
 def seed_config_from_example(config_path: str) -> None:
     """If config_path is missing and <dir>/config.yaml.example exists, copy example → config_path at 0600."""
     p = Path(config_path)
@@ -185,42 +219,3 @@ def seed_config_from_example(config_path: str) -> None:
         os.chmod(str(p), 0o600)
 
 
-def seed_baseline_if_missing(config_path: str) -> None:
-    """Seed the baseline from the current config (fresh deploy / first run)."""
-    applied = _applied_path(config_path)
-    cur = Path(config_path)
-    if not applied.exists() and cur.exists():
-        applied.write_text(cur.read_text())
-        os.chmod(applied, 0o600)   # baseline mirrors config.yaml (may hold materialized secrets)
-
-
-def promote_baseline(config_path: str) -> None:
-    """Mark the current config as the applied baseline (after a successful apply)."""
-    applied = _applied_path(config_path)
-    applied.write_text(Path(config_path).read_text())
-    os.chmod(applied, 0o600)   # baseline mirrors config.yaml (may hold materialized secrets)
-
-
-def restore_baseline(config_path: str) -> None:
-    """Restore config.yaml from the applied baseline (rollback)."""
-    applied = _applied_path(config_path)
-    if applied.exists():
-        Path(config_path).write_text(applied.read_text())
-        os.chmod(config_path, 0o600)   # restored config may hold materialized secrets
-
-
-def pending_status(config_path: str) -> dict:
-    """Compare current config to the applied baseline (semantic). Seeds baseline if missing."""
-    applied = _applied_path(config_path)
-    if not applied.exists():
-        seed_baseline_if_missing(config_path)
-        return {"pending": False, "summary": []}
-    try:
-        cur = load_config(config_path).model_dump(exclude_none=True)
-        base = load_config(str(applied)).model_dump(exclude_none=True)
-    except ConfigError:
-        return {"pending": True, "summary": ["(unparseable config)"]}
-    if cur == base:
-        return {"pending": False, "summary": []}
-    keys = sorted(set(cur) | set(base))
-    return {"pending": True, "summary": [k for k in keys if cur.get(k) != base.get(k)]}
