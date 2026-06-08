@@ -8,17 +8,17 @@
   let providerSlug = $state('openai')
   let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
   let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' })
-  let credentials = $state([])
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
   let testResult = $state(null)  // { ok: bool, msg: string } | null
   let autofilled = $state(false)
   let autofillBusy = $state(false)
 
+  // Derived: model items and credential items from the item store
+  let modelItems = $derived(store.itemsOfKind('model'))
+  let credentialItems = $derived(store.itemsOfKind('credential'))
+
   onMount(async () => {
-    if (!store.config) store.load()
-    // Load credentials for the dropdown (non-fatal)
-    try { credentials = await api.credentials() } catch (_) { credentials = [] }
     // Load health map (non-fatal)
     try {
       const h = await api.modelsHealth()
@@ -43,8 +43,6 @@
       }
     } catch (_) { providers = FALLBACK_PROVIDERS }
   })
-
-  function models() { return store.config?.model_list ?? [] }
 
   function resetForm() {
     form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' }
@@ -109,17 +107,19 @@
   }
 
   async function addModel() {
-    const entry = {
-      model_name: form.modelName,
+    const ok = await store.stageItem('model', form.modelName, {
       litellm_params: buildParams(),
       model_info: { mode: form.mode }
-    }
-    const ok = await store.saveSection('model_list', [...models(), entry])
+    })
     if (ok) resetForm()   // keep the user's input on a rejected save (422)
   }
 
-  async function deleteModel(i) {
-    await store.saveSection('model_list', models().filter((_, j) => j !== i))
+  async function deleteModel(name) {
+    await store.deleteItem('model', name)
+  }
+
+  async function undoDelete(name) {
+    await store.discard('model', name)
   }
 
   function healthDot(modelName) {
@@ -127,6 +127,14 @@
     if (status === true) return { color: '#34c759', title: 'Healthy' }
     if (status === false) return { color: '#ff3b30', title: 'Unhealthy' }
     return { color: '#8e8e93', title: 'Unknown' }
+  }
+
+  // Flag helpers
+  function flagAccent(flag) {
+    if (flag === 'new') return 'row-new'
+    if (flag === 'changed') return 'row-changed'
+    if (flag === 'deleted') return 'row-deleted'
+    return ''
   }
 </script>
 
@@ -159,7 +167,7 @@
       <label>Credential
         <select bind:value={form.credential}>
           <option value="">— env var / none —</option>
-          {#each credentials as c}<option value={c.credential_name}>{c.credential_name}</option>{/each}
+          {#each credentialItems as c}<option value={c.name}>{c.name}</option>{/each}
         </select>
       </label>
       {#if !form.credential}
@@ -187,7 +195,7 @@
 
       <div class="row">
         <button onclick={testConn} disabled={busy || !form.modelName || !form.modelId}>Test connection</button>
-        <button class="primary" onclick={addModel} disabled={store.applying || !form.modelName || !form.modelId}>Save</button>
+        <button class="primary" onclick={addModel} disabled={store.applying || store.saving || !form.modelName || !form.modelId}>Save</button>
         <button onclick={resetForm}>Cancel</button>
       </div>
 
@@ -202,18 +210,31 @@
   {/if}
 
   <div class="card">
-    {#if models().length === 0}<p class="empty">No models yet. Add one to start serving.</p>
+    {#if modelItems.length === 0}<p class="empty">No models yet. Add one to start serving.</p>
     {:else}
       <table>
-        <thead><tr><th>Model name</th><th>litellm model</th><th>Health</th><th></th></tr></thead>
+        <thead><tr><th>Model name</th><th>litellm model</th><th>Health</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {#each models() as m, i}
-            {@const dot = healthDot(m.model_name)}
-            <tr>
-              <td>{m.model_name}</td>
-              <td><code>{m.litellm_params?.model}</code></td>
+          {#each modelItems as item}
+            {@const dot = healthDot(item.name)}
+            {@const flag = item.flag}
+            <tr class={flagAccent(flag)}>
+              <td class:strikethrough={flag === 'deleted'}>{item.name}</td>
+              <td class:strikethrough={flag === 'deleted'}><code>{item.data?.litellm_params?.model ?? ''}</code></td>
               <td><span class="dot" style="background:{dot.color}" title={dot.title}></span></td>
-              <td><button class="danger" onclick={() => deleteModel(i)} disabled={store.applying}>Delete</button></td>
+              <td>
+                {#if flag === 'new'}<span class="flag-tag flag-new">new</span>
+                {:else if flag === 'changed'}<span class="flag-tag flag-changed">changed</span>
+                {:else if flag === 'deleted'}<span class="flag-tag flag-deleted">deleted</span>
+                {/if}
+              </td>
+              <td>
+                {#if flag === 'deleted'}
+                  <button class="undo" onclick={() => undoDelete(item.name)} disabled={store.saving || store.applying}>Undo</button>
+                {:else}
+                  <button class="danger" onclick={() => deleteModel(item.name)} disabled={store.saving || store.applying}>Delete</button>
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -235,6 +256,7 @@
   button{padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button.danger{color:#ff3b30;border-color:#ffd0cc}
+  button.undo{color:#ff9500;border-color:#ffe0b2}
   button:disabled{opacity:.5;cursor:default}
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}
@@ -247,4 +269,16 @@
   .prefix{display:inline-flex;align-items:center;padding:0 8px;background:#f0f0f3;border:1px solid #ccc;border-right:0;border-radius:8px 0 0 8px;font:inherit;color:#6e6e73;white-space:nowrap}
   .lookup-row .prefix + input{border-radius:0}
   button.link{background:none;border:0;color:#0a84ff;cursor:pointer;font-size:12px;padding:0;text-align:left;width:fit-content}
+
+  /* Flag row accents */
+  .row-new{background:rgba(10,132,255,.06)}
+  .row-changed{background:rgba(255,149,0,.06)}
+  .row-deleted{background:rgba(255,59,48,.05)}
+  .strikethrough{text-decoration:line-through;color:#8e8e93}
+
+  /* Flag tags */
+  .flag-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em}
+  .flag-new{background:rgba(10,132,255,.12);color:#0a52c7}
+  .flag-changed{background:rgba(255,149,0,.15);color:#b36800}
+  .flag-deleted{background:rgba(255,59,48,.12);color:#c0271d}
 </style>
