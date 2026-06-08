@@ -11,8 +11,8 @@
     loading = true; err = ''
     try {
       keys = await api.keys()
-      const cfg = await api.config().catch(() => ({}))
-      availableModels = (cfg.model_list || []).map(m => m.model_name)
+      const state = await api.configState().catch(() => ({ items: [] }))
+      availableModels = (state.items || []).filter(i => i.kind === 'model').map(i => i.name)
     } catch (e) { err = e.message } finally { loading = false }
   }
   onMount(load)

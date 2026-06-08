@@ -2,21 +2,28 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   let { store, theme, setTheme } = $props()
-  let importErr = $state(''), importMsg = $state('')
-  async function onImport(e) {
-    const file = e.target.files?.[0]; if (!file) return
-    importErr = ''; importMsg = ''
-    let cfg
-    try { cfg = JSON.parse(await file.text()) }
-    catch { importErr = 'File must be valid JSON (YAML import requires the yaml package — not bundled)'; return }
-    if (!store.config) await store.load()
-    try { await api.putConfig(cfg); importMsg = 'Imported & applied.'; await store.load() }
-    catch (er) { importErr = (er.status === 422 ? 'Rejected: ' : er.status === 409 ? 'Reload failed, rolled back: ' : '') + er.message }
+
+  // Passthrough editor
+  let ptYaml = $state('')
+  let ptErr = $state(''), ptMsg = $state(''), ptBusy = $state(false)
+  async function loadPassthrough() {
+    try { const r = await api.passthroughGet(); ptYaml = r.yaml ?? '' } catch (e) { ptErr = e.message }
+  }
+  async function savePassthrough() {
+    ptBusy = true; ptErr = ''; ptMsg = ''
+    try {
+      await api.passthroughPut(ptYaml)
+      ptMsg = 'Staged. Click Apply to make it live.'
+      await store.load()
+    } catch (e) {
+      ptErr = e.status === 422 ? `Rejected: ${e.message}` : e.message
+    } finally { ptBusy = false }
   }
 
   let catStatus = $state(null), catBusy = $state(false), catMsg = $state('')
   onMount(() => {
     api.catalogStatus().then(s => catStatus = s).catch(() => {})
+    loadPassthrough()
   })
   async function syncCatalog() {
     catBusy = true; catMsg = ''
@@ -32,15 +39,21 @@
   <div class="card"><h2>Appearance</h2>
     <label class="row"><input type="checkbox" checked={theme==='dark'} onchange={(e) => setTheme(e.target.checked ? 'dark' : 'light')} /> Dark mode</label>
   </div>
-  <div class="card"><h2>Export / Import config</h2>
-    <p class="hint">Download a snapshot of <code>config.yaml</code>, or import one (validated + applied via safe-apply). Import accepts JSON only.</p>
+  <div class="card"><h2>Raw / advanced (passthrough)</h2>
+    <p class="hint">Additional YAML merged verbatim into config.yaml on Apply. Use for settings not covered by the UI (e.g. callbacks, guardrails). Must be valid YAML; top-level keys only.</p>
+    <textarea bind:value={ptYaml} rows="10" spellcheck="false" placeholder="# e.g.&#10;callbacks:&#10;  - langfuse"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button onclick={savePassthrough} disabled={ptBusy}>{ptBusy ? 'Saving…' : 'Save passthrough'}</button>
+    </div>
+    {#if ptErr}<div class="banner err">{ptErr}</div>{/if}
+    {#if ptMsg}<div class="banner ok">{ptMsg}</div>{/if}
+    {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
+  </div>
+  <div class="card"><h2>Export config.yaml</h2>
+    <p class="hint">Download a snapshot of the current effective config.yaml.</p>
     <div class="row">
       <a class="btn" href={api.exportConfigUrl} download>⬇ Export config.yaml</a>
-      <label class="btn">⬆ Import…<input type="file" accept=".json" onchange={onImport} style="display:none" /></label>
     </div>
-    {#if importErr}<div class="banner err">{importErr}</div>{/if}
-    {#if importMsg}<div class="banner ok">{importMsg}</div>{/if}
-    {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
   </div>
   <div class="card"><h2>LiteLLM catalog</h2>
     <p class="hint">Model prices/context + provider endpoints, synced from the LiteLLM repo and used to auto-fill Models.</p>
@@ -60,4 +73,5 @@
   .hint{font-size:12px;color:var(--muted)}
   button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
+  textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical}
 </style>

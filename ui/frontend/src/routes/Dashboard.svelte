@@ -1,19 +1,25 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  let health = $state(null), usage = $state(null), keys = $state(null), cfg = $state(null), err = $state('')
+  let { store } = $props()
+  let health = $state(null), usage = $state(null), keys = $state(null), err = $state('')
   onMount(async () => {
     try {
-      ;[health, cfg] = await Promise.all([api.health(), api.config().catch(() => null)])
+      await store.load()
+      health = await api.health()
       usage = await api.usage().catch(() => null)
       keys = await api.keys().catch(() => null)
     } catch (e) { err = e.message }
   })
   const dot = (ok) => ok ? '#34c759' : '#ff3b30'
-  function modelCount() { return cfg?.model_list?.length ?? '—' }
+  function modelCount() { return store.itemsOfKind('model').length }
   function keyCount() { return Array.isArray(keys) ? keys.length : '—' }
   function spend() { return usage?.total?.spend != null ? `$${Number(usage.total.spend).toFixed(2)}` : '$0.00' }
-  function cacheOn() { return cfg?.litellm_settings?.cache ? 'on' : 'off' }
+  function cacheOn() { return store.itemNamed('litellm_setting', 'cache')?.data ? 'on' : 'off' }
+  function cacheType() {
+    const cp = store.itemNamed('litellm_setting', 'cache_params')
+    return cp?.data?.type ?? '—'
+  }
 </script>
 <div class="page">
   <h1>Dashboard</h1>
@@ -22,10 +28,10 @@
     <div class="card"><div class="lbl">Proxy</div>
       <div class="big"><span class="d" style="background:{dot(health?.proxy?.reachable)}"></span>{health?.proxy?.reachable ? 'Healthy' : 'Down'}</div>
       <div class="sub">{health?.proxy?.raw?.db === 'connected' ? 'DB connected' : '—'}</div></div>
-    <div class="card"><div class="lbl">Models</div><div class="big">{modelCount()}</div><div class="sub">in config.yaml</div></div>
+    <div class="card"><div class="lbl">Models</div><div class="big">{modelCount()}</div><div class="sub">in config</div></div>
     <div class="card"><div class="lbl">Virtual keys</div><div class="big">{keyCount()}</div><div class="sub">active</div></div>
     <div class="card"><div class="lbl">Spend (30d)</div><div class="big">{spend()}</div><div class="sub">all keys</div></div>
-    <div class="card"><div class="lbl">Cache</div><div class="big">{cacheOn()}</div><div class="sub">{cfg?.litellm_settings?.cache_params?.type ?? '—'}</div></div>
+    <div class="card"><div class="lbl">Cache</div><div class="big">{cacheOn()}</div><div class="sub">{cacheType()}</div></div>
   </div>
 </div>
 <style>
