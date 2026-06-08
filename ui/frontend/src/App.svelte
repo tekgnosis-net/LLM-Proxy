@@ -26,12 +26,11 @@
 
   function setTheme(t) { theme = t }
 
-  onMount(async () => { authed = (await api.me()).authed; store.refreshPending() })
-  async function onLogin() { authed = true }
+  onMount(async () => { authed = (await api.me()).authed; store.load() })
+  async function onLogin() { authed = true; store.load() }
   async function logout() { await api.logout(); authed = false }
   function confirmDiscard() {
-    const n = store.pendingSummary.length
-    if (confirm(`Discard ${n} unapplied change${n === 1 ? '' : 's'}? This reverts config.yaml to the last applied state.`)) {
+    if (confirm(`Discard all ${store.count} unapplied change(s)? Reverts to the last applied config.`)) {
       store.discard()
     }
   }
@@ -63,23 +62,25 @@
     <main class="main">
       {#if store.pending}
         <div class="applybar">
-          <span><strong>{store.pendingSummary.length || ''}</strong> unapplied change{store.pendingSummary.length === 1 ? '' : 's'}{store.pendingSummary.length ? ` (${store.pendingSummary.join(', ')})` : ''}</span>
+          <span><strong>{store.count}</strong> unapplied change{store.count === 1 ? '' : 's'}</span>
           <div class="applybar-actions">
-            <button class="discard" onclick={confirmDiscard} disabled={store.saving || store.applying}>Discard</button>
+            <button class="discard" onclick={confirmDiscard} disabled={store.saving || store.applying}>Discard all</button>
             <button class="apply" onclick={() => store.apply()} disabled={store.applying || store.saving}>{store.applying ? 'Applying… (~25s)' : 'Apply'}</button>
           </div>
         </div>
       {/if}
-      {#if screen==='dash'}<Dashboard />
+      {#if store.notice}<div class="banner ok">{store.notice}</div>{/if}
+      {#if store.error}<div class="banner err">{store.error}</div>{/if}
+      {#if screen==='dash'}<Dashboard {store} />
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
-      {:else if screen==='caching'}<Caching />
+      {:else if screen==='caching'}<Caching {store} />
       {:else if screen==='keys'}<Keys />
       {:else if screen==='providerkeys'}<ProviderKeys {store} />
       {:else if screen==='usage'}<Usage />
       {:else if screen==='housekeeping'}<Housekeeping />
       {:else if screen==='settings'}<Settings {store} {theme} {setTheme} />
-      {:else}<ConfigViewer />{/if}
+      {:else}<ConfigViewer {store} />{/if}
     </main>
   </div>
 {/if}
@@ -104,4 +105,7 @@
   .applybar .apply:disabled{opacity:.6}
   .applybar .discard{background:transparent;color:#7a5b00;border:1px solid #e0c074;border-radius:8px;padding:6px 12px;font-weight:600;cursor:pointer}
   .applybar .discard:disabled{opacity:.5}
+  .banner{padding:8px 16px;font-size:13px;font-weight:500}
+  .banner.ok{background:#e8f9ee;color:#1a7f45;border-bottom:1px solid #a8e6bf}
+  .banner.err{background:#fff0f0;color:#b00020;border-bottom:1px solid #f5b8c4}
 </style>
