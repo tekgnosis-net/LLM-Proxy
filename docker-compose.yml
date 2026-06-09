@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "1"]
     ports:
-      - "4000:4000"
+      - "${LITELLM_PROXY_PORT:-4000}:4000"
     volumes:
       # Mount the config DIRECTORY (not the file): if config.yaml is absent (fresh
       # deploy — it's git-ignored), Docker would otherwise create the missing

@@ -21,7 +21,7 @@ cd "$(dirname "$0")" || exit 1   # run from the repo root regardless of CWD
 MANAGED="LITELLM_MASTER_KEY LITELLM_SALT_KEY POSTGRES_USER POSTGRES_PASSWORD \
 UI_PORT ADMIN_PASSWORD_HASH SESSION_SECRET HOUSEKEEPING_ENABLED \
 HOUSEKEEPING_INTERVAL_HOURS HOUSEKEEPING_SPENDLOG_RETENTION_DAYS \
-HOUSEKEEPING_DELETE_EXPIRED_KEYS"
+HOUSEKEEPING_DELETE_EXPIRED_KEYS LITELLM_PROXY_PORT LITELLM_PROXY_HOST"
 
 # ---- helpers ---------------------------------------------------------------
 
@@ -162,6 +162,12 @@ else
 fi
 echo
 
+info "${c_bold}Proxy endpoint${c_off} (advertised to OpenAI-compatible clients)"
+detected_ip="$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || hostname -I 2>/dev/null | awk '{print $1}')"
+LITELLM_PROXY_PORT="$(ask "  LITELLM_PROXY_PORT (host-facing port clients call)" "$(current_or LITELLM_PROXY_PORT 4000)")"
+LITELLM_PROXY_HOST="$(ask "  LITELLM_PROXY_HOST (LAN IP/host; blank = UI auto-detects)" "$(current_or LITELLM_PROXY_HOST "${detected_ip}")")"
+echo
+
 # ---- preserve any non-managed custom keys ----------------------------------
 
 EXTRAS=""
@@ -200,6 +206,11 @@ tmp="$ENV_FILE.tmp.$$"
   printf 'ADMIN_PASSWORD_HASH=%s\n\n' "$ADMIN_PASSWORD_HASH"
   echo "# Secret used to sign admin UI session cookies."
   printf 'SESSION_SECRET=%s\n\n' "$SESSION_SECRET"
+  echo "# Host-facing port for the LiteLLM proxy (clients call this). Default 4000."
+  printf 'LITELLM_PROXY_PORT=%s\n' "$LITELLM_PROXY_PORT"
+  echo "# LAN IP / host clients use to reach the proxy. Leave blank to auto-detect"
+  echo "# (the UI uses the host you opened it on)."
+  printf 'LITELLM_PROXY_HOST=%s\n\n' "$LITELLM_PROXY_HOST"
   echo "# DB housekeeping — opt-in maintenance cron in the UI backend."
   echo "# When enabled: trims spend logs older than the retention window and"
   echo "# (optionally) deletes expired virtual keys, every N hours."
