@@ -25,7 +25,11 @@ async def store():
     Creates the tables fresh, yields a ConfigStore, then drops the tables so
     every test starts with an empty slate.
     """
-    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        conn = await asyncpg.connect(TEST_DSN)
+    except (OSError, asyncpg.PostgresError) as e:
+        pytest.skip(f"no test Postgres reachable at {TEST_DSN} ({e}); "
+                    f"set TEST_DATABASE_URL to run ConfigStore DB tests")
     # Drop tables if they exist from a previous failed run
     await conn.execute(f"DROP TABLE IF EXISTS {STAGED}")
     await conn.execute(f"DROP TABLE IF EXISTS {APPLIED}")
