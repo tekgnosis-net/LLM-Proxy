@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, buildLitellmParams, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
   import { api } from '../lib/api.js'
+  import { uuidv4 } from '../lib/browser.js'
   let { store } = $props()
   let showAdd = $state(false)
   let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
@@ -107,7 +108,7 @@
   }
 
   async function addModel() {
-    const id = crypto.randomUUID()
+    const id = uuidv4()
     const ok = await store.stageItem('model', id, {
       model_name: form.modelName,
       litellm_params: buildParams(),

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
+  import { copyText } from '../lib/browser.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
@@ -42,7 +43,7 @@
     <div class="banner key">
       <strong>New key (copy it now — shown only once):</strong>
       <code>{newKey}</code>
-      <button onclick={() => navigator.clipboard?.writeText(newKey)}>Copy</button>
+      <button onclick={() => copyText(newKey)}>Copy</button>
       <button onclick={() => newKey = null}>Done</button>
     </div>
   {/if}

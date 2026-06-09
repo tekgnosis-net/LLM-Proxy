@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
+  import { copyText } from '../lib/browser.js'
   let { store } = $props()
   let health = $state(null), usage = $state(null), keys = $state(null), err = $state('')
   let proxy = $state(null)
@@ -28,7 +29,7 @@
     return `${location.protocol}//${host}:${proxy.proxy_port}`
   }
   async function copy(text) {
-    try { await navigator.clipboard.writeText(text) } catch (_) {}
+    await copyText(text)
   }
 </script>
 <div class="page">
