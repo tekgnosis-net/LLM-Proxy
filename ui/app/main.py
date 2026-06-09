@@ -11,6 +11,22 @@ from app.routes import config_v3_routes, system_routes
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+class CachedStaticFiles(StaticFiles):
+    """Serve HTML with no-cache so a new build is always picked up, while the
+    content-hashed `assets/*` are immutable (cached forever). Without this the
+    browser heuristically caches index.html and keeps serving stale JS after an
+    update — e.g. an admin would never receive a UI bugfix without a hard refresh."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        ct = resp.headers.get("content-type", "")
+        if ct.startswith("text/html"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        elif path.startswith("assets/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+
 @asynccontextmanager
 async def lifespan(app):
     import logging
@@ -95,7 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog_routes.router)
     app.include_router(system_routes.router)
     if STATIC_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+        app.mount("/", CachedStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app
 
 
