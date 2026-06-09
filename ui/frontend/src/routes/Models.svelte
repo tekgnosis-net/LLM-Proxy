@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, buildLitellmParams } from '../lib/providers.js'
+  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, buildLitellmParams, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
   import { api } from '../lib/api.js'
   let { store } = $props()
   let showAdd = $state(false)
@@ -76,8 +76,8 @@
     try {
       const m = await api.catalogModel(full)
       if (m) {
-        if (!form.input_cost) form.input_cost = m.input_cost_per_token ?? ''
-        if (!form.output_cost) form.output_cost = m.output_cost_per_token ?? ''
+        if (!form.input_cost) form.input_cost = perTokenToPerM(m.input_cost_per_token)
+        if (!form.output_cost) form.output_cost = perTokenToPerM(m.output_cost_per_token)
         if (m.mode) form.mode = m.mode
         autofilled = true
       }
@@ -88,8 +88,8 @@
   function buildParams() {
     const lp = buildLitellmParams(providerSlug, form)
     if (form.credential) { delete lp.api_key; lp.litellm_credential_name = form.credential }
-    if (form.input_cost !== '' && form.input_cost !== null) lp.input_cost_per_token = Number(form.input_cost)
-    if (form.output_cost !== '' && form.output_cost !== null) lp.output_cost_per_token = Number(form.output_cost)
+    if (form.input_cost !== '' && form.input_cost != null) lp.input_cost_per_token = perMToPerToken(form.input_cost)
+    if (form.output_cost !== '' && form.output_cost != null) lp.output_cost_per_token = perMToPerToken(form.output_cost)
     return lp
   }
 
@@ -107,7 +107,9 @@
   }
 
   async function addModel() {
-    const ok = await store.stageItem('model', form.modelName, {
+    const id = crypto.randomUUID()
+    const ok = await store.stageItem('model', id, {
+      model_name: form.modelName,
       litellm_params: buildParams(),
       model_info: { mode: form.mode }
     })
@@ -149,10 +151,9 @@
   {#if showAdd}
     <div class="card add">
       <label>Provider
-        <input list="provider-list" bind:value={providerSlug} onchange={onProviderChange} placeholder="search providers…" />
-        <datalist id="provider-list">
-          {#each providers as p}<option value={p.provider} label={p.display_name || p.provider}></option>{/each}
-        </datalist>
+        <select bind:value={providerSlug} onchange={onProviderChange}>
+          {#each providers as p}<option value={p.provider}>{p.display_name || p.provider}</option>{/each}
+        </select>
       </label>
       <label>Public model name <input bind:value={form.modelName} placeholder="e.g. gpt-4o" /></label>
       <label>Provider model id
@@ -181,7 +182,10 @@
       {#if specialFields().includes('vertex_location')}<label>Vertex location <input bind:value={form.vertex_location} placeholder="us-central1" /></label>{/if}
 
       <label>Mode
-        <select bind:value={form.mode}>{#each providerModes() as m}<option value={m}>{m}</option>{/each}</select>
+        <select bind:value={form.mode}>
+          {#each providerModes() as m}<option value={m}>{modeLabel(m)}</option>{/each}
+        </select>
+        <span class="hint">The endpoint type used for the health check.</span>
       </label>
 
       <!-- Advanced: custom endpoint (LiteLLM resolves the URL from the prefix otherwise) -->
@@ -190,8 +194,8 @@
         <label>API base (override / self-hosted) <input bind:value={form.api_base} placeholder="https://your-endpoint/v1 — leave blank to let LiteLLM resolve" /></label>
       {/if}
 
-      <label>Input cost/token <input type="number" step="1e-9" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
-      <label>Output cost/token <input type="number" step="1e-9" min="0" bind:value={form.output_cost} placeholder="auto from catalog" /></label>
+      <label>Input cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
+      <label>Output cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.output_cost} placeholder="auto from catalog" /></label>
 
       <div class="row">
         <button onclick={testConn} disabled={busy || !form.modelName || !form.modelId}>Test connection</button>
@@ -213,14 +217,23 @@
     {#if modelItems.length === 0}<p class="empty">No models yet. Add one to start serving.</p>
     {:else}
       <table>
-        <thead><tr><th>Model name</th><th>litellm model</th><th>Health</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Model name</th><th>litellm model</th><th>Costs</th><th>Health</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {#each modelItems as item}
-            {@const dot = healthDot(item.name)}
+            {@const publicName = item.data?.model_name ?? item.name}
+            {@const lp = item.data?.litellm_params ?? {}}
+            {@const dot = healthDot(publicName)}
             {@const flag = item.flag}
+            {@const inCost = lp.input_cost_per_token != null ? perTokenToPerM(lp.input_cost_per_token).toFixed(2) : null}
+            {@const outCost = lp.output_cost_per_token != null ? perTokenToPerM(lp.output_cost_per_token).toFixed(2) : null}
             <tr class={flagAccent(flag)}>
-              <td class:strikethrough={flag === 'deleted'}>{item.name}</td>
-              <td class:strikethrough={flag === 'deleted'}><code>{item.data?.litellm_params?.model ?? ''}</code></td>
+              <td class:strikethrough={flag === 'deleted'}>{publicName}</td>
+              <td class:strikethrough={flag === 'deleted'}><code>{lp.model ?? ''}</code></td>
+              <td class:strikethrough={flag === 'deleted'} style="font-size:12px;color:#6e6e73">
+                {#if inCost != null || outCost != null}
+                  In: ${inCost ?? '—'} Out: ${outCost ?? '—'} / 1M
+                {:else}—{/if}
+              </td>
               <td><span class="dot" style="background:{dot.color}" title={dot.title}></span></td>
               <td>
                 {#if flag === 'new'}<span class="flag-tag flag-new">new</span>

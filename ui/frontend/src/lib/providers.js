@@ -1,3 +1,14 @@
+// Descriptive labels for litellm `mode` values (the option value stays the raw mode).
+export const MODE_LABELS = {
+  chat: 'Chat Completions', embedding: 'Embeddings', completion: 'Text Completion',
+  image_generation: 'Image Generation', audio_transcription: 'Audio – Transcription',
+  audio_speech: 'Audio – Speech', rerank: 'Rerank', moderations: 'Moderations', responses: 'Responses',
+}
+export const modeLabel = (m) => MODE_LABELS[m] || m
+// Cost: UI shows $/1M tokens; litellm_params stores $/token.
+export const perTokenToPerM = (v) => (v == null || v === '') ? '' : Number(v) * 1e6
+export const perMToPerToken = (v) => (v == null || v === '') ? null : Number(v) / 1e6
+
 // Catalog-driven providers. The live list comes from /api/catalog/providers
 // (synced provider_endpoints_support.json). This static list is the COLD-START
 // fallback only (before first catalog sync / offline) — a snapshot of LiteLLM's
