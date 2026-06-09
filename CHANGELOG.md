@@ -1,3 +1,11 @@
+## [1.14.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.14.0...v1.14.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* **ui:** secure-context-safe uuid + clipboard (Add-model Save dead on plain-HTTP LAN) ([3378f1b](https://github.com/tekgnosis-net/LLM-Proxy/commit/3378f1b56b58d59153810aafe9ef0f82026290c7))
+* **ui:** serve index.html no-cache so new builds are picked up (hashed assets immutable) ([994a5a6](https://github.com/tekgnosis-net/LLM-Proxy/commit/994a5a62c52393743e2243d6ecb9a7717f5d7fef))
+
 # [1.14.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.13.1...v1.14.0) (2026-06-09)
 
 
