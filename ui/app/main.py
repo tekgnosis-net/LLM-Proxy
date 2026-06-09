@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.settings import get_settings
 from app.routes import auth_routes, health_routes, keys_routes, usage_routes
 from app.routes import housekeeping_routes, models_routes, catalog_routes
-from app.routes import config_v3_routes
+from app.routes import config_v3_routes, system_routes
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -35,7 +35,9 @@ async def lifespan(app):
             items, passthrough = split_config(cfg, encrypt=enc)
             if passthrough:
                 items.append({"kind": "passthrough", "name": "_", "data": passthrough})
-            await ConfigStore(s.database_url).seed_applied(items)
+            store = ConfigStore(s.database_url)
+            await store.seed_applied(items)
+            await store.migrate_model_identities()
         except Exception:
             logging.getLogger(__name__).warning(
                 "bootstrap import failed — DB may be temporarily unavailable; will retry on next restart",
@@ -91,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(housekeeping_routes.router)
     app.include_router(models_routes.router)
     app.include_router(catalog_routes.router)
+    app.include_router(system_routes.router)
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app

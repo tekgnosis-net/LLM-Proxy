@@ -1,4 +1,5 @@
 from __future__ import annotations
+import uuid
 from typing import Callable
 
 _KNOWN = {"model_list", "router_settings", "litellm_settings", "general_settings", "credential_list"}
@@ -10,9 +11,7 @@ def split_config(cfg: dict, encrypt: Callable[[str], str]) -> tuple[list[dict], 
     Credential api_keys are encrypted via `encrypt`."""
     items: list[dict] = []
     for m in (cfg.get("model_list") or []):
-        name = m.get("model_name")
-        data = {k: v for k, v in m.items() if k != "model_name"}
-        items.append({"kind": "model", "name": name, "data": data})
+        items.append({"kind": "model", "name": str(uuid.uuid4()), "data": dict(m)})
     for sec, kind in _DICT_SECTION_KIND.items():
         for key, val in (cfg.get(sec) or {}).items():
             items.append({"kind": kind, "name": key, "data": val})

@@ -1,5 +1,8 @@
 # LLM-Proxy Admin UI
 
+> **Per-screen field reference (what each setting expects and does):** see
+> [`admin-ui-guide.md`](admin-ui-guide.md).
+
 A purpose-built, Apple-HIG admin UI for this LiteLLM proxy stack — a reliable
 replacement for the bundled LiteLLM UI.
 

@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "1"]
     ports:
-      - "4000:4000"
+      - "${LITELLM_PROXY_PORT:-4000}:4000"
     volumes:
       # Mount the config DIRECTORY (not the file): if config.yaml is absent (fresh
       # deploy — it's git-ignored), Docker would otherwise create the missing
@@ -122,6 +122,8 @@ services:
       HOUSEKEEPING_DELETE_EXPIRED_KEYS: "${HOUSEKEEPING_DELETE_EXPIRED_KEYS:-true}"
       REDIS_HOST: ${REDIS_HOST:-valkey}
       REDIS_PORT: ${REDIS_PORT:-6379}
+      LITELLM_PROXY_PORT: ${LITELLM_PROXY_PORT:-4000}
+      LITELLM_PROXY_HOST: ${LITELLM_PROXY_HOST:-}
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:

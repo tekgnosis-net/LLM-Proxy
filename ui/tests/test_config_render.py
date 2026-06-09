@@ -52,3 +52,15 @@ def test_render_managed_wins_over_passthrough():
 def test_redact_masks_credential_values():
     cfg = {"credential_list": [{"credential_name": "x", "credential_values": {"api_key": "sk-REAL"}}]}
     assert redact_rendered(cfg)["credential_list"][0]["credential_values"]["api_key"] == "***"
+
+
+def test_two_models_same_name_both_render():
+    from app.config_render import render_config
+    items = [
+        {"kind": "model", "name": "id-a", "data": {"model_name": "gpt-4o", "litellm_params": {"model": "openai/gpt-4o"}}},
+        {"kind": "model", "name": "id-b", "data": {"model_name": "gpt-4o", "litellm_params": {"model": "azure/gpt-4o"}}},
+    ]
+    cfg = render_config(items, decrypt=lambda v: "")
+    names = [m["model_name"] for m in cfg["model_list"]]
+    assert names == ["gpt-4o", "gpt-4o"]
+    assert {m["litellm_params"]["model"] for m in cfg["model_list"]} == {"openai/gpt-4o", "azure/gpt-4o"}

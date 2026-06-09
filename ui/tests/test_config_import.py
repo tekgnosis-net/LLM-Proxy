@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from app.config_import import split_config
 
 
@@ -13,7 +15,13 @@ def test_split_known_sections_to_items_and_passthrough():
     }
     items, passthrough = split_config(cfg, encrypt=lambda s: f"ENC({s})")
     by = {(i["kind"], i["name"]): i for i in items}
-    assert by[("model", "gpt")]["data"]["litellm_params"]["model"] == "openai/gpt-4o"
+    # model items are now keyed by uuid; find by kind + assert data.model_name
+    model_items = [i for i in items if i["kind"] == "model"]
+    assert len(model_items) == 1
+    m = model_items[0]
+    _uuid.UUID(m["name"])                                              # name is a valid uuid
+    assert m["data"]["model_name"] == "gpt"
+    assert m["data"]["litellm_params"]["model"] == "openai/gpt-4o"
     assert by[("router_setting", "routing_strategy")]["data"] == "least-busy"
     assert by[("router_setting", "num_retries")]["data"] == 2
     assert by[("litellm_setting", "cache")]["data"] is True
@@ -25,3 +33,14 @@ def test_split_known_sections_to_items_and_passthrough():
 def test_split_empty_config():
     items, passthrough = split_config({}, encrypt=lambda s: s)
     assert items == [] and passthrough == {}
+
+
+def test_split_model_gets_uuid_name_and_keeps_model_name():
+    import uuid
+    from app.config_import import split_config
+    cfg = {"model_list": [{"model_name": "gpt-4o", "litellm_params": {"model": "openai/gpt-4o"}}]}
+    items, _ = split_config(cfg, encrypt=lambda s: s)
+    m = [i for i in items if i["kind"] == "model"][0]
+    uuid.UUID(m["name"])                      # name is a valid uuid (raises if not)
+    assert m["data"]["model_name"] == "gpt-4o"
+    assert m["data"]["litellm_params"] == {"model": "openai/gpt-4o"}

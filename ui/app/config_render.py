@@ -47,7 +47,9 @@ def render_config(items: list[dict], decrypt: Callable[[Any], str]) -> dict:
         if kind == "passthrough":
             base = copy.deepcopy(data) if isinstance(data, dict) else {}
         elif kind == "model":
-            model_list.append({"model_name": name, **data})
+            entry = {"model_name": data.get("model_name", name)}
+            entry.update({k: v for k, v in data.items() if k != "model_name"})
+            model_list.append(entry)
         elif kind == "credential":
             credential_list.append({"credential_name": name,
                                     "credential_values": {"api_key": decrypt(data.get("value_encrypted"))},
