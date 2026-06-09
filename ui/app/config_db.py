@@ -93,3 +93,30 @@ class ConfigStore:
                     await conn.execute(f"INSERT INTO {APPLIED}(kind,name,data) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
                                        it["kind"], it["name"], json.dumps(it["data"]))
         finally: await conn.close()
+
+    async def migrate_model_identities(self) -> int:
+        """One-time: rekey legacy model items (name=model_name, data without model_name)
+        to uuid names with model_name folded into data. Idempotent. Returns rows migrated."""
+        import uuid as _uuid
+        migrated = 0
+        conn = await self._conn()
+        try:
+            await self.ensure_schema(conn)
+            for table in (APPLIED, STAGED):
+                rows = await conn.fetch(f"SELECT * FROM {table} WHERE kind='model'")
+                for r in rows:
+                    data = json.loads(r["data"])
+                    if "model_name" in data:
+                        continue                       # already new-format
+                    async with conn.transaction():
+                        new_data = {"model_name": r["name"], **data}
+                        cols = "kind,name,data,flag" if table == STAGED else "kind,name,data"
+                        vals = ("model", str(_uuid.uuid4()), json.dumps(new_data)) + \
+                               ((r["flag"],) if table == STAGED else ())
+                        ph = ",".join(f"${i+1}" for i in range(len(vals)))
+                        await conn.execute(f"INSERT INTO {table}({cols}) VALUES({ph})", *vals)
+                        await conn.execute(f"DELETE FROM {table} WHERE kind='model' AND name=$1", r["name"])
+                        migrated += 1
+            return migrated
+        finally:
+            await conn.close()

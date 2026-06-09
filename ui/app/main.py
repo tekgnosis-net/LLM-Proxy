@@ -35,7 +35,9 @@ async def lifespan(app):
             items, passthrough = split_config(cfg, encrypt=enc)
             if passthrough:
                 items.append({"kind": "passthrough", "name": "_", "data": passthrough})
-            await ConfigStore(s.database_url).seed_applied(items)
+            store = ConfigStore(s.database_url)
+            await store.seed_applied(items)
+            await store.migrate_model_identities()
         except Exception:
             logging.getLogger(__name__).warning(
                 "bootstrap import failed — DB may be temporarily unavailable; will retry on next restart",
