@@ -1,3 +1,18 @@
+# [1.14.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.13.1...v1.14.0) (2026-06-09)
+
+
+### Bug Fixes
+
+* **config:** model items keyed by uuid, model_name in data (duplicate public names coexist) ([7a36758](https://github.com/tekgnosis-net/LLM-Proxy/commit/7a36758685ac688cf749d8acd58bf06a0744d9a5))
+
+
+### Features
+
+* **config:** idempotent migration rekeying legacy model items to uuid identities ([95e9e49](https://github.com/tekgnosis-net/LLM-Proxy/commit/95e9e493bb1f2b84ba5bcee8a975d10566f3acb5))
+* **ui:** /api/cache/stats (valkey INFO) + /api/proxy-info; redis dep; UI redis/proxy env ([a00942e](https://github.com/tekgnosis-net/LLM-Proxy/commit/a00942e22e3f1c3a5cb73a2a04925b8337b77cf1))
+* **ui:** live cache stats panel + Dashboard proxy URL card + LITELLM_PROXY_PORT/HOST wiring ([97051d9](https://github.com/tekgnosis-net/LLM-Proxy/commit/97051d9a352afc22bff9933ff236f37d1cb7fd81))
+* **ui:** Models uuid rows (dup names ok) + provider <select> + descriptive modes + cost per 1M ([72ede43](https://github.com/tekgnosis-net/LLM-Proxy/commit/72ede43981688f5810d38f7d63424e548cfb8de6))
+
 ## [1.13.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.13.0...v1.13.1) (2026-06-08)
 
 
