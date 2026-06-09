@@ -122,6 +122,8 @@ services:
       HOUSEKEEPING_DELETE_EXPIRED_KEYS: "${HOUSEKEEPING_DELETE_EXPIRED_KEYS:-true}"
       REDIS_HOST: ${REDIS_HOST:-valkey}
       REDIS_PORT: ${REDIS_PORT:-6379}
+      LITELLM_PROXY_PORT: ${LITELLM_PROXY_PORT:-4000}
+      LITELLM_PROXY_HOST: ${LITELLM_PROXY_HOST:-}
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:

@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     housekeeping_delete_expired_keys: bool = True
     redis_host: str = ""    # display only (resolved from compose), e.g. "valkey"
     redis_port: str = ""    # display only, e.g. "6379"
+    litellm_proxy_port: str = "4000"   # host-facing proxy port (compose binds it)
+    litellm_proxy_host: str = ""       # LAN IP/host to advertise; empty → UI uses location.hostname
     credentials_key: str = ""   # passphrase for the provider-key vault (any string; sha256-derived to a Fernet key); empty → uses session_secret
     catalog_sync_enabled: bool = True
     catalog_sync_interval_days: int = 7
