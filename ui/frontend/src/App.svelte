@@ -12,6 +12,7 @@
   import Caching from './routes/Caching.svelte'
   import Housekeeping from './routes/Housekeeping.svelte'
   import Settings from './routes/Settings.svelte'
+  import Logs from './routes/Logs.svelte'
   import { createConfigStore } from './lib/configStore.svelte.js'
   const store = createConfigStore()
 
@@ -54,6 +55,7 @@
       <button class="nav" class:active={screen==='keys'} onclick={() => screen='keys'}>🔑 Virtual Keys</button>
       <button class="nav" class:active={screen==='providerkeys'} onclick={() => screen='providerkeys'}>🗝 Provider Keys</button>
       <div class="navgroup">System</div>
+      <button class="nav" class:active={screen==='logs'} onclick={() => screen='logs'}>📋 Logs</button>
       <button class="nav" class:active={screen==='housekeeping'} onclick={() => screen='housekeeping'}>🧹 Housekeeping</button>
       <button class="nav" class:active={screen==='settings'} onclick={() => screen='settings'}>⚙ Settings</button>
       <div class="spacer"></div>
@@ -78,6 +80,7 @@
       {:else if screen==='keys'}<Keys />
       {:else if screen==='providerkeys'}<ProviderKeys {store} />
       {:else if screen==='usage'}<Usage />
+      {:else if screen==='logs'}<Logs {store} />
       {:else if screen==='housekeeping'}<Housekeeping />
       {:else if screen==='settings'}<Settings {store} {theme} {setTheme} />
       {:else}<ConfigViewer {store} />{/if}
