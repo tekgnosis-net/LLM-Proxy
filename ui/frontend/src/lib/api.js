@@ -35,4 +35,5 @@ export const api = {
   cacheStats: () => req('/api/cache/stats'),
   proxyInfo: () => req('/api/proxy-info'),
   get: (path) => req(path),
+  post: (path, body) => req(path, { method: 'POST', body: JSON.stringify(body) }),
 }

@@ -3,6 +3,20 @@
   import { api } from '../lib/api.js'
   let { store, theme, setTheme } = $props()
 
+  // Change admin password
+  let cpOld = $state(''), cpNew = $state(''), cpConfirm = $state('')
+  let cpBusy = $state(false), cpMsg = $state(''), cpErr = $state('')
+  let cpDisabled = $derived(cpBusy || cpNew.length < 8 || cpNew !== cpConfirm)
+  async function changePassword() {
+    cpBusy = true; cpMsg = ''; cpErr = ''
+    try {
+      await api.post('/api/auth/change-password', { old_password: cpOld, new_password: cpNew })
+      cpMsg = 'Password changed'; cpOld = ''; cpNew = ''; cpConfirm = ''
+    } catch (e) {
+      cpErr = e.message || 'Failed to change password'
+    } finally { cpBusy = false }
+  }
+
   // Passthrough editor
   let ptYaml = $state('')
   let ptErr = $state(''), ptMsg = $state(''), ptBusy = $state(false)
@@ -62,6 +76,19 @@
     <button onclick={syncCatalog} disabled={catBusy}>{catBusy ? 'Syncing…' : 'Sync now'}</button>
     {#if catMsg}<div class="banner ok">{catMsg}</div>{/if}
   </div>
+  <div class="card"><h2>Change admin password</h2>
+    <p class="hint">Updates the admin login password. The new password must be at least 8 characters.</p>
+    <div class="pw-fields">
+      <label>Current password<input type="password" bind:value={cpOld} placeholder="Current password" autocomplete="current-password" /></label>
+      <label>New password<input type="password" bind:value={cpNew} placeholder="New password (min 8 chars)" autocomplete="new-password" /></label>
+      <label>Confirm new password<input type="password" bind:value={cpConfirm} placeholder="Confirm new password" autocomplete="new-password" /></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button onclick={changePassword} disabled={cpDisabled}>{cpBusy ? 'Saving…' : 'Save'}</button>
+    </div>
+    {#if cpErr}<div class="banner err">{cpErr}</div>{/if}
+    {#if cpMsg}<div class="banner ok">{cpMsg}</div>{/if}
+  </div>
 </div>
 <style>
   .page{padding:24px 30px;max-width:680px}h2{font-size:15px;margin:0 0 10px}
@@ -74,4 +101,7 @@
   button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
   textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical}
+  .pw-fields{display:flex;flex-direction:column;gap:8px}
+  .pw-fields label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text)}
+  .pw-fields input{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:14px}
 </style>
