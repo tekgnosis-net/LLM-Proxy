@@ -260,3 +260,22 @@ def test_write_config_atomic_leaves_no_tmp(tmp_path):
     p = str(tmp_path / "config.yaml")
     write_config_atomic(p, "hello: world\n")
     assert not list(tmp_path.glob("*.tmp"))
+
+
+# --- Task 3: routing_groups overlap guard ---
+
+def test_validate_rejects_overlapping_routing_groups():
+    import pytest
+    from app.config_store import validate_config, ConfigError
+    raw = {"router_settings": {"routing_groups": [
+        {"group_name":"a","models":["gpt-4o"],"routing_strategy":"latency-based-routing"},
+        {"group_name":"b","models":["gpt-4o"],"routing_strategy":"cost-based-routing"}]}}
+    with pytest.raises(ConfigError):
+        validate_config(raw)
+
+def test_validate_accepts_disjoint_routing_groups():
+    from app.config_store import validate_config
+    raw = {"router_settings": {"routing_groups": [
+        {"group_name":"a","models":["gpt-4o"],"routing_strategy":"latency-based-routing"},
+        {"group_name":"b","models":["claude"],"routing_strategy":"cost-based-routing"}]}}
+    validate_config(raw)   # no raise

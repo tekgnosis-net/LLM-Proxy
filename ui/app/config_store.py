@@ -104,6 +104,15 @@ def validate_config(raw: dict) -> "ProxyConfig":
         for k in FORBIDDEN_CACHE_KEYS:
             if k in cache_params:
                 raise ConfigError(f"cache_params contains forbidden key {k!r} (LiteLLM bug #10949)")
+    rs = raw.get("router_settings")
+    groups = rs.get("routing_groups") if isinstance(rs, dict) else None
+    if isinstance(groups, list):
+        seen = set()
+        for g in groups:
+            for m in (g.get("models") or []) if isinstance(g, dict) else []:
+                if m in seen:
+                    raise ConfigError(f"model {m!r} is in more than one routing group (each model may belong to at most one)")
+                seen.add(m)
     # Enforce "config.yaml holds no secrets" — all secret fields must be os.environ/ refs.
     _check_no_literal_secrets(raw)
     try:
