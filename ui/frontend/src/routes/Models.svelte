@@ -32,12 +32,10 @@
       const h = await api.modelsHealth()
       const map = {}
       for (const ep of (h.healthy_endpoints ?? [])) {
-        const name = ep.model ?? ep.model_name
-        if (name) map[name] = true
+        if (ep.model_id) map[ep.model_id] = true
       }
       for (const ep of (h.unhealthy_endpoints ?? [])) {
-        const name = ep.model ?? ep.model_name
-        if (name) map[name] = false
+        if (ep.model_id) map[ep.model_id] = false
       }
       healthMap = map
     } catch (_) { healthMap = {} }
@@ -152,7 +150,7 @@
   }
 
   function healthInfo(item) {
-    const name = item.data.model_name, st = healthMap[name]
+    const st = healthMap[item.name]
     if (st === true) return { color:'#34c759', title:'Healthy' }
     if (st === false) return { color:'#ff3b30', title:'Unhealthy' }
     if (item.flag === 'new') return { color:'#c7c7cc', title:'Not applied yet — apply to start health checks' }
