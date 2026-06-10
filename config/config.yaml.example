@@ -31,6 +31,8 @@ litellm_settings:
 # (NOT "lowest-cost" — that's only a docs nickname and LiteLLM rejects it).
 router_settings:
   routing_strategy: simple-shuffle
+  redis_host: os.environ/REDIS_HOST     # routing-state sharing for cost/usage/latency strategies (Valkey)
+  redis_port: os.environ/REDIS_PORT
 
 # Models — managed by the UI's Models screen (written here). Empty until you add
 # deployments; each entry is {model_name, litellm_params: {model, ...}}.

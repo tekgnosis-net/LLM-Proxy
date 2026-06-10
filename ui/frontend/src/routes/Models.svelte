@@ -142,11 +142,12 @@
     await store.discard('model', name)
   }
 
-  function healthDot(modelName) {
-    const status = healthMap[modelName]
-    if (status === true) return { color: '#34c759', title: 'Healthy' }
-    if (status === false) return { color: '#ff3b30', title: 'Unhealthy' }
-    return { color: '#8e8e93', title: 'Unknown' }
+  function healthInfo(item) {
+    const name = item.data.model_name, st = healthMap[name]
+    if (st === true) return { color:'#34c759', title:'Healthy' }
+    if (st === false) return { color:'#ff3b30', title:'Unhealthy' }
+    if (item.flag === 'new') return { color:'#c7c7cc', title:'Not applied yet — apply to start health checks' }
+    return { color:'#8e8e93', title:'Health check pending (background check runs every ~5 min)' }
   }
 
   // Flag helpers
@@ -241,7 +242,7 @@
           {#each modelItems as item}
             {@const publicName = item.data?.model_name ?? item.name}
             {@const lp = item.data?.litellm_params ?? {}}
-            {@const dot = healthDot(publicName)}
+            {@const dot = healthInfo(item)}
             {@const flag = item.flag}
             {@const inCost = lp.input_cost_per_token != null ? perTokenToPerM(lp.input_cost_per_token).toFixed(2) : null}
             {@const outCost = lp.output_cost_per_token != null ? perTokenToPerM(lp.output_cost_per_token).toFixed(2) : null}
