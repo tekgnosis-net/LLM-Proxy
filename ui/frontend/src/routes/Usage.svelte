@@ -1,8 +1,13 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { api } from '../lib/api.js'
 
-  let days = $state(30)
+  function initDays() { const v = +localStorage.getItem('usage.days'); return [7,30,90].includes(v) ? v : 30 }
+  function initRefresh() { return +localStorage.getItem('usage.refreshSec') || 0 }  // 0 = off
+  let days = $state(initDays())
+  let refreshSec = $state(initRefresh())
+  let timer = null
+
   let d = $state(null)
   let err = $state('')
   let loading = $state(true)
@@ -14,8 +19,15 @@
     finally { loading = false }
   }
 
-  onMount(load)
-  $effect(() => { days; load() })
+  $effect(() => { localStorage.setItem('usage.days', days); load() })          // range change → save + reload
+  $effect(() => { localStorage.setItem('usage.refreshSec', refreshSec); arm() }) // interval change → save + re-arm
+  function arm() {
+    if (timer) { clearInterval(timer); timer = null }
+    if (refreshSec > 0 && !document.hidden) timer = setInterval(load, refreshSec * 1000)
+  }
+  function onVis() { arm() }                       // pause when hidden, resume when visible
+  onMount(() => document.addEventListener('visibilitychange', onVis))
+  onDestroy(() => { if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', onVis) })
 
   const money = (n) => `$${Number(n ?? 0).toFixed(4)}`
   function maxReq() { return Math.max(1, ...((d?.daily ?? []).map(x => x.requests ?? 0))) }
@@ -28,6 +40,12 @@
     {#each [7, 30, 90] as n}
       <button class="range-btn" class:active={days === n} onclick={() => days = n}>{n}d</button>
     {/each}
+    <label class="refresh">Auto-refresh
+      <select bind:value={refreshSec}>
+        <option value={0}>Off</option><option value={10}>10s</option><option value={30}>30s</option>
+        <option value={60}>60s</option><option value={300}>5m</option>
+      </select>
+    </label>
   </div>
 
   {#if err}<div class="banner err">{err}</div>{/if}
@@ -93,7 +111,8 @@
 
 <style>
   .page{padding:24px 30px;max-width:960px}
-  .range-row{display:flex;gap:8px;margin:12px 0 4px}
+  .range-row{display:flex;align-items:center;gap:8px;margin:12px 0 4px}
+  .refresh{margin-left:auto;font-size:13px;color:#6e6e73}
   .range-btn{padding:5px 16px;border:1px solid rgba(0,0,0,.15);border-radius:8px;background:#f5f5f7;font-size:13px;cursor:pointer;transition:background .15s}
   .range-btn:hover{background:#e5e5ea}
   .range-btn.active{background:#0a84ff;color:#fff;border-color:#0a84ff}
