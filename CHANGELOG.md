@@ -1,3 +1,18 @@
+# [1.17.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.16.0...v1.17.0) (2026-06-10)
+
+
+### Bug Fixes
+
+* **ui:** map model health by deployment id (model_info.id), not public name — dots were always grey ([dcf698d](https://github.com/tekgnosis-net/LLM-Proxy/commit/dcf698d047a29d60524c3f391a5d701a050a7347))
+
+
+### Features
+
+* **ui:** /api/usage/summary — SQL spend-by-model/key + daily over a range ([339917d](https://github.com/tekgnosis-net/LLM-Proxy/commit/339917df266458c8775e911efc442d082b06f0c4))
+* **ui:** Logs screen — live follow (SSE) + Debug-logging toggle (set_verbose) ([4d55e15](https://github.com/tekgnosis-net/LLM-Proxy/commit/4d55e158b275aefae311d4014ec0f653432cf3b1))
+* **ui:** richer Usage — range selector, totals, by-model/by-key tables, daily bars ([3e361c9](https://github.com/tekgnosis-net/LLM-Proxy/commit/3e361c9e253189345d3df077bf9cd4287734a6de))
+* **ui:** SSE /api/logs/stream — de-framed live LiteLLM logs via socket-proxy ([520546e](https://github.com/tekgnosis-net/LLM-Proxy/commit/520546ebc62503d290b22cba83566f12bdc82e6b))
+
 # [1.16.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.15.0...v1.16.0) (2026-06-10)
 
 
