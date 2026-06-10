@@ -22,11 +22,15 @@ def verify_and_hash(old: str, new: str, eff: str) -> str:
 
 
 async def effective_hash() -> str:
-    """The admin hash in effect: the DB override if set, else the env ADMIN_PASSWORD_HASH."""
+    """The admin hash in effect: the DB override if set, else the env ADMIN_PASSWORD_HASH.
+    Falls back to the env hash on any DB connection error."""
     s = get_settings()
     if not s.database_url:
         return s.admin_password_hash
-    conn = await asyncpg.connect(s.database_url)
+    try:
+        conn = await asyncpg.connect(s.database_url)
+    except (OSError, asyncpg.PostgresError, Exception):
+        return s.admin_password_hash
     try:
         await conn.execute(_DDL)
         row = await conn.fetchrow("SELECT password_hash FROM ui_admin_auth WHERE id = 1")
