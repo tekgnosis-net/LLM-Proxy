@@ -181,7 +181,7 @@ not part of the staged config tables.
 
 The UI runs as the `llm-proxy-ui` service in the root
 [`docker-compose.yml`](../docker-compose.yml), pulled from GHCR (pinned to an
-immutable release tag, e.g. `ghcr.io/tekgnosis-net/llm-proxy-ui:1.17.0`) — no
+immutable release tag, e.g. `ghcr.io/tekgnosis-net/llm-proxy-ui:1.17.1`) — no
 local build needed. To update, bump the tag (or use `:latest`).
 
 ```bash
