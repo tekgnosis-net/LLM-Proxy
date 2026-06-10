@@ -1,11 +1,25 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
+import asyncpg
 from app.auth import login_required
 from app.spend_client import SpendClient
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api")
+
+
+def _shape_summary(days, totals, by_model, by_key, daily):
+    return {
+        "range_days": days,
+        "totals": {"spend": float(totals.get("spend") or 0), "requests": totals.get("requests") or 0,
+                   "tokens": totals.get("tokens") or 0},
+        "by_model": [{"model": r["model"], "spend": float(r["s"] or 0), "requests": r["r"],
+                      "tokens": r["t"] or 0} for r in by_model],
+        "by_key": [{"key": r["k"], "spend": float(r["s"] or 0), "requests": r["r"],
+                    "last_used": r["last"].isoformat() if r["last"] else None} for r in by_key],
+        "daily": [{"day": r["d"].isoformat(), "requests": r["r"], "spend": float(r["s"] or 0)} for r in daily],
+    }
 
 
 def make_spend_client() -> SpendClient:
@@ -34,3 +48,33 @@ async def usage():
     )
     return {"total": total, "by_model": by_model, "by_key": by_key, "activity": activity,
             "window": {"start": start.isoformat(), "end": end.isoformat()}}
+
+
+@router.get("/usage/summary", dependencies=[Depends(login_required)])
+async def usage_summary(days: int = 30):
+    days = max(1, min(int(days), 365))
+    dsn = get_settings().database_url
+    if not dsn:
+        return _shape_summary(days, {"spend": 0, "requests": 0, "tokens": 0}, [], [], [])
+    win = f"{days} days"
+    conn = await asyncpg.connect(dsn)
+    try:
+        totals = await conn.fetchrow(
+            'SELECT COALESCE(SUM(spend),0) spend, COUNT(*) requests, COALESCE(SUM(total_tokens),0) tokens '
+            'FROM "LiteLLM_SpendLogs" WHERE "startTime" > now() - $1::interval', win)
+        by_model = await conn.fetch(
+            'SELECT model, SUM(spend) s, COUNT(*) r, SUM(total_tokens) t FROM "LiteLLM_SpendLogs" '
+            'WHERE "startTime" > now() - $1::interval GROUP BY model ORDER BY s DESC NULLS LAST LIMIT 50', win)
+        by_key = await conn.fetch(
+            'SELECT COALESCE(v.key_alias, LEFT(l.api_key,10)) k, SUM(l.spend) s, COUNT(*) r, MAX(l."startTime") last '
+            'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token = l.api_key '
+            'WHERE l."startTime" > now() - $1::interval GROUP BY k ORDER BY s DESC NULLS LAST LIMIT 50', win)
+        daily = await conn.fetch(
+            'SELECT date_trunc(\'day\', "startTime")::date d, COUNT(*) r, SUM(spend) s FROM "LiteLLM_SpendLogs" '
+            'WHERE "startTime" > now() - $1::interval GROUP BY d ORDER BY d', win)
+    except asyncpg.PostgresError:
+        return _shape_summary(days, {"spend": 0, "requests": 0, "tokens": 0}, [], [], [])
+    finally:
+        await conn.close()
+    return _shape_summary(days, dict(totals), [dict(r) for r in by_model],
+                          [dict(r) for r in by_key], [dict(r) for r in daily])
