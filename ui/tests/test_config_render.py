@@ -34,7 +34,7 @@ def test_render_groups_items_into_sections_and_decrypts_creds():
     assert cfg["general_settings"] == {"store_model_in_db": False}
     assert cfg["litellm_settings"]["cache"] is True
     assert cfg["litellm_settings"]["drop_params"] is True          # passthrough deep-merged
-    assert {"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o", "litellm_credential_name": "openai"}, "model_info": {"mode": "chat"}} in cfg["model_list"]
+    assert {"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o", "litellm_credential_name": "openai"}, "model_info": {"id": "gpt", "mode": "chat"}} in cfg["model_list"]
     assert all(m["model_name"] != "old" for m in cfg["model_list"])  # deleted excluded
     assert cfg["credential_list"][0] == {"credential_name": "openai", "credential_values": {"api_key": "sk-REAL"}, "credential_info": {"provider": "openai"}}
 
@@ -64,3 +64,13 @@ def test_two_models_same_name_both_render():
     names = [m["model_name"] for m in cfg["model_list"]]
     assert names == ["gpt-4o", "gpt-4o"]
     assert {m["litellm_params"]["model"] for m in cfg["model_list"]} == {"openai/gpt-4o", "azure/gpt-4o"}
+
+
+def test_model_render_sets_model_info_id_to_item_uuid():
+    from app.config_render import render_config
+    items = [{"kind":"model","name":"uuid-123","data":{"model_name":"gpt-4o","litellm_params":{"model":"openai/gpt-4o"},"model_info":{"mode":"chat"}}}]
+    cfg = render_config(items, decrypt=lambda v:"")
+    m = cfg["model_list"][0]
+    assert m["model_info"]["id"] == "uuid-123"
+    assert m["model_info"]["mode"] == "chat"
+    assert m["litellm_params"] == {"model":"openai/gpt-4o"}

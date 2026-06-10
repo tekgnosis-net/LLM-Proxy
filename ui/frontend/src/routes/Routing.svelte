@@ -43,34 +43,102 @@
   function flag(key) { return store.itemNamed('router_setting', key)?.flag }
   function isStaged(key) { const f = flag(key); return f === 'new' || f === 'changed' }
 
-  // --- per-field save actions ---
-  async function saveStrategy() {
-    await store.stageItem('router_setting', 'routing_strategy', localStrategy)
-  }
+  // --- single save / reset ---
+  const FIELDS = ['routing_strategy','num_retries','timeout','cooldown_time','allowed_fails','retry_after']
 
-  async function saveNumeric(key, localVal) {
-    if (localVal === '' || localVal == null) return
-    await store.stageItem('router_setting', key, Number(localVal))
-  }
-
-  async function saveFallbacks() {
+  async function saveAll() {
     parseErr = ''
-    let parsed
-    try { parsed = JSON.parse(localFallbacks) } catch { parseErr = 'Fallbacks must be valid JSON'; return }
-    await store.stageItem('router_setting', 'fallbacks', parsed)
+    // fallbacks: parse first; abort all on error
+    let fb
+    try { fb = JSON.parse(localFallbacks) } catch { parseErr = 'Fallbacks must be valid JSON'; return }
+    const locals = { routing_strategy: localStrategy, num_retries: localNumRetries, timeout: localTimeout,
+                     cooldown_time: localCooldown, allowed_fails: localAllowedFails, retry_after: localRetryAfter }
+    const stored = { routing_strategy: strategy, num_retries: numRetries, timeout: timeout,
+                     cooldown_time: cooldown, allowed_fails: allowedFails, retry_after: retryAfter }
+    for (const k of FIELDS) {
+      const v = locals[k]
+      if (k === 'routing_strategy') { if (v !== stored[k]) await store.stageItem('router_setting', k, v); continue }
+      if (v === '' || v == null) continue            // skip cleared numerics
+      if (Number(v) !== Number(stored[k])) await store.stageItem('router_setting', k, Number(v))
+    }
+    if (JSON.stringify(fb) !== JSON.stringify(fallbacksRaw)) await store.stageItem('router_setting', 'fallbacks', fb)
   }
 
-  function resetField(key) {
-    // re-derive by re-reading the item; the $effect above will sync local copies
-    // but for immediate UX we can manually reset
-    switch (key) {
-      case 'routing_strategy': localStrategy     = strategy; break
-      case 'num_retries':      localNumRetries   = numRetries   === '' ? '' : String(numRetries); break
-      case 'timeout':          localTimeout      = timeout      === '' ? '' : String(timeout); break
-      case 'cooldown_time':    localCooldown     = cooldown     === '' ? '' : String(cooldown); break
-      case 'allowed_fails':    localAllowedFails = allowedFails === '' ? '' : String(allowedFails); break
-      case 'retry_after':      localRetryAfter   = retryAfter   === '' ? '' : String(retryAfter); break
-      case 'fallbacks':        localFallbacks    = JSON.stringify(fallbacksRaw, null, 2); parseErr = ''; break
+  function resetAll() { localStrategy = strategy; localNumRetries = numRetries===''?'':String(numRetries)
+    localTimeout = timeout===''?'':String(timeout); localCooldown = cooldown===''?'':String(cooldown)
+    localAllowedFails = allowedFails===''?'':String(allowedFails); localRetryAfter = retryAfter===''?'':String(retryAfter)
+    localFallbacks = JSON.stringify(fallbacksRaw, null, 2); parseErr = '' }
+
+  // --- per-group routing ---
+
+  // available model names (deduped) from the model items
+  let availableModels = $derived(
+    [...new Set(store.itemsOfKind('model').map(m => m.data?.model_name).filter(Boolean))]
+  )
+
+  // deep-copy helper
+  function deepCopy(v) { return JSON.parse(JSON.stringify(v)) }
+
+  // live read of stored groups
+  let storedGroups = $derived(store.itemNamed('router_setting', 'routing_groups')?.data ?? [])
+
+  // local editable copy of groups
+  let localGroups = $state([])
+
+  // keep local groups in sync when store refreshes
+  $effect(() => { localGroups = deepCopy(storedGroups) })
+
+  // collapsible toggle
+  let groupsOpen = $state(false)
+
+  // overlap warning for the groups editor
+  let groupsOverlapWarn = $state('')
+
+  function isGroupsStaged() {
+    const f = store.itemNamed('router_setting', 'routing_groups')?.flag
+    return f === 'new' || f === 'changed' || f === 'deleted'
+  }
+
+  function addGroup() {
+    localGroups = [...localGroups, { group_name: '', models: [], routing_strategy: 'simple-shuffle' }]
+  }
+
+  function removeGroup(idx) {
+    localGroups = localGroups.filter((_, i) => i !== idx)
+  }
+
+  function toggleModel(groupIdx, modelName) {
+    const g = localGroups[groupIdx]
+    const models = g.models || []
+    if (models.includes(modelName)) {
+      localGroups[groupIdx] = { ...g, models: models.filter(m => m !== modelName) }
+    } else {
+      localGroups[groupIdx] = { ...g, models: [...models, modelName] }
+    }
+  }
+
+  function checkOverlap(groups) {
+    const seen = new Set()
+    for (const g of groups) {
+      for (const m of g.models || []) {
+        if (seen.has(m)) return `Model "${m}" is in more than one routing group — each model may belong to at most one group.`
+        seen.add(m)
+      }
+    }
+    return ''
+  }
+
+  async function saveGroups() {
+    groupsOverlapWarn = ''
+    // drop empty groups (no name or no models)
+    const cleaned = localGroups.filter(g => g.group_name && g.models && g.models.length > 0)
+    // client-side overlap check
+    const warn = checkOverlap(cleaned)
+    if (warn) { groupsOverlapWarn = warn; return }
+    if (cleaned.length === 0) {
+      await store.deleteItem('router_setting', 'routing_groups')
+    } else {
+      await store.stageItem('router_setting', 'routing_groups', cleaned)
     }
   }
 </script>
@@ -89,10 +157,6 @@
           {#each STRATEGIES as s}<option value={s}>{s}</option>{/each}
         </select>
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={saveStrategy} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('routing_strategy')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
     <p class="hint">Cost-based picks the cheapest deployment in a model group. <code>lowest-cost</code> is not valid and is rejected.</p>
 
@@ -102,10 +166,6 @@
         <span class="field-name">Num retries {#if isStaged('num_retries')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localNumRetries} placeholder="default 3" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('num_retries', localNumRetries)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('num_retries')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Timeout -->
@@ -114,10 +174,6 @@
         <span class="field-name">Timeout (s) {#if isStaged('timeout')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" step="0.1" bind:value={localTimeout} placeholder="default 600" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('timeout', localTimeout)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('timeout')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Cooldown time -->
@@ -126,10 +182,6 @@
         <span class="field-name">Cooldown time (s) {#if isStaged('cooldown_time')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localCooldown} placeholder="after allowed_fails" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('cooldown_time', localCooldown)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('cooldown_time')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Allowed fails -->
@@ -138,10 +190,6 @@
         <span class="field-name">Allowed fails {#if isStaged('allowed_fails')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localAllowedFails} placeholder="per minute before cooldown" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('allowed_fails', localAllowedFails)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('allowed_fails')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Retry after -->
@@ -150,24 +198,82 @@
         <span class="field-name">Retry after (s) {#if isStaged('retry_after')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localRetryAfter} placeholder="min before retry" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('retry_after', localRetryAfter)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('retry_after')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Fallbacks -->
     <div class="field-col">
       <span class="field-name">Fallbacks (JSON, e.g. <code>[{'{'}"gpt-4": ["gpt-4o"]{'}'}]</code>) {#if isStaged('fallbacks')}<span class="staged-dot" title="staged">●</span>{/if}</span>
       <textarea rows="5" bind:value={localFallbacks}></textarea>
-      {#if parseErr}<div class="banner err">{parseErr}</div>{/if}
-      <div class="row">
-        <button class="primary" onclick={saveFallbacks} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('fallbacks')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
+    </div>
+
+    <!-- Footer -->
+    {#if parseErr}<div class="banner err">{parseErr}</div>{/if}
+    <div class="footer-row">
+      <button class="primary" onclick={saveAll} disabled={store.saving||store.applying}>Save changes</button>
+      <button onclick={resetAll} disabled={store.saving||store.applying}>Reset all</button>
     </div>
 
   </div>
+
+  <!-- Per-group routing (advanced) -->
+  <div class="card">
+    <button class="collapsible-header" onclick={() => { groupsOpen = !groupsOpen }}>
+      <span class="field-name">
+        Per-group routing (advanced)
+        {#if isGroupsStaged()}<span class="staged-dot" title="staged — click Apply to make live">●</span>{/if}
+      </span>
+      <span class="chevron">{groupsOpen ? '▲' : '▼'}</span>
+    </button>
+    {#if groupsOpen}
+      <p class="hint">Assign a per-group routing strategy. Each model name may belong to at most one group. Groups render into <code>router_settings.routing_groups</code>.</p>
+
+      {#if groupsOverlapWarn}<div class="banner err">{groupsOverlapWarn}</div>{/if}
+
+      {#each localGroups as group, idx}
+        <div class="group-row">
+          <div class="group-fields">
+            <label class="field-label">
+              <span class="field-name">Group name</span>
+              <input type="text" bind:value={group.group_name} placeholder="e.g. fast-models" />
+            </label>
+            <label class="field-label">
+              <span class="field-name">Strategy</span>
+              <select bind:value={group.routing_strategy}>
+                {#each STRATEGIES as s}<option value={s}>{s}</option>{/each}
+              </select>
+            </label>
+            <div class="field-label">
+              <span class="field-name">Models</span>
+              {#if availableModels.length === 0}
+                <span class="hint">No models yet — add models first.</span>
+              {:else}
+                <div class="model-checkboxes">
+                  {#each availableModels as modelName}
+                    <label class="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={(group.models || []).includes(modelName)}
+                        onchange={() => toggleModel(idx, modelName)}
+                      />
+                      {modelName}
+                    </label>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          </div>
+          <button class="remove-btn" onclick={() => removeGroup(idx)} title="Remove group">✕</button>
+        </div>
+        {#if idx < localGroups.length - 1}<hr class="group-sep" />{/if}
+      {/each}
+
+      <div class="group-footer">
+        <button onclick={addGroup} disabled={store.saving||store.applying}>Add group</button>
+        <button class="primary" onclick={saveGroups} disabled={store.saving||store.applying}>Save groups</button>
+      </div>
+    {/if}
+  </div>
+
 </div>
 
 <style>
@@ -178,10 +284,9 @@
   .field-label{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:4px;flex:1}
   .field-name{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text,#3a3a3c)}
   .field-col{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:6px}
-  .field-actions{display:flex;gap:6px;padding-bottom:0}
-  select,input,textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
+  .footer-row{display:flex;gap:8px;padding-top:4px;border-top:1px solid rgba(0,0,0,.06)}
+  select,input[type="text"],input[type="number"],textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
   textarea{font-family:ui-monospace,monospace}
-  .row{display:flex;gap:8px}
   button{padding:6px 12px;border:1px solid #ccc;border-radius:8px;background:var(--card,#fff);font:inherit;cursor:pointer;white-space:nowrap;color:var(--text,#1d1d1f)}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button:disabled{opacity:.5;cursor:not-allowed}
@@ -191,4 +296,14 @@
   .hint{font-size:12px;color:var(--muted,#6e6e73);margin:0}
   /* staged indicator: small accent dot in the app's blue */
   .staged-dot{color:#0a84ff;font-size:10px;line-height:1;cursor:default;user-select:none}
+  /* per-group section */
+  .collapsible-header{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;padding:0;cursor:pointer;font:inherit}
+  .chevron{font-size:11px;color:var(--muted,#6e6e73)}
+  .group-row{display:flex;align-items:flex-start;gap:10px}
+  .group-fields{display:flex;flex-direction:column;gap:10px;flex:1}
+  .group-sep{border:0;border-top:1px solid rgba(0,0,0,.06);margin:4px 0}
+  .group-footer{display:flex;gap:8px;padding-top:4px;border-top:1px solid rgba(0,0,0,.06)}
+  .remove-btn{padding:4px 8px;border:1px solid #ccc;border-radius:8px;background:none;cursor:pointer;color:var(--muted,#6e6e73);font-size:12px;align-self:flex-start;margin-top:18px}
+  .model-checkboxes{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0}
+  .checkbox-label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text,#3a3a3c);cursor:pointer}
 </style>

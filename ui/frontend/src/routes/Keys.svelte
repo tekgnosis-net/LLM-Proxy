@@ -6,7 +6,10 @@
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
   let availableModels = $state([])
-  let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '' })
+  const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
+  const FALLBACKS_PLACEHOLDER = '[{"gpt-4": ["gpt-4o"]}]'
+  let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '' })
+  let showRouterSettings = $state(false)
 
   async function load() {
     loading = true; err = ''
@@ -24,6 +27,14 @@
     const payload = { key_alias: form.key_alias || undefined, models: form.models,
       max_budget: num(form.max_budget), budget_duration: form.budget_duration || undefined,
       duration: form.duration || undefined, rpm_limit: num(form.rpm_limit), tpm_limit: num(form.tpm_limit) }
+    // LiteLLM /key/generate top-level field — confirmed from its own UI request
+    const rs = {}
+    if (form.router_strategy) rs.routing_strategy = form.router_strategy
+    if (form.router_fallbacks.trim()) {
+      try { rs.fallbacks = JSON.parse(form.router_fallbacks) }
+      catch { err = 'Router fallbacks must be valid JSON'; busy = false; return }
+    }
+    if (Object.keys(rs).length) payload.router_settings = rs
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     try { const res = await api.createKey(payload); newKey = res.key; showCreate = false; await load() }
     catch (e) { err = e.message } finally { busy = false }
@@ -63,7 +74,22 @@
         <label>RPM limit <input type="number" min="0" bind:value={form.rpm_limit} /></label>
         <label>TPM limit <input type="number" min="0" bind:value={form.tpm_limit} /></label>
       </div>
-      <div class="row"><button class="primary" onclick={create} disabled={busy}>Create</button><button onclick={() => showCreate = false}>Cancel</button></div>
+      <details bind:open={showRouterSettings}>
+        <summary class="router-summary">Router Settings (optional)</summary>
+        <div class="router-body">
+          <label>Routing strategy
+            <select bind:value={form.router_strategy}>
+              <option value="">— use global default —</option>
+              {#each STRATEGIES as s}<option value={s}>{s}</option>{/each}
+            </select>
+          </label>
+          <label>Fallbacks
+            <textarea bind:value={form.router_fallbacks} rows="3" placeholder={FALLBACKS_PLACEHOLDER}></textarea>
+            <span class="hint">Optional. JSON list of {'{'}model: [fallback models]{'}'}.</span>
+          </label>
+        </div>
+      </details>
+      <div class="row"><button class="primary" onclick={create} disabled={busy}>Create</button><button onclick={() => { showCreate = false; form.router_strategy = ''; form.router_fallbacks = ''; showRouterSettings = false }}>Cancel</button></div>
     </div>
   {/if}
 
@@ -106,4 +132,12 @@
   .banner.key{background:#fff7e6;border:1px solid #ffe1a8;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .banner.key code{background:#fff;padding:4px 8px;border-radius:6px;border:1px solid #eed8a8;user-select:all}
   .empty{color:#6e6e73}
+  details{border:1px solid rgba(0,0,0,.08);border-radius:8px;padding:0}
+  .router-summary{padding:8px 10px;cursor:pointer;font-size:13px;color:#3a3a3c;user-select:none;list-style:none}
+  .router-summary::marker,.router-summary::-webkit-details-marker{display:none}
+  .router-summary::before{content:'▶';display:inline-block;margin-right:6px;font-size:10px;transition:transform .15s}
+  details[open] .router-summary::before{transform:rotate(90deg)}
+  .router-body{display:flex;flex-direction:column;gap:10px;padding:10px 10px 12px}
+  textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;resize:vertical}
+  .hint{font-size:11px;color:#6e6e73;margin-top:2px}
 </style>
