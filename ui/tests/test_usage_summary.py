@@ -1,3 +1,5 @@
+import types
+import pytest
 from datetime import datetime
 from app.routes.usage_routes import _shape_summary
 
@@ -19,3 +21,34 @@ def test_shape_summary_handles_empty():
     out = _shape_summary(7, {"spend": None, "requests": 0, "tokens": None}, [], [], [])
     assert out["totals"] == {"spend": 0.0, "requests": 0, "tokens": 0}
     assert out["by_model"] == [] and out["by_key"] == [] and out["daily"] == []
+
+
+@pytest.mark.asyncio
+async def test_usage_summary_binds_days_as_int(monkeypatch):
+    """Regression: the window must be bound as an INTEGER day count (make_interval(days => $1)).
+    Binding a string like '30 days' to $1::interval raises asyncpg DataError, which the silent
+    catch turned into an all-zeros 'no usage' screen on a DB that actually had 900+ rows."""
+    import app.routes.usage_routes as ur
+    seen_args = []
+
+    class FakeConn:
+        async def fetchrow(self, q, *args):
+            seen_args.append(args)
+            return {"spend": 0, "requests": 0, "tokens": 0}
+        async def fetch(self, q, *args):
+            seen_args.append(args)
+            return []
+        async def close(self):
+            pass
+
+    async def fake_connect(dsn):
+        return FakeConn()
+
+    monkeypatch.setattr(ur.asyncpg, "connect", fake_connect)
+    monkeypatch.setattr(ur, "get_settings", lambda: types.SimpleNamespace(database_url="postgres://x/y"))
+
+    await ur.usage_summary(days=30)
+
+    assert seen_args, "no DB queries were run"
+    # every query must receive the int day-count (30), never the str '30 days'
+    assert all(args == (30,) for args in seen_args), seen_args

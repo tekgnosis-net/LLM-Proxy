@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
 import asyncpg
@@ -7,6 +8,7 @@ from app.spend_client import SpendClient
 from app.settings import get_settings
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("uvicorn.error")
 
 
 def _shape_summary(days, totals, by_model, by_key, daily):
@@ -56,24 +58,32 @@ async def usage_summary(days: int = 30):
     dsn = get_settings().database_url
     if not dsn:
         return _shape_summary(days, {"spend": 0, "requests": 0, "tokens": 0}, [], [], [])
-    win = f"{days} days"
+    # NOTE: bind the window as an INTEGER day count via make_interval(days => $1).
+    # `now() - $1::interval` with a str param makes asyncpg infer $1 as an interval
+    # type and reject the str ("'str' object has no attribute 'days'", DataError) —
+    # which a silent catch then turned into an all-zeros "no usage" screen.
     conn = await asyncpg.connect(dsn)
     try:
         totals = await conn.fetchrow(
             'SELECT COALESCE(SUM(spend),0) spend, COUNT(*) requests, COALESCE(SUM(total_tokens),0) tokens '
-            'FROM "LiteLLM_SpendLogs" WHERE "startTime" > now() - $1::interval', win)
+            'FROM "LiteLLM_SpendLogs" WHERE "startTime" > now() - make_interval(days => $1)', days)
         by_model = await conn.fetch(
             'SELECT model, SUM(spend) s, COUNT(*) r, SUM(total_tokens) t FROM "LiteLLM_SpendLogs" '
-            'WHERE "startTime" > now() - $1::interval GROUP BY model ORDER BY s DESC NULLS LAST LIMIT 50', win)
+            'WHERE "startTime" > now() - make_interval(days => $1) GROUP BY model ORDER BY s DESC NULLS LAST LIMIT 50', days)
         by_key = await conn.fetch(
             'SELECT COALESCE(v.key_alias, LEFT(l.api_key,10)) k, SUM(l.spend) s, COUNT(*) r, MAX(l."startTime") last '
             'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token = l.api_key '
-            'WHERE l."startTime" > now() - $1::interval GROUP BY k ORDER BY s DESC NULLS LAST LIMIT 50', win)
+            'WHERE l."startTime" > now() - make_interval(days => $1) GROUP BY k ORDER BY s DESC NULLS LAST LIMIT 50', days)
         daily = await conn.fetch(
             'SELECT date_trunc(\'day\', "startTime")::date d, COUNT(*) r, SUM(spend) s FROM "LiteLLM_SpendLogs" '
-            'WHERE "startTime" > now() - $1::interval GROUP BY d ORDER BY d', win)
-    except asyncpg.PostgresError:
-        return _shape_summary(days, {"spend": 0, "requests": 0, "tokens": 0}, [], [], [])
+            'WHERE "startTime" > now() - make_interval(days => $1) GROUP BY d ORDER BY d', days)
+    except Exception:
+        # Do NOT silently return zeros — that disguises a broken query as "no usage".
+        # Log loudly and flag it so the UI can say "couldn't load" instead of "empty".
+        log.exception("usage_summary query failed (days=%s)", days)
+        out = _shape_summary(days, {"spend": 0, "requests": 0, "tokens": 0}, [], [], [])
+        out["error"] = "query_failed"
+        return out
     finally:
         await conn.close()
     return _shape_summary(days, dict(totals), [dict(r) for r in by_model],

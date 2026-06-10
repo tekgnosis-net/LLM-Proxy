@@ -31,6 +31,7 @@
   </div>
 
   {#if err}<div class="banner err">{err}</div>{/if}
+  {#if d?.error}<div class="banner err">Couldn't load usage — the query failed (check the UI logs). This is not the same as "no usage".</div>{/if}
 
   {#if loading}<p class="empty">Loading…</p>
   {:else if d}
