@@ -34,4 +34,5 @@ export const api = {
   catalogSync: () => req('/api/catalog/sync', { method: 'POST' }),
   cacheStats: () => req('/api/cache/stats'),
   proxyInfo: () => req('/api/proxy-info'),
+  get: (path) => req(path),
 }
