@@ -27,6 +27,14 @@ async def create_key(payload: dict = Body(...)):
         raise HTTPException(status_code=502, detail=f"proxy key API error: {e}")
 
 
+@router.post("/keys/update", dependencies=[Depends(login_required)])
+async def update_key(payload: dict = Body(...)):
+    try:
+        return await make_keys_client().update_key(payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"proxy key API error: {e}")
+
+
 @router.post("/keys/delete", dependencies=[Depends(login_required)])
 async def delete_keys(body: dict = Body(...)):
     tokens = body.get("tokens") or []

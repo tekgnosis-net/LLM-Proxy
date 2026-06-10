@@ -6,6 +6,7 @@
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
   let availableModels = $state([])
+  let editingToken = $state(null)
   const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
   const FALLBACKS_PLACEHOLDER = '[{"gpt-4": ["gpt-4o"]}]'
   let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '', router_num_retries: '', router_timeout: '', router_cooldown_time: '', router_allowed_fails: '', router_retry_after: '' })
@@ -22,17 +23,22 @@
   onMount(load)
 
   function num(v) { return v === '' || v == null ? undefined : Number(v) }
-  async function create() {
-    busy = true; err = ''; newKey = null
-    const payload = { key_alias: form.key_alias || undefined, models: form.models,
-      max_budget: num(form.max_budget), budget_duration: form.budget_duration || undefined,
-      duration: form.duration || undefined, rpm_limit: num(form.rpm_limit), tpm_limit: num(form.tpm_limit) }
-    // LiteLLM /key/generate top-level field — confirmed from its own UI request
+
+  function buildKeyFields() {
+    const payload = {
+      key_alias: form.key_alias || undefined,
+      models: form.models,
+      max_budget: num(form.max_budget),
+      budget_duration: form.budget_duration || undefined,
+      duration: form.duration || undefined,
+      rpm_limit: num(form.rpm_limit),
+      tpm_limit: num(form.tpm_limit)
+    }
     const rs = {}
     if (form.router_strategy) rs.routing_strategy = form.router_strategy
     if (form.router_fallbacks.trim()) {
       try { rs.fallbacks = JSON.parse(form.router_fallbacks) }
-      catch { err = 'Router fallbacks must be valid JSON'; busy = false; return }
+      catch { return null }  // caller checks for null on parse error
     }
     for (const [k, v] of [['num_retries', form.router_num_retries], ['timeout', form.router_timeout],
         ['cooldown_time', form.router_cooldown_time], ['allowed_fails', form.router_allowed_fails],
@@ -41,6 +47,36 @@
     }
     if (Object.keys(rs).length) payload.router_settings = rs
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
+    return payload
+  }
+
+  function editKey(k) {
+    form = { ...form,
+      key_alias: k.key_alias || '', models: (k.models || []),
+      max_budget: k.max_budget ?? '', budget_duration: k.budget_duration || '',
+      duration: '', rpm_limit: k.rpm_limit ?? '', tpm_limit: k.tpm_limit ?? '',
+      router_strategy: (k.router_settings?.routing_strategy) || '',
+      router_fallbacks: k.router_settings?.fallbacks ? JSON.stringify(k.router_settings.fallbacks) : '',
+      router_num_retries: k.router_settings?.num_retries ?? '', router_timeout: k.router_settings?.timeout ?? '',
+      router_cooldown_time: k.router_settings?.cooldown_time ?? '', router_allowed_fails: k.router_settings?.allowed_fails ?? '',
+      router_retry_after: k.router_settings?.retry_after ?? '' }
+    editingToken = k.token; showCreate = true; showRouterSettings = !!k.router_settings
+  }
+
+  async function create() {
+    busy = true; err = ''
+    if (editingToken) {
+      const fields = buildKeyFields()
+      if (fields === null) { err = 'Router fallbacks must be valid JSON'; busy = false; return }
+      try {
+        await api.post('/api/keys/update', { key: editingToken, ...fields })
+        editingToken = null; showCreate = false; await load()
+      } catch (e) { err = e.message } finally { busy = false }
+      return
+    }
+    newKey = null
+    const payload = buildKeyFields()
+    if (payload === null) { err = 'Router fallbacks must be valid JSON'; busy = false; return }
     try { const res = await api.createKey(payload); newKey = res.key; showCreate = false; await load() }
     catch (e) { err = e.message } finally { busy = false }
   }
@@ -53,9 +89,9 @@
 </script>
 
 <div class="page">
-  <header><h1>Virtual Keys</h1><button class="primary" onclick={() => { showCreate = true; newKey = null }} disabled={busy}>＋ Create key</button></header>
+  <header><h1>Virtual Keys</h1><button class="primary" onclick={() => { editingToken = null; showCreate = true; newKey = null }} disabled={busy}>＋ New key</button></header>
   {#if err}<div class="banner err">{err}</div>{/if}
-  {#if newKey}
+  {#if newKey && !editingToken}
     <div class="banner key">
       <strong>New key (copy it now — shown only once):</strong>
       <code>{newKey}</code>
@@ -66,6 +102,7 @@
 
   {#if showCreate}
     <div class="card add">
+      <h2 class="form-heading">{editingToken ? 'Edit key' : 'Create key'}</h2>
       <label>Alias <input bind:value={form.key_alias} placeholder="e.g. ci-pipeline" /></label>
       <label>Models (none selected = all)
         <select multiple bind:value={form.models} size={Math.min(5, Math.max(2, availableModels.length))}>
@@ -84,7 +121,7 @@
         <div class="router-body">
           <label>Routing strategy
             <select bind:value={form.router_strategy}>
-              <option value="">— use global default —</option>
+              <option value="">Inherit global</option>
               {#each STRATEGIES as s}<option value={s}>{s}</option>{/each}
             </select>
           </label>
@@ -116,7 +153,7 @@
           </div>
         </div>
       </details>
-      <div class="row"><button class="primary" onclick={create} disabled={busy}>Create</button><button onclick={() => { showCreate = false; form.router_strategy = ''; form.router_fallbacks = ''; form.router_num_retries = ''; form.router_timeout = ''; form.router_cooldown_time = ''; form.router_allowed_fails = ''; form.router_retry_after = ''; showRouterSettings = false }}>Cancel</button></div>
+      <div class="row"><button class="primary" onclick={create} disabled={busy}>{editingToken ? 'Save' : 'Create'}</button><button onclick={() => { showCreate = false; editingToken = null; form.router_strategy = ''; form.router_fallbacks = ''; form.router_num_retries = ''; form.router_timeout = ''; form.router_cooldown_time = ''; form.router_allowed_fails = ''; form.router_retry_after = ''; showRouterSettings = false }}>Cancel</button></div>
     </div>
   {/if}
 
@@ -133,7 +170,10 @@
               <td>{(k.models && k.models.length) ? k.models.join(', ') : 'all'}</td>
               <td>{budget(k)}</td>
               <td>{k.expires ? new Date(k.expires).toLocaleDateString() : 'never'}</td>
-              <td><button class="danger" onclick={() => del(k.token)} disabled={busy}>Delete</button></td>
+              <td class="actions">
+                <button onclick={() => editKey(k)} disabled={busy}>Edit</button>
+                <button class="danger" onclick={() => del(k.token)} disabled={busy}>Delete</button>
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -167,4 +207,6 @@
   .router-body{display:flex;flex-direction:column;gap:10px;padding:10px 10px 12px}
   textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;resize:vertical}
   .hint{font-size:11px;color:#6e6e73;margin-top:2px}
+  .form-heading{margin:0 0 4px;font-size:15px;font-weight:600;color:#1c1c1e}
+  .actions{display:flex;gap:6px}
 </style>
