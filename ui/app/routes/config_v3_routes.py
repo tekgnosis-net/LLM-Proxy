@@ -40,15 +40,30 @@ async def config_state():
     except Exception as e: raise HTTPException(status_code=502, detail=f"config state error: {e}")
     return {"items": [_redact_item(i) for i in eff], "pending": n > 0, "count": n}
 
+async def _credential_data(name: str, data: dict, store) -> dict:
+    """Build a credential's stored data. A provided api_key is Fernet-encrypted; a
+    BLANK api_key reuses the existing credential's value_encrypted (edit without
+    re-typing the secret). Blank with no existing credential is rejected."""
+    data = data or {}
+    provider = data.get("provider")
+    api_key = data.get("api_key")
+    if api_key:
+        ve = _fernet().encrypt(api_key.encode()).decode()
+    else:
+        eff = effective(await store.applied(), await store.staged())
+        existing = next((i for i in eff if i["kind"] == "credential" and i["name"] == name
+                         and i.get("flag") != "deleted"), None)
+        ve = (existing.get("data") or {}).get("value_encrypted") if existing else None
+        if not ve:
+            raise HTTPException(status_code=422, detail="credential api_key required (no existing key to keep)")
+    return {"provider": provider, "value_encrypted": ve}
+
 @router.put("/config/item", dependencies=[Depends(login_required)])
 async def stage_item(body: dict = Body(...)):
     kind, name, data = body.get("kind"), body.get("name"), body.get("data")
     if not kind or not name: raise HTTPException(status_code=422, detail="kind and name required")
     if kind == "credential":
-        api_key = (data or {}).get("api_key")
-        if not api_key: raise HTTPException(status_code=422, detail="credential api_key required")
-        data = {"provider": (data or {}).get("provider"),
-                "value_encrypted": _fernet().encrypt(api_key.encode()).decode()}
+        data = await _credential_data(name, data, make_config_store())
     try:
         await make_config_store().stage(kind, name, data)
         return await pending_status(make_config_store())

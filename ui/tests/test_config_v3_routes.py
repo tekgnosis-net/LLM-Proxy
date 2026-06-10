@@ -125,3 +125,31 @@ def test_put_passthrough_parses_and_stages(tmp_path):
 def test_put_passthrough_bad_yaml_422(tmp_path):
     c=_client(tmp_path, FakeStore())
     assert c.put("/api/config/passthrough", json={"yaml":"key: [unterminated"}).status_code==422
+
+# Task 1 v3.6: _credential_data helper (keep-existing-key when blank)
+
+class _FakeStore:
+    def __init__(self, applied): self._applied = applied
+    async def applied(self): return self._applied
+    async def staged(self): return []
+
+async def test_credential_data_keeps_existing_key_when_blank():
+    from app.routes.config_v3_routes import _credential_data
+    store = _FakeStore([{"kind": "credential", "name": "DUMMY",
+                         "data": {"provider": "old", "value_encrypted": "ENC123"}}])
+    out = await _credential_data("DUMMY", {"provider": "openai_compatible", "api_key": ""}, store)
+    assert out == {"provider": "openai_compatible", "value_encrypted": "ENC123"}
+
+async def test_credential_data_rejects_blank_for_new_credential():
+    import pytest
+    from fastapi import HTTPException
+    from app.routes.config_v3_routes import _credential_data
+    with pytest.raises(HTTPException):
+        await _credential_data("NEW", {"provider": "x", "api_key": ""}, _FakeStore([]))
+
+async def test_credential_data_encrypts_a_provided_key():
+    import os
+    os.environ.setdefault("SESSION_SECRET", "testsecret")
+    from app.routes.config_v3_routes import _credential_data
+    out = await _credential_data("K", {"provider": "openai", "api_key": "sk-real"}, _FakeStore([]))
+    assert out["provider"] == "openai" and out["value_encrypted"] and out["value_encrypted"] != "sk-real"
