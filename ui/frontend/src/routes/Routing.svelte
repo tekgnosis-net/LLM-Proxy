@@ -43,36 +43,31 @@
   function flag(key) { return store.itemNamed('router_setting', key)?.flag }
   function isStaged(key) { const f = flag(key); return f === 'new' || f === 'changed' }
 
-  // --- per-field save actions ---
-  async function saveStrategy() {
-    await store.stageItem('router_setting', 'routing_strategy', localStrategy)
-  }
+  // --- single save / reset ---
+  const FIELDS = ['routing_strategy','num_retries','timeout','cooldown_time','allowed_fails','retry_after']
 
-  async function saveNumeric(key, localVal) {
-    if (localVal === '' || localVal == null) return
-    await store.stageItem('router_setting', key, Number(localVal))
-  }
-
-  async function saveFallbacks() {
+  async function saveAll() {
     parseErr = ''
-    let parsed
-    try { parsed = JSON.parse(localFallbacks) } catch { parseErr = 'Fallbacks must be valid JSON'; return }
-    await store.stageItem('router_setting', 'fallbacks', parsed)
+    // fallbacks: parse first; abort all on error
+    let fb
+    try { fb = JSON.parse(localFallbacks) } catch { parseErr = 'Fallbacks must be valid JSON'; return }
+    const locals = { routing_strategy: localStrategy, num_retries: localNumRetries, timeout: localTimeout,
+                     cooldown_time: localCooldown, allowed_fails: localAllowedFails, retry_after: localRetryAfter }
+    const stored = { routing_strategy: strategy, num_retries: numRetries, timeout: timeout,
+                     cooldown_time: cooldown, allowed_fails: allowedFails, retry_after: retryAfter }
+    for (const k of FIELDS) {
+      const v = locals[k]
+      if (k === 'routing_strategy') { if (v !== stored[k]) await store.stageItem('router_setting', k, v); continue }
+      if (v === '' || v == null) continue            // skip cleared numerics
+      if (Number(v) !== Number(stored[k])) await store.stageItem('router_setting', k, Number(v))
+    }
+    if (JSON.stringify(fb) !== JSON.stringify(fallbacksRaw)) await store.stageItem('router_setting', 'fallbacks', fb)
   }
 
-  function resetField(key) {
-    // re-derive by re-reading the item; the $effect above will sync local copies
-    // but for immediate UX we can manually reset
-    switch (key) {
-      case 'routing_strategy': localStrategy     = strategy; break
-      case 'num_retries':      localNumRetries   = numRetries   === '' ? '' : String(numRetries); break
-      case 'timeout':          localTimeout      = timeout      === '' ? '' : String(timeout); break
-      case 'cooldown_time':    localCooldown     = cooldown     === '' ? '' : String(cooldown); break
-      case 'allowed_fails':    localAllowedFails = allowedFails === '' ? '' : String(allowedFails); break
-      case 'retry_after':      localRetryAfter   = retryAfter   === '' ? '' : String(retryAfter); break
-      case 'fallbacks':        localFallbacks    = JSON.stringify(fallbacksRaw, null, 2); parseErr = ''; break
-    }
-  }
+  function resetAll() { localStrategy = strategy; localNumRetries = numRetries===''?'':String(numRetries)
+    localTimeout = timeout===''?'':String(timeout); localCooldown = cooldown===''?'':String(cooldown)
+    localAllowedFails = allowedFails===''?'':String(allowedFails); localRetryAfter = retryAfter===''?'':String(retryAfter)
+    localFallbacks = JSON.stringify(fallbacksRaw, null, 2); parseErr = '' }
 </script>
 
 <div class="page">
@@ -89,10 +84,6 @@
           {#each STRATEGIES as s}<option value={s}>{s}</option>{/each}
         </select>
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={saveStrategy} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('routing_strategy')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
     <p class="hint">Cost-based picks the cheapest deployment in a model group. <code>lowest-cost</code> is not valid and is rejected.</p>
 
@@ -102,10 +93,6 @@
         <span class="field-name">Num retries {#if isStaged('num_retries')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localNumRetries} placeholder="default 3" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('num_retries', localNumRetries)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('num_retries')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Timeout -->
@@ -114,10 +101,6 @@
         <span class="field-name">Timeout (s) {#if isStaged('timeout')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" step="0.1" bind:value={localTimeout} placeholder="default 600" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('timeout', localTimeout)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('timeout')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Cooldown time -->
@@ -126,10 +109,6 @@
         <span class="field-name">Cooldown time (s) {#if isStaged('cooldown_time')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localCooldown} placeholder="after allowed_fails" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('cooldown_time', localCooldown)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('cooldown_time')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Allowed fails -->
@@ -138,10 +117,6 @@
         <span class="field-name">Allowed fails {#if isStaged('allowed_fails')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localAllowedFails} placeholder="per minute before cooldown" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('allowed_fails', localAllowedFails)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('allowed_fails')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Retry after -->
@@ -150,21 +125,19 @@
         <span class="field-name">Retry after (s) {#if isStaged('retry_after')}<span class="staged-dot" title="staged">●</span>{/if}</span>
         <input type="number" min="0" bind:value={localRetryAfter} placeholder="min before retry" />
       </label>
-      <div class="field-actions">
-        <button class="primary" onclick={() => saveNumeric('retry_after', localRetryAfter)} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('retry_after')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
     </div>
 
     <!-- Fallbacks -->
     <div class="field-col">
       <span class="field-name">Fallbacks (JSON, e.g. <code>[{'{'}"gpt-4": ["gpt-4o"]{'}'}]</code>) {#if isStaged('fallbacks')}<span class="staged-dot" title="staged">●</span>{/if}</span>
       <textarea rows="5" bind:value={localFallbacks}></textarea>
-      {#if parseErr}<div class="banner err">{parseErr}</div>{/if}
-      <div class="row">
-        <button class="primary" onclick={saveFallbacks} disabled={store.saving || store.applying}>Save</button>
-        <button onclick={() => resetField('fallbacks')} disabled={store.saving || store.applying}>Reset</button>
-      </div>
+    </div>
+
+    <!-- Footer -->
+    {#if parseErr}<div class="banner err">{parseErr}</div>{/if}
+    <div class="footer-row">
+      <button class="primary" onclick={saveAll} disabled={store.saving||store.applying}>Save changes</button>
+      <button onclick={resetAll} disabled={store.saving||store.applying}>Reset all</button>
     </div>
 
   </div>
@@ -178,10 +151,9 @@
   .field-label{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:4px;flex:1}
   .field-name{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text,#3a3a3c)}
   .field-col{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:6px}
-  .field-actions{display:flex;gap:6px;padding-bottom:0}
+  .footer-row{display:flex;gap:8px;padding-top:4px;border-top:1px solid rgba(0,0,0,.06)}
   select,input,textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
   textarea{font-family:ui-monospace,monospace}
-  .row{display:flex;gap:8px}
   button{padding:6px 12px;border:1px solid #ccc;border-radius:8px;background:var(--card,#fff);font:inherit;cursor:pointer;white-space:nowrap;color:var(--text,#1d1d1f)}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button:disabled{opacity:.5;cursor:not-allowed}
