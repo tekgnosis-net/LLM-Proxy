@@ -48,7 +48,10 @@ def render_config(items: list[dict], decrypt: Callable[[Any], str]) -> dict:
             base = copy.deepcopy(data) if isinstance(data, dict) else {}
         elif kind == "model":
             entry = {"model_name": data.get("model_name", name)}
-            entry.update({k: v for k, v in data.items() if k != "model_name"})
+            mi = dict(data.get("model_info") or {})
+            mi.setdefault("id", name)        # the item UUID becomes LiteLLM's deployment id
+            entry.update({k: v for k, v in data.items() if k not in ("model_name", "model_info")})
+            entry["model_info"] = mi
             model_list.append(entry)
         elif kind == "credential":
             credential_list.append({"credential_name": name,
