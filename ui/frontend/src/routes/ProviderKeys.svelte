@@ -4,20 +4,26 @@
   let { store } = $props()
   let err = $state(''), showAdd = $state(false)
   let form = $state({ credential_name: '', provider: 'openai', api_key: '' })
+  let editingName = $state(null)
   let providers = $state(FALLBACK_PROVIDERS)
   // Attempt to load the full catalog provider list on mount (fallback stays on error)
   $effect(() => {
     api.catalogProviders().then(ps => { if (Array.isArray(ps) && ps.length) providers = ps }).catch(() => {})
   })
   let creds = $derived(store.itemsOfKind('credential'))
-  async function add() {
+  function editCred(item) {
+    form = { credential_name: item.name, provider: item.data?.provider || 'openai', api_key: '' }
+    editingName = item.name; showAdd = true; err = ''
+  }
+  async function save() {
     err = ''
-    if (!form.credential_name || !form.api_key) return
+    if (!form.credential_name) return
+    if (!editingName && !form.api_key) return
     const ok = await store.stageItem('credential', form.credential_name, {
       provider: form.provider,
       api_key: form.api_key,
     })
-    if (ok) { form = { credential_name: '', provider: 'openai', api_key: '' }; showAdd = false }
+    if (ok) { form = { credential_name: '', provider: 'openai', api_key: '' }; editingName = null; showAdd = false }
     else err = store.error || 'Failed to stage credential.'
   }
   async function del(name) {
@@ -35,13 +41,14 @@
 <div class="page">
   <header>
     <h1>Provider Keys</h1>
-    <button class="primary" onclick={() => showAdd = !showAdd}>＋ Add key</button>
+    <button class="primary" onclick={() => { editingName = null; showAdd = !showAdd }}>＋ Add key</button>
   </header>
   {#if err}<div class="banner err">{err}</div>{/if}
   <p class="hint">Keys are encrypted at rest and written into <code>config.yaml</code> on Apply (secrets redacted here). Saving or deleting a key stages a change — click <strong>Apply</strong> to activate; Discard reverts staged changes.</p>
   {#if showAdd}
     <div class="card add">
-      <label>Name <input bind:value={form.credential_name} placeholder="e.g. openai_prod" /></label>
+      <h3>{editingName ? 'Edit key' : 'Add key'}</h3>
+      <label>Name <input bind:value={form.credential_name} placeholder="e.g. openai_prod" disabled={!!editingName} /></label>
       <label>Provider
         <select bind:value={form.provider}>
           {#each providers as p}
@@ -49,10 +56,10 @@
           {/each}
         </select>
       </label>
-      <label>API key <input type="password" bind:value={form.api_key} placeholder="sk-…" /></label>
+      <label>API key <input type="password" bind:value={form.api_key} placeholder={editingName ? 'leave blank to keep the current key' : 'sk-…'} /></label>
       <div class="row">
-        <button class="primary" onclick={add} disabled={store.saving || !form.credential_name || !form.api_key}>Save key</button>
-        <button onclick={() => showAdd = false}>Cancel</button>
+        <button class="primary" onclick={save} disabled={store.saving || !form.credential_name || (!editingName && !form.api_key)}>Save key</button>
+        <button onclick={() => { showAdd = false; editingName = null }}>Cancel</button>
       </div>
     </div>
   {/if}
@@ -81,6 +88,7 @@
                 {#if isDeleted}
                   <button class="undo" onclick={() => undo(k.name)} disabled={store.saving}>Undo</button>
                 {:else}
+                  <button class="secondary" onclick={() => editCred(k)} disabled={store.saving}>Edit</button>
                   <button class="danger" onclick={() => del(k.name)} disabled={store.saving}>Delete</button>
                 {/if}
               </td>
@@ -96,13 +104,16 @@
   header { display: flex; justify-content: space-between; align-items: center }
   .card { border: 1px solid var(--border, rgba(0,0,0,.08)); border-radius: 12px; padding: 16px; margin-top: 14px; background: var(--card, #fff) }
   .card.add { display: flex; flex-direction: column; gap: 10px; max-width: 420px }
+  .card.add h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600 }
   label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; color: var(--muted, #3a3a3c) }
   input, select { padding: 8px; border: 1px solid var(--border, #ccc); border-radius: 8px; font: inherit }
+  input:disabled { background: var(--disabled-bg, #f5f5f5); color: var(--muted, #6e6e73); cursor: not-allowed }
   table { width: 100%; border-collapse: collapse }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border, rgba(0,0,0,.06)); font-size: 14px }
   .row { display: flex; gap: 8px }
   button { padding: 8px 12px; border: 1px solid var(--border, #ccc); border-radius: 8px; background: var(--card, #fff); font: inherit; cursor: pointer }
   button.primary { background: #0a84ff; color: #fff; border: 0 }
+  button.secondary { color: #0a84ff; border-color: #b3d4ff }
   button.danger { color: #ff3b30; border-color: #ffd0cc }
   button.undo { color: #ff9f0a; border-color: #ffe5b0 }
   button:disabled { opacity: .5 }
