@@ -1,3 +1,15 @@
+# [1.18.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.17.1...v1.18.0) (2026-06-10)
+
+
+### Features
+
+* **ui:** /api/keys/update -> LiteLLM /key/update (pass-through) ([f8f8391](https://github.com/tekgnosis-net/LLM-Proxy/commit/f8f83918801a370e44672562f719be1b8fae437c))
+* **ui:** admin_auth — DB override hash + verify_and_hash (TDD) ([7974489](https://github.com/tekgnosis-net/LLM-Proxy/commit/797448988edca984b05ae987e076e7d6e55faa04))
+* **ui:** edit a virtual key in place (router settings/budgets/limits); default new-key strategy to inherit-global ([114f63d](https://github.com/tekgnosis-net/LLM-Proxy/commit/114f63d7bcec614024f4a9ebf7cb21facd1f0260))
+* **ui:** login resolves DB-or-env admin hash; POST /api/auth/change-password ([418cf6e](https://github.com/tekgnosis-net/LLM-Proxy/commit/418cf6ed4e143b42aef3ae27d06e337bcbe39ca9))
+* **ui:** Settings — change admin password ([47c6732](https://github.com/tekgnosis-net/LLM-Proxy/commit/47c673245fc042509279e191af96081590e356af))
+* **ui:** Usage remembers range + a saved auto-refresh interval (polls in place, pauses when hidden) ([b871bba](https://github.com/tekgnosis-net/LLM-Proxy/commit/b871bbaa12f229d9eed0e53943ff484754aa1b99))
+
 ## [1.17.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.17.0...v1.17.1) (2026-06-10)
 
 
