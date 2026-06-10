@@ -1,3 +1,13 @@
+# [1.16.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.15.0...v1.16.0) (2026-06-10)
+
+
+### Features
+
+* **ui:** credential stage reuses existing key when api_key blank (editable provider keys) ([e7496d5](https://github.com/tekgnosis-net/LLM-Proxy/commit/e7496d521fac3e31021f124a21c001426e058cf8))
+* **ui:** edit a Provider Key in place (blank key keeps the current secret) ([98c16c6](https://github.com/tekgnosis-net/LLM-Proxy/commit/98c16c6ad2cd360042375823189102839c4adf58))
+* **ui:** per-key router reliability knobs (retries/timeout/cooldown/allowed_fails/retry_after) ([3ec57a2](https://github.com/tekgnosis-net/LLM-Proxy/commit/3ec57a22d4b6134980640b5f10f226149deee1db))
+* **ui:** warn before saving a model with no API key ([aeb2ecb](https://github.com/tekgnosis-net/LLM-Proxy/commit/aeb2ecb0b18ab3946377410c358fb734238ddf56))
+
 # [1.15.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.14.1...v1.15.0) (2026-06-10)
 
 
