@@ -5,6 +5,7 @@
   import { uuidv4 } from '../lib/browser.js'
   let { store } = $props()
   let showAdd = $state(false)
+  let editingId = $state(null)
   let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
   let providerSlug = $state('openai')
   let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
@@ -52,6 +53,22 @@
     showAdd = false
     testResult = null
     autofilled = false
+    editingId = null
+  }
+
+  function editModel(item) {
+    const d = item.data, lp = d.litellm_params || {}
+    const full = lp.model || ''
+    const slash = full.indexOf('/')
+    providerSlug = slash > 0 ? full.slice(0, slash) : 'openai'
+    form = { modelName: d.model_name, modelId: slash > 0 ? full.slice(slash+1) : full,
+      api_key_env: '', api_base: lp.api_base || '', api_version: lp.api_version || '',
+      aws_region_name: lp.aws_region_name || '', vertex_project: lp.vertex_project || '', vertex_location: lp.vertex_location || '',
+      credential: lp.litellm_credential_name || '', mode: (d.model_info||{}).mode || 'chat',
+      input_cost: lp.input_cost_per_token!=null ? perTokenToPerM(lp.input_cost_per_token) : '',
+      output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '' }
+    editingId = item.name; showAdd = true; testResult = null; autofilled = false
+    showAdvanced = !!(lp.api_base)
   }
 
   function currentProvider() { return providers.find(p => p.provider === providerSlug) || { provider: providerSlug } }
@@ -107,8 +124,8 @@
     }
   }
 
-  async function addModel() {
-    const id = uuidv4()
+  async function saveModel() {
+    const id = editingId || uuidv4()
     const ok = await store.stageItem('model', id, {
       model_name: form.modelName,
       litellm_params: buildParams(),
@@ -143,7 +160,7 @@
 
 <div class="page">
   <header><h1>Models</h1>
-    <button class="primary" onclick={() => showAdd = !showAdd} disabled={store.applying}>＋ Add model</button>
+    <button class="primary" onclick={() => { editingId = null; showAdd = !showAdd }} disabled={store.applying}>＋ Add model</button>
   </header>
   {#if store.error}<div class="banner err">{store.error}</div>{/if}
   {#if store.notice}<div class="banner ok">{store.notice}</div>{/if}
@@ -151,6 +168,7 @@
 
   {#if showAdd}
     <div class="card add">
+      <h3 style="margin:0 0 4px">{editingId ? 'Edit model' : 'Add model'}</h3>
       <label>Provider
         <select bind:value={providerSlug} onchange={onProviderChange}>
           {#each providers as p}<option value={p.provider}>{p.display_name || p.provider}</option>{/each}
@@ -200,7 +218,7 @@
 
       <div class="row">
         <button onclick={testConn} disabled={busy || !form.modelName || !form.modelId}>Test connection</button>
-        <button class="primary" onclick={addModel} disabled={store.applying || store.saving || !form.modelName || !form.modelId}>Save</button>
+        <button class="primary" onclick={saveModel} disabled={store.applying || store.saving || !form.modelName || !form.modelId}>Save</button>
         <button onclick={resetForm}>Cancel</button>
       </div>
 
@@ -246,6 +264,7 @@
                 {#if flag === 'deleted'}
                   <button class="undo" onclick={() => undoDelete(item.name)} disabled={store.saving || store.applying}>Undo</button>
                 {:else}
+                  <button onclick={() => editModel(item)} disabled={store.saving || store.applying}>Edit</button>
                   <button class="danger" onclick={() => deleteModel(item.name)} disabled={store.saving || store.applying}>Delete</button>
                 {/if}
               </td>
