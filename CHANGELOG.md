@@ -1,3 +1,10 @@
+## [1.17.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.17.0...v1.17.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **ui:** Usage was empty despite real data — asyncpg interval binding + silent catch ([e9b08ce](https://github.com/tekgnosis-net/LLM-Proxy/commit/e9b08ce47e299ca7af97f2ee8a5545f0c5681b14))
+
 # [1.17.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.16.0...v1.17.0) (2026-06-10)
 
 
