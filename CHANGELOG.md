@@ -1,3 +1,16 @@
+# [1.15.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.14.1...v1.15.0) (2026-06-10)
+
+
+### Features
+
+* **config:** reject a model appearing in >1 routing group ([d7245bc](https://github.com/tekgnosis-net/LLM-Proxy/commit/d7245bc82f22a5e1cf4608f2ccb810982e0ca770))
+* **config:** render model_info.id = item uuid (stable deployment id; lowest_cost mitigation) ([517159c](https://github.com/tekgnosis-net/LLM-Proxy/commit/517159cfa1612bf780c7e9857481b8dbfa6f4f82))
+* **ui:** clearer model-health states; wire router_settings redis for routing state ([65277fd](https://github.com/tekgnosis-net/LLM-Proxy/commit/65277fd0dff463589bf506210d40c4c6f20ed309))
+* **ui:** edit a model in place (re-stage under same uuid) ([839aa44](https://github.com/tekgnosis-net/LLM-Proxy/commit/839aa4480f99c7278f4842aeea2e505530bdb4d1))
+* **ui:** per-key Router Settings (strategy + fallbacks) on key create ([f5e5d76](https://github.com/tekgnosis-net/LLM-Proxy/commit/f5e5d763baf9f3d1b3ce4281f5f0e37715580830))
+* **ui:** routing groups editor (per-model-name strategy) ([a86e8ff](https://github.com/tekgnosis-net/LLM-Proxy/commit/a86e8fff69a0359115727424534d5dec315cbc0c))
+* **ui:** Routing single Save changes (stages all edited fields) ([7fa27a5](https://github.com/tekgnosis-net/LLM-Proxy/commit/7fa27a53aaf584fb5cc95644f5d11e4c5f1f2a4f))
+
 ## [1.14.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.14.0...v1.14.1) (2026-06-09)
 
 
