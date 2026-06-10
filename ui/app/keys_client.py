@@ -36,6 +36,12 @@ class KeysClient:
             r.raise_for_status()
             return r.json()
 
+    async def update_key(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async with self._client() as c:
+            r = await c.post(f"{self._base}/key/update", json=payload)
+            r.raise_for_status()
+            return r.json()
+
     async def delete_keys(self, tokens: list[str]) -> dict[str, Any]:
         async with self._client() as c:
             r = await c.post(f"{self._base}/key/delete", json={"keys": tokens})
