@@ -8,7 +8,7 @@
   let availableModels = $state([])
   const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
   const FALLBACKS_PLACEHOLDER = '[{"gpt-4": ["gpt-4o"]}]'
-  let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '' })
+  let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '', router_num_retries: '', router_timeout: '', router_cooldown_time: '', router_allowed_fails: '', router_retry_after: '' })
   let showRouterSettings = $state(false)
 
   async function load() {
@@ -33,6 +33,11 @@
     if (form.router_fallbacks.trim()) {
       try { rs.fallbacks = JSON.parse(form.router_fallbacks) }
       catch { err = 'Router fallbacks must be valid JSON'; busy = false; return }
+    }
+    for (const [k, v] of [['num_retries', form.router_num_retries], ['timeout', form.router_timeout],
+        ['cooldown_time', form.router_cooldown_time], ['allowed_fails', form.router_allowed_fails],
+        ['retry_after', form.router_retry_after]]) {
+      if (v !== '' && v != null) rs[k] = Number(v)
     }
     if (Object.keys(rs).length) payload.router_settings = rs
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
@@ -87,9 +92,31 @@
             <textarea bind:value={form.router_fallbacks} rows="3" placeholder={FALLBACKS_PLACEHOLDER}></textarea>
             <span class="hint">Optional. JSON list of {'{'}model: [fallback models]{'}'}.</span>
           </label>
+          <div class="grid">
+            <label>Num retries
+              <input type="number" min="0" bind:value={form.router_num_retries} placeholder="e.g. 3" />
+              <span class="hint">blank = inherit global</span>
+            </label>
+            <label>Timeout (s)
+              <input type="number" min="0" step="0.1" bind:value={form.router_timeout} placeholder="e.g. 30" />
+              <span class="hint">blank = inherit global</span>
+            </label>
+            <label>Cooldown time (s)
+              <input type="number" min="0" bind:value={form.router_cooldown_time} placeholder="e.g. 60" />
+              <span class="hint">blank = inherit global</span>
+            </label>
+            <label>Allowed fails
+              <input type="number" min="0" bind:value={form.router_allowed_fails} placeholder="e.g. 3" />
+              <span class="hint">blank = inherit global</span>
+            </label>
+            <label>Retry after (s)
+              <input type="number" min="0" bind:value={form.router_retry_after} placeholder="e.g. 10" />
+              <span class="hint">blank = inherit global</span>
+            </label>
+          </div>
         </div>
       </details>
-      <div class="row"><button class="primary" onclick={create} disabled={busy}>Create</button><button onclick={() => { showCreate = false; form.router_strategy = ''; form.router_fallbacks = ''; showRouterSettings = false }}>Cancel</button></div>
+      <div class="row"><button class="primary" onclick={create} disabled={busy}>Create</button><button onclick={() => { showCreate = false; form.router_strategy = ''; form.router_fallbacks = ''; form.router_num_retries = ''; form.router_timeout = ''; form.router_cooldown_time = ''; form.router_allowed_fails = ''; form.router_retry_after = ''; showRouterSettings = false }}>Cancel</button></div>
     </div>
   {/if}
 

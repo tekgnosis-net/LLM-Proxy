@@ -15,6 +15,12 @@
   let testResult = $state(null)  // { ok: bool, msg: string } | null
   let autofilled = $state(false)
   let autofillBusy = $state(false)
+  let pendingNoKey = $state(false)
+
+  // Clear the keyless warning as soon as the user picks a credential or env var
+  $effect(() => {
+    if (form.credential || form.api_key_env) pendingNoKey = false
+  })
 
   // Derived: model items and credential items from the item store
   let modelItems = $derived(store.itemsOfKind('model'))
@@ -54,6 +60,7 @@
     testResult = null
     autofilled = false
     editingId = null
+    pendingNoKey = false
   }
 
   function editModel(item) {
@@ -125,6 +132,8 @@
   }
 
   async function saveModel() {
+    if (!form.credential && !form.api_key_env && !pendingNoKey) { pendingNoKey = true; return }
+    pendingNoKey = false
     const id = editingId || uuidv4()
     const ok = await store.stageItem('model', id, {
       model_name: form.modelName,
@@ -217,6 +226,12 @@
       <label>Input cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
       <label>Output cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.output_cost} placeholder="auto from catalog" /></label>
 
+      {#if pendingNoKey}
+        <div class="banner warn">This deployment has no API key. LiteLLM requires one even for local providers
+          (vLLM/llama.cpp) — requests will fail without it. Pick a saved credential (a reusable dummy key works)
+          or set an API-key env var. Click Save again to save anyway.</div>
+      {/if}
+
       <div class="row">
         <button onclick={testConn} disabled={busy || !form.modelName || !form.modelId}>Test connection</button>
         <button class="primary" onclick={saveModel} disabled={store.applying || store.saving || !form.modelName || !form.modelId}>Save</button>
@@ -293,7 +308,7 @@
   button.undo{color:#ff9500;border-color:#ffe0b2}
   button:disabled{opacity:.5;cursor:default}
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
-  .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}
+  .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}.banner.warn{background:#fff8e1;color:#7a4800}
   .hint{font-size:12px;color:#6e6e73}.empty{color:#6e6e73}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
   .lookup-row{display:flex;gap:6px;align-items:stretch}
