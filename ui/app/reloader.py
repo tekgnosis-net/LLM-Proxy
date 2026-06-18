@@ -19,7 +19,8 @@ class Reloader:
 
     def __init__(self, socket_proxy_url, litellm_base_url, master_key, container,
                  mode="restart", transport: Optional[httpx.BaseTransport] = None,
-                 poll_interval_s: float = 1.5, timeout_s: float = 90.0):
+                 poll_interval_s: float = 1.5, timeout_s: float = 90.0,
+                 trigger_timeout_s: float = 60.0):
         self._sock = socket_proxy_url.rstrip("/")
         self._base = litellm_base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {master_key}"}
@@ -28,12 +29,18 @@ class Reloader:
         self._transport = transport
         self._poll = poll_interval_s
         self._timeout = timeout_s
+        self._trigger_timeout = trigger_timeout_s
 
-    def _client(self):
-        return httpx.AsyncClient(timeout=10.0, transport=self._transport)
+    def _client(self, timeout: float = 10.0):
+        return httpx.AsyncClient(timeout=timeout, transport=self._transport)
 
     async def trigger(self) -> None:
-        async with self._client() as c:
+        # The docker /restart call BLOCKS until the container has stopped+started
+        # (~25s for litellm: SIGTERM grace + worker spin-up). It must NOT use the
+        # 10s probe timeout — that aborts the POST mid-restart and makes Apply
+        # return 500 even though the restart (and the already-committed config)
+        # succeeded. Give the trigger its own generous timeout; probes stay short.
+        async with self._client(self._trigger_timeout) as c:
             if self._mode == "SIGHUP":
                 r = await c.post(f"{self._sock}/containers/{self._container}/kill",
                                  params={"signal": "SIGHUP"})
