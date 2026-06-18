@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.18.0...v1.18.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **ui:** reloader restart trigger gets its own 60s timeout — Apply no longer 500s mid-restart ([a10bbb3](https://github.com/tekgnosis-net/LLM-Proxy/commit/a10bbb3ecb851e92fea455567d451c426f43d522))
+
 # [1.18.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.17.1...v1.18.0) (2026-06-10)
 
 
