@@ -101,6 +101,27 @@ async def test_reload_fails_when_unhealthy():
 
 
 @pytest.mark.asyncio
+async def test_trigger_uses_generous_timeout_not_probe_timeout():
+    """Regression: the docker /restart POST blocks ~25s, so it must use the long
+    trigger_timeout, NOT the 10s probe timeout — otherwise the POST aborts mid-restart
+    and Apply returns 500 even though the restart + config commit already succeeded."""
+    def handler(req):
+        if req.url.path.endswith("/restart"):
+            return httpx.Response(204)
+        return httpx.Response(404)
+    r = _reloader(handler)
+    r._trigger_timeout = 55.0
+    seen = []
+    orig = r._client
+    def spy(timeout=10.0):
+        seen.append(timeout)
+        return orig(timeout)
+    r._client = spy
+    await r.trigger()
+    assert seen == [55.0]   # trigger used the long timeout, not the 10s probe default
+
+
+@pytest.mark.asyncio
 async def test_trigger_error_raises_reloaderror():
     def handler(req):
         if req.url.path.endswith("/restart"):
