@@ -1,3 +1,23 @@
+# [1.21.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.20.0...v1.21.0) (2026-06-20)
+
+
+### Bug Fixes
+
+* **config:** /api/config/rendered is hybrid-aware (settings-only preview matches written file) ([30e6d95](https://github.com/tekgnosis-net/LLM-Proxy/commit/30e6d95948c9ef63c8dfde74b730ba71b7032c03))
+* **engine:** hybrid restart-verify uses public model_name (not UUID); guard missing models_client; cleanups (Task 5 review) ([9aa5938](https://github.com/tekgnosis-net/LLM-Proxy/commit/9aa59387554eebf628e379a886bf4f2abccc5eef))
+* **ui:** hybrid-aware Apply result (surface models report + failures); mode-aware restart banner; confirm migrate (final-review) ([2058a5b](https://github.com/tekgnosis-net/LLM-Proxy/commit/2058a5b2d10487ca99be27ebe2295a5a5b48dd9f))
+
+
+### Features
+
+* declarative model reconcile (diff + inline-key apply) ([b566c26](https://github.com/tekgnosis-net/LLM-Proxy/commit/b566c26588cb02e8f4e1ef5ec2a3f2147e435ef4))
+* **engine:** hybrid apply — split-render (models hot, settings restart) ([ed512bf](https://github.com/tekgnosis-net/LLM-Proxy/commit/ed512bfe421d06c1a252fdc77e6bae4b233f8af4))
+* GET /api/config/export (ui_config.json, encrypted creds) + retarget Settings link ([cd7fe21](https://github.com/tekgnosis-net/LLM-Proxy/commit/cd7fe215798a3b057aeac1449024f0bf56760e1b))
+* ModelsClient for LiteLLM /model/* hot-apply API ([d38b1ed](https://github.com/tekgnosis-net/LLM-Proxy/commit/d38b1ed61fb185da9d184fa5938bbb915c95995a))
+* prepare-hot-apply migration (empty-then-fill) + Settings runbook ([f2bc8e3](https://github.com/tekgnosis-net/LLM-Proxy/commit/f2bc8e348deb68b4905e5f698925bcd65ebdb9ac))
+* **render:** extract render_model_entry (key inlining) + hybrid render mode ([2a01676](https://github.com/tekgnosis-net/LLM-Proxy/commit/2a0167643da6ea971f25f814800101aac0714ae9))
+* route Apply through hybrid when STORE_MODEL_IN_DB; wire compose env; honest apply banner ([aba8489](https://github.com/tekgnosis-net/LLM-Proxy/commit/aba8489a40c19a0648f71d07c859a3fae67be704))
+
 # [1.20.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.2...v1.20.0) (2026-06-20)
 
 
