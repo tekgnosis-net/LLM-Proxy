@@ -1,3 +1,18 @@
+# [1.20.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.2...v1.20.0) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ui:** health_check_interval is a general_setting, not litellm_setting ([96d422a](https://github.com/tekgnosis-net/LLM-Proxy/commit/96d422aaa21bdcf8e271595243048d177cc5aa9d))
+* **ui:** usage auto-refresh updates in place — no scroll reset (silent load) ([9f680f4](https://github.com/tekgnosis-net/LLM-Proxy/commit/9f680f42ee64150884c6f9d24c65300fc1183990))
+
+
+### Features
+
+* **ui:** editable global health_check_interval in Settings ([f217906](https://github.com/tekgnosis-net/LLM-Proxy/commit/f2179069e081967a4eef47481e3e6600805aab8e))
+* **ui:** per-model 'Check now' on-demand health button ([f10e8a6](https://github.com/tekgnosis-net/LLM-Proxy/commit/f10e8a661c60fa549e75bea8d7a4ade09bbd8baa))
+* **ui:** per-model health-check disable toggle (+ one-time global skip flag) ([2c6b087](https://github.com/tekgnosis-net/LLM-Proxy/commit/2c6b0872563a51dbe9fd6500841c92c428611b7e))
+
 ## [1.19.2](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.1...v1.19.2) (2026-06-20)
 
 
