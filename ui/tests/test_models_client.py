@@ -20,10 +20,23 @@ async def test_list_models_unwraps_data_and_auth():
 async def test_add_model_posts_to_model_new():
     seen = {}
     def handler(req):
-        seen["path"] = req.url.path; seen["body"] = json.loads(req.content)
+        seen["path"] = req.url.path
+        seen["body"] = json.loads(req.content)
         return httpx.Response(200, json={"model_id": "uuid-1"})
     await _client(handler).add_model({"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o"}, "model_info": {"id": "uuid-1"}})
     assert seen["path"].endswith("/model/new")
+    assert seen["body"]["model_info"]["id"] == "uuid-1"
+
+
+@pytest.mark.asyncio
+async def test_update_model_posts_to_model_update():
+    seen = {}
+    def handler(req):
+        seen["path"] = req.url.path
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"model_id": "uuid-1"})
+    await _client(handler).update_model({"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o-mini"}, "model_info": {"id": "uuid-1"}})
+    assert seen["path"].endswith("/model/update")
     assert seen["body"]["model_info"]["id"] == "uuid-1"
 
 
