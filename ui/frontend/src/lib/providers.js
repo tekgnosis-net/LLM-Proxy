@@ -49,6 +49,16 @@ export const SPECIAL_PROVIDER_FIELDS = {
   hosted_vllm: ['api_base'],
 }
 
+// Local / self-hosted / OpenAI-compatible providers that REQUIRE a manually-supplied base URL.
+// The Add/Edit-model "Advanced" section (where api_base lives) auto-opens for these — the base
+// URL is mandatory and otherwise easily missed: a custom_openai deployment with no api_base
+// silently falls through to api.openai.com (→ "Incorrect API key" 401), the exact trap that
+// shipped a broken qwen deployment.
+export const CUSTOM_PROVIDERS = new Set([
+  'custom_openai', 'openai_compatible', 'hosted_vllm', 'vllm',
+  'ollama', 'ollama_chat', 'lm_studio', 'text-completion-openai', 'llamafile',
+])
+
 // Build litellm_params from the chosen provider slug + form. Secrets are emitted as
 // os.environ/<VAR> only (config holds no literal secrets; credentials use the vault).
 export function buildLitellmParams(slug, form) {
