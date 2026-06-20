@@ -51,7 +51,8 @@ async def config_state():
         n = await store.staged_count()
     except HTTPException: raise
     except Exception as e: raise HTTPException(status_code=502, detail=f"config state error: {e}")
-    return {"items": [_redact_item(i) for i in eff], "pending": n > 0, "count": n}
+    return {"items": [_redact_item(i) for i in eff], "pending": n > 0, "count": n,
+            "store_model_in_db": get_settings().store_model_in_db}
 
 async def _credential_data(name: str, data: dict, store) -> dict:
     """Build a credential's stored data. A provided api_key is Fernet-encrypted; a

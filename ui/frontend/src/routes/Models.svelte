@@ -209,7 +209,7 @@
   </header>
   {#if store.error}<div class="banner err">{store.error}</div>{/if}
   {#if store.notice}<div class="banner ok">{store.notice}</div>{/if}
-  {#if store.applying}<div class="banner info">Applying changes…</div>{/if}
+  {#if store.applying}<div class="banner info">{store.storeModelInDb ? 'Applying changes…' : 'Applying… restarting the proxy (~25s)'}</div>{/if}
 
   {#if showAdd}
     <div class="card add">

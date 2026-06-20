@@ -42,6 +42,16 @@ def test_state_returns_effective_with_flags_redacted(tmp_path):
     cred=items[("credential","openai")]
     assert cred["data"].get("provider")=="openai"
     assert "value_encrypted" not in cred["data"] and cred["data"].get("api_key") in (None,"***")
+    # store_model_in_db exposed (default False with no env set)
+    assert d["store_model_in_db"] is False
+
+def test_state_returns_store_model_in_db_true_when_env_set(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    r = _client(tmp_path, FakeStore()).get("/api/config/state")
+    assert r.json()["store_model_in_db"] is True
+    get_settings.cache_clear()
 
 def test_put_item_stages_plain(tmp_path):
     s=FakeStore(); c=_client(tmp_path, s)

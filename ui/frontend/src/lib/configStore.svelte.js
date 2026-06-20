@@ -5,10 +5,11 @@ export function createConfigStore() {
   let loading = $state(false), saving = $state(false), applying = $state(false)
   let error = $state(''), notice = $state('')
   let pending = $state(false), count = $state(0)
+  let storeModelInDb = $state(false)
 
   async function load() {
     loading = true; error = ''
-    try { const s = await api.configState(); items = s.items || []; pending = s.pending; count = s.count }
+    try { const s = await api.configState(); items = s.items || []; pending = s.pending; count = s.count; storeModelInDb = !!s.store_model_in_db }
     catch (e) { error = e.message } finally { loading = false }
   }
   function itemsOfKind(kind) { return items.filter(i => i.kind === kind) }
@@ -30,9 +31,23 @@ export function createConfigStore() {
     applying = true; error = ''; notice = ''
     try {
       const r = await api.apply()
-      notice = r.servant === 'healthy'
-        ? 'Applied — proxy restarted and healthy.'
-        : `Applied, but the proxy is unhealthy: ${r.detail || ''} — fix the setting and re-Apply.`
+      if (r.hybrid) {
+        const m = r.models || {}
+        const failed = m.failed || []
+        let msg = `Applied live — ${m.added || 0} added, ${m.updated || 0} updated, ${m.deleted || 0} deleted`
+        if (r.restart === 'healthy') msg += '; settings change restarted the proxy (healthy)'
+        else if (r.restart === 'unhealthy') msg += `; settings restart UNHEALTHY: ${r.detail || ''}`
+        if (failed.length) {
+          error = `${msg}. ${failed.length} model op(s) failed: ${failed.map(f => `${f.id} (${f.op})`).join(', ')}`
+          notice = ''
+        } else {
+          notice = msg
+        }
+      } else {
+        notice = r.servant === 'healthy'
+          ? 'Applied — proxy restarted and healthy.'
+          : `Applied, but the proxy is unhealthy: ${r.detail || ''} — fix the setting and re-Apply.`
+      }
       await load(); return true
     } catch (e) { error = e.status === 422 ? `Invalid config: ${e.message}` : e.message; await load(); return false }
     finally { applying = false }
@@ -48,6 +63,7 @@ export function createConfigStore() {
     get items(){return items}, get loading(){return loading}, get saving(){return saving},
     get applying(){return applying}, get error(){return error}, get notice(){return notice},
     get pending(){return pending}, get count(){return count},
+    get storeModelInDb(){return storeModelInDb},
     load, itemsOfKind, itemNamed, stageItem, deleteItem, apply, discard,
   }
 }
