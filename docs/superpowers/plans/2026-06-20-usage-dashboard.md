@@ -285,16 +285,41 @@ async def usage_recent(limit: int = 50):
 
 ---
 
-## Task 5: Integration verification + release
+## Task 5: Virtual-key model-access list — show model names, not UUIDs (folded-in bug)
+
+**Files:** Modify `ui/frontend/src/routes/Keys.svelte`. **Independent of Tasks 1–4** (different file) — build in parallel with Task 4.
+
+**Bug:** the create/edit-key "Models (none selected = all)" multi-select lists deployment **UUIDs** (`model_info.id`) instead of public model names, because line ~20 maps the model items by their item key:
+```javascript
+availableModels = (state.items || []).filter(i => i.kind === 'model').map(i => i.name)   // i.name = UUID
+```
+Public model names live in `i.data.model_name`, and multiple deployments share one name (the `gpt-oss-20b` group is 3+ items) → must dedupe. LiteLLM's `/key/generate` `models` field also wants public names, so this is functional, not just cosmetic.
+
+- [ ] **Step 1:** READ `Keys.svelte` around line 20 + lines 107–110 (the `<select multiple bind:value={form.models}>` whose `{#each availableModels as m}<option value={m}>{m}</option>` renders both the value sent and the label — so fixing `availableModels` fixes both).
+- [ ] **Step 2:** Replace the `availableModels = …` line with the deduped public-name list:
+```javascript
+      availableModels = [...new Set(
+        (state.items || [])
+          .filter(i => i.kind === 'model')
+          .map(i => i.data?.model_name)
+          .filter(Boolean)
+      )].sort()
+```
+- [ ] **Step 3:** Build `cd ui/frontend && npm run build` → succeeds. Commit `git add ui/frontend/src/routes/Keys.svelte && git commit -m "fix(ui): virtual-key model-access list shows model names, not deployment UUIDs"`
+
+---
+
+## Task 6: Integration verification + release
 
 - [ ] **Step 1:** Local-build stack (`docker-compose.override.yml` → `build: ./ui`); seed config; `docker compose up -d --build --wait`; **point the UI's `DATABASE_URL` at a DB with real spend logs** OR run Playwright against the host UI directly. Simplest: verify the new endpoints against the **host** (`http://10.0.20.75:8081`, login `jammer75`) since it has 10K+ real rows. Playwright on **`http://10.0.20.85:8081`** for the local build's screen chrome; data assertions against the host.
 - [ ] **Step 2 — endpoints:** `curl` (with login cookie) `http://10.0.20.75:8081/api/usage/summary?days=30` → assert `kpis`, `by_provider` (≥3 rows incl. deepinfra/custom_openai/groq), `timeseries` (non-empty), no `error`. `?days=1` → `granularity:"hour"`. `/api/usage/recent?limit=50` → 50 rows with provider/status/cache.
 - [ ] **Step 3 — screen (Playwright, LAN-IP):** KPI row populated; charts render (uPlot canvas present); switch tabs (provider/model/key) — tables populate; click a column header — sorts; recent-activity table has rows; switch 30d→24h — charts re-fetch (hourly); reload page — range + auto-refresh persist (v3.8). Screenshot `docs/images/v39-usage-dashboard.png`.
+- [ ] **Step 3b — Keys fix (Task 5):** open Virtual Keys → Create key → the **Models** multi-select shows **public names** (e.g. `gpt-oss-20b`), **deduped** (one entry, not 3 UUIDs); select one + create → the key list shows the model **name**; LiteLLM accepts it (no error).
 - [ ] **Step 4:** Full backend suite green; teardown; restore `config/config.yaml`; remove override; `git status` clean.
 - [ ] **Step 5 — release:** merge `v3.9-usage-dashboard` → `main` (`--no-ff`), push → CI cuts **`1.19.0`** + image; bump compose/admin-ui pin to `1.19.0` (rebase past the release commit); push.
 
 ## Self-Review
-- **Spec coverage:** KPIs+breakdowns+timeseries → T1; recent feed → T2; chart lib → T3; dashboard screen (KPI/charts/tabs/feed/24h) → T4; integration+release → T5. ✓
+- **Spec coverage:** KPIs+breakdowns+timeseries → T1; recent feed → T2; chart lib → T3; dashboard screen (KPI/charts/tabs/feed/24h) → T4; folded-in key-model-name bug → T5; integration+release → T6. ✓
 - **Type consistency:** `_shape_summary(days,granularity,kpis,by_provider,by_model,by_key,timeseries)` (T1) ↔ endpoint call; `_cols`/`_ms` helpers; `_shape_recent(rows)` (T2); `<Chart {data} {series} {height}>` (T3) ↔ Usage.svelte usage (T4). ✓
 - **Placeholders:** backend code + SQL + tests complete; chart wrapper complete; Usage.svelte steps give exact data wiring, columns, formatters, sort logic + reuse standard markup. The cache_hit metric is an explicit T1-Step-6 resolution, not a placeholder. ✓
 - **Risk flagged:** by_key SQL string-munging + FILTER-on-percentile_cont verified on host in T1 Step 6 (adjust to a CTE if PG rejects FILTER on the ordered-set aggregate). ✓
