@@ -5,7 +5,7 @@ from app.config_db import ConfigStore
 from app.config_render import effective, render_config, redact_rendered
 from app.config_engine import apply_config, pending_status, ApplyError
 from app.credentials_store import fernet_from_secret
-from app.config_store import ConfigError
+from app.config_store import ConfigError, validate_config, write_config_atomic
 from app.reloader import Reloader
 from app.models_client import ModelsClient
 import yaml as _yaml
@@ -127,3 +127,28 @@ async def put_passthrough(body: dict = Body(...)):
         raise HTTPException(status_code=422, detail=f"invalid passthrough YAML: {e}")
     await make_config_store().stage("passthrough", "_", data)
     return await pending_status(make_config_store())
+
+@router.post("/config/prepare-hot-apply", dependencies=[Depends(login_required)])
+async def prepare_hot_apply():
+    s = get_settings(); f = _fernet()
+    store = make_config_store()
+    # Make ui_config (the master) agree with the STORE_MODEL_IN_DB=true env, so the
+    # rendered config + export are reproducible — not just the runtime env. Staged
+    # here; folded by the post-recreate Apply.
+    await store.stage('general_setting', 'store_model_in_db', True)
+    eff = effective(await store.applied(), await store.staged())
+    cfg = render_config(eff, decrypt=lambda b: f.decrypt(b.encode()).decode(), hybrid=True)
+    try:
+        validate_config(cfg)
+        write_config_atomic(s.config_path, _yaml.safe_dump(cfg, sort_keys=False))
+    except ConfigError as e:
+        raise HTTPException(status_code=422, detail=f"invalid config: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"write failed: {e}")
+    try:
+        await make_reloader().reload_and_verify([])   # comes up with zero models
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"proxy did not restart cleanly: {e}")
+    return {"prepared": True,
+            "next": "config.yaml now has no models. Set STORE_MODEL_IN_DB=true in .env, run "
+                    "`docker compose up -d` to recreate the stack, then click Apply to fill the model DB."}

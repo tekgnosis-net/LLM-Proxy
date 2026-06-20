@@ -156,6 +156,27 @@ async def test_credential_data_encrypts_a_provided_key():
 
 # Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
 
+# Task 7: POST /api/config/prepare-hot-apply
+
+def _client_prepare(tmp_path, store, ok=True):
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_reloader = lambda: FakeReloader(ok)
+    return c
+
+def test_prepare_hot_apply_writes_empty_model_list(tmp_path):
+    s = FakeStore(); c = _client_prepare(tmp_path, s, ok=True)
+    r = c.post("/api/config/prepare-hot-apply")
+    assert r.status_code == 200
+    assert r.json()["prepared"] is True
+    import yaml
+    written = yaml.safe_load(open(os.environ["CONFIG_PATH"]))
+    assert written.get("model_list") == [] or "model_list" not in written
+    assert "credential_list" not in written
+    assert ("general_setting", "store_model_in_db", True, False) in s.staged_calls
+
+# Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
+
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}

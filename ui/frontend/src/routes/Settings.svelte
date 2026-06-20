@@ -52,6 +52,13 @@
     finally { hcBusy = false }
   }
 
+  let hotBusy = $state(false), hotMsg = $state(''), hotErr = $state('')
+  async function prepareHotApply() {
+    hotBusy = true; hotMsg = ''; hotErr = ''
+    try { const r = await api.prepareHotApply(); hotMsg = r.next } catch (e) { hotErr = e.message }
+    finally { hotBusy = false }
+  }
+
   let catStatus = $state(null), catBusy = $state(false), catMsg = $state('')
   onMount(() => {
     api.catalogStatus().then(s => catStatus = s).catch(() => {})
@@ -105,6 +112,12 @@
       · {catStatus.models} models · {catStatus.providers} providers{catStatus.last_error ? ` · last error: ${catStatus.last_error}` : ''}</p>{/if}
     <button onclick={syncCatalog} disabled={catBusy}>{catBusy ? 'Syncing…' : 'Sync now'}</button>
     {#if catMsg}<div class="banner ok">{catMsg}</div>{/if}
+  </div>
+  <div class="card"><h2>Enable hot-apply (model changes without restart)</h2>
+    <p class="hint">One-time migration. Step 1 empties the model list from config.yaml and restarts the proxy (brief downtime). Then set <code>STORE_MODEL_IN_DB=true</code> in <code>.env</code>, run <code>docker compose up -d</code>, and click Apply to fill the model DB. After this, model add/edit/delete apply instantly.</p>
+    <div class="row"><button onclick={prepareHotApply} disabled={hotBusy}>{hotBusy ? 'Preparing…' : 'Step 1: Prepare (empty config models + restart)'}</button></div>
+    {#if hotErr}<div class="banner err">{hotErr}</div>{/if}
+    {#if hotMsg}<div class="banner ok">{hotMsg}</div>{/if}
   </div>
   <div class="card"><h2>Change admin password</h2>
     <p class="hint">Updates the admin login password. The new password must be at least 8 characters.</p>
