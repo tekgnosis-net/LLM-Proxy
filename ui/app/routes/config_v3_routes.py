@@ -7,6 +7,7 @@ from app.config_engine import apply_config, pending_status, ApplyError
 from app.credentials_store import fernet_from_secret
 from app.config_store import ConfigError
 from app.reloader import Reloader
+from app.models_client import ModelsClient
 import yaml as _yaml
 
 router = APIRouter(prefix="/api")
@@ -23,6 +24,10 @@ def make_reloader() -> Reloader:
     s = get_settings()
     return Reloader(s.socket_proxy_url, s.litellm_base_url, s.litellm_master_key,
                     s.litellm_container, mode=s.reload_mode, timeout_s=s.reload_timeout_s)
+
+def make_models_client() -> ModelsClient:
+    s = get_settings()
+    return ModelsClient(s.litellm_base_url, s.litellm_master_key)
 
 def _redact_item(it: dict) -> dict:
     if it["kind"] == "credential":
@@ -82,8 +87,12 @@ async def delete_item(kind: str, name: str):
 async def apply():
     s = get_settings(); f = _fernet()
     try:
-        return await apply_config(s.config_path, make_config_store(), make_reloader(),
-                                  decrypt=lambda b: f.decrypt(b.encode()).decode())
+        return await apply_config(
+            s.config_path, make_config_store(), make_reloader(),
+            decrypt=lambda b: f.decrypt(b.encode()).decode(),
+            models_client=make_models_client() if s.store_model_in_db else None,
+            hybrid=s.store_model_in_db,
+        )
     except ApplyError as e:
         code = 422 if "invalid" in str(e) else 500
         raise HTTPException(status_code=code, detail=str(e))

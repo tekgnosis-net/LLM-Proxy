@@ -80,7 +80,7 @@
     </div>
     {#if ptErr}<div class="banner err">{ptErr}</div>{/if}
     {#if ptMsg}<div class="banner ok">{ptMsg}</div>{/if}
-    {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
+    {#if store.applying}<div class="banner info">Applying changes…</div>{/if}
   </div>
   <div class="card"><h2>Health checks</h2>
     <p class="hint">How often LiteLLM runs background health checks (seconds), for models that keep them enabled. Per-model checks are toggled on the Models screen; paid providers should disable theirs to avoid recurring billed probes.</p>

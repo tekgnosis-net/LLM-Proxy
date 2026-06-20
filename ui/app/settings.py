@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     reload_mode: Literal["SIGHUP", "restart"] = "restart"   # spike: this image needs a restart, SIGHUP is a no-op
     reload_timeout_s: float = 90.0    # max wait for the proxy to return healthy after reload
     database_url: str = ""            # asyncpg DSN for housekeeping/stats
+    store_model_in_db: bool = False   # mirrors the litellm container's STORE_MODEL_IN_DB; true → hybrid hot-apply
     housekeeping_enabled: bool = False        # opt-in: scheduled maintenance cron
     housekeeping_interval_hours: int = 24
     housekeeping_spendlog_retention_days: int = 90

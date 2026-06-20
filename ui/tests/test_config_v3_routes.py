@@ -153,3 +153,32 @@ async def test_credential_data_encrypts_a_provided_key():
     from app.routes.config_v3_routes import _credential_data
     out = await _credential_data("K", {"provider": "openai", "api_key": "sk-real"}, _FakeStore([]))
     assert out["provider"] == "openai" and out["value_encrypted"] and out["value_encrypted"] != "sk-real"
+
+# Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
+
+def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
+    import app.routes.config_v3_routes as cr
+    captured = {}
+    async def fake_apply(config_path, store, reloader, *, decrypt, models_client=None, hybrid=False):
+        captured["hybrid"] = hybrid
+        captured["has_client"] = models_client is not None
+        return {"applied": True, "hybrid": hybrid, "models": {"added": 0}, "restart": "skipped"}
+    monkeypatch.setattr(cr, "apply_config", fake_apply)
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    monkeypatch.setenv("SESSION_SECRET", "s")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("pw"))
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "c.yaml"))
+    monkeypatch.setenv("DATABASE_URL", "postgresql://x")
+    (tmp_path / "c.yaml").write_text("model_list: []\n")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    from app.main import create_app
+    cr.make_config_store = lambda: FakeStore()
+    cr._fernet = lambda: _FakeFernet()
+    cr.make_reloader = lambda: FakeReloader(ok=True)
+    c = TestClient(create_app())
+    c.post("/api/auth/login", json={"password": "pw"})
+    resp = c.post("/api/apply")
+    assert resp.status_code == 200
+    assert captured.get("hybrid") is True
+    assert captured.get("has_client") is True
