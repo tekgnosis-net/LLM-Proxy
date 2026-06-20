@@ -171,7 +171,7 @@ def test_prepare_hot_apply_writes_empty_model_list(tmp_path):
     assert r.json()["prepared"] is True
     import yaml
     written = yaml.safe_load(open(os.environ["CONFIG_PATH"]))
-    assert written.get("model_list") == [] or "model_list" not in written
+    assert written.get("model_list") == []
     assert "credential_list" not in written
     assert ("general_setting", "store_model_in_db", True, False) in s.staged_calls
 
