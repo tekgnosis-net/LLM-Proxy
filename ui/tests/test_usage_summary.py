@@ -1,26 +1,36 @@
-import types
-import pytest
-from datetime import datetime
+import types, pytest
+from datetime import datetime, date
 from app.routes.usage_routes import _shape_summary
 
-def test_shape_summary_maps_rows():
-    totals = {"spend": 1.5, "requests": 10, "tokens": 2000}
-    by_model = [{"model": "gpt-oss-20b", "s": 1.5, "r": 10, "t": 2000}]
-    by_key = [{"k": "team-a", "s": 1.0, "r": 6, "last": datetime(2026, 6, 10, 9, 0)},
-              {"k": "abcd012345", "s": 0.5, "r": 4, "last": None}]
-    daily = [{"d": datetime(2026, 6, 9).date(), "r": 4, "s": 0.5},
-             {"d": datetime(2026, 6, 10).date(), "r": 6, "s": 1.0}]
-    out = _shape_summary(30, totals, by_model, by_key, daily)
-    assert out["range_days"] == 30
-    assert out["totals"] == {"spend": 1.5, "requests": 10, "tokens": 2000}
-    assert out["by_model"][0] == {"model": "gpt-oss-20b", "spend": 1.5, "requests": 10, "tokens": 2000}
-    assert out["by_key"][0]["key"] == "team-a" and out["by_key"][1]["last_used"] is None
-    assert out["daily"][0]["day"] == "2026-06-09"
+def _row(label, **kw):
+    base = {"label": label, "requests": 10, "tok_in": 100, "tok_out": 20, "spend": 1.5,
+            "cost_per_1m": 0.05, "p50_ms": 200, "p95_ms": 900, "err_pct": 2.5}
+    base.update(kw); return base
 
-def test_shape_summary_handles_empty():
-    out = _shape_summary(7, {"spend": None, "requests": 0, "tokens": None}, [], [], [])
-    assert out["totals"] == {"spend": 0.0, "requests": 0, "tokens": 0}
-    assert out["by_model"] == [] and out["by_key"] == [] and out["daily"] == []
+def test_shape_summary_maps_everything():
+    kpis = {"spend": 1.5, "requests": 10, "tok_in": 100, "tok_out": 20, "error_rate": 0.1,
+            "avg_latency_ms": 880.6, "p95_latency_ms": 900.4, "cache_hit_rate": 0.25}
+    out = _shape_summary(30, "day", kpis, [_row("deepinfra")], [_row("gpt-oss-20b")],
+                         [_row("team-a", last_used=datetime(2026,6,19,9,0))],
+                         [{"bucket": date(2026,6,19), "requests": 5, "spend": 0.3, "p95_ms": 700.7}])
+    assert out["range_days"] == 30 and out["granularity"] == "day"
+    assert out["kpis"]["avg_latency_ms"] == 881 and out["kpis"]["cache_hit_rate"] == 0.25
+    assert out["by_provider"][0]["label"] == "deepinfra" and out["by_provider"][0]["p95_ms"] == 900
+    assert out["by_key"][0]["last_used"] == "2026-06-19T09:00:00"
+    assert "last_used" not in out["by_provider"][0]
+    assert out["timeseries"][0] == {"bucket": "2026-06-19", "requests": 5, "spend": 0.3, "p95_ms": 701}
+
+def test_shape_summary_none_guards():
+    kpis = {"spend": None, "requests": 0, "tok_in": None, "tok_out": None, "error_rate": None,
+            "avg_latency_ms": None, "p95_latency_ms": None, "cache_hit_rate": None}
+    out = _shape_summary(7, "hour", kpis, [], [], [], [])
+    assert out["kpis"] == {"spend": 0.0, "requests": 0, "tok_in": 0, "tok_out": 0, "error_rate": 0.0,
+                           "avg_latency_ms": None, "p95_latency_ms": None, "cache_hit_rate": None}
+    assert out["by_provider"] == [] and out["timeseries"] == []
+
+def test_shape_summary_row_cost_none():
+    out = _shape_summary(7, "day", {}, [_row("x", cost_per_1m=None)], [], [], [])
+    assert out["by_provider"][0]["cost_per_1m"] is None
 
 
 @pytest.mark.asyncio
@@ -34,7 +44,9 @@ async def test_usage_summary_binds_days_as_int(monkeypatch):
     class FakeConn:
         async def fetchrow(self, q, *args):
             seen_args.append(args)
-            return {"spend": 0, "requests": 0, "tokens": 0}
+            return {"spend": 0, "requests": 0, "tok_in": 0, "tok_out": 0,
+                    "error_rate": None, "avg_latency_ms": None, "p95_latency_ms": None,
+                    "cache_hit_rate": None}
         async def fetch(self, q, *args):
             seen_args.append(args)
             return []
@@ -52,3 +64,27 @@ async def test_usage_summary_binds_days_as_int(monkeypatch):
     assert seen_args, "no DB queries were run"
     # every query must receive the int day-count (30), never the str '30 days'
     assert all(args == (30,) for args in seen_args), seen_args
+
+
+# ---------------------------------------------------------------------------
+# Task 2: _shape_recent tests
+# ---------------------------------------------------------------------------
+from app.routes.usage_routes import _shape_recent
+from datetime import datetime as _dt
+
+def test_shape_recent_maps_rows():
+    rows = [{"time": _dt(2026,6,19,18,42,3), "model": "deepinfra/openai/gpt-oss-20b",
+             "provider": "deepinfra", "key": "hindsight-cbr", "tok_in": 1200, "tok_out": 340,
+             "latency_ms": 41200, "status": "success", "cache_hit": "True"}]
+    out = _shape_recent(rows)
+    r = out["recent"][0]
+    assert r["time"] == "2026-06-19T18:42:03" and r["provider"] == "deepinfra"
+    assert r["cache_hit"] is True and r["status"] == "success" and r["latency_ms"] == 41200
+
+def test_shape_recent_cache_false_and_none():
+    rows = [{"time": _dt(2026,6,19,1,0), "model":"m","provider":"groq","key":"k","tok_in":1,
+             "tok_out":2,"latency_ms":500,"status":"success","cache_hit":"False"},
+            {"time": _dt(2026,6,19,1,1), "model":"m","provider":"groq","key":"k","tok_in":1,
+             "tok_out":2,"latency_ms":500,"status":"failure","cache_hit":None}]
+    out = _shape_recent(rows)
+    assert out["recent"][0]["cache_hit"] is False and out["recent"][1]["cache_hit"] is None
