@@ -17,7 +17,12 @@
     try {
       keys = await api.keys()
       const state = await api.configState().catch(() => ({ items: [] }))
-      availableModels = (state.items || []).filter(i => i.kind === 'model').map(i => i.name)
+      availableModels = [...new Set(
+        (state.items || [])
+          .filter(i => i.kind === 'model')
+          .map(i => i.data?.model_name)
+          .filter(Boolean)
+      )].sort()
     } catch (e) { err = e.message } finally { loading = false }
   }
   onMount(load)
