@@ -180,6 +180,20 @@
     return { color:'#8e8e93', title:'Health check pending (background check runs every ~5 min)' }
   }
 
+  let checkResult = $state({})   // item.name → { busy?:bool, ok?:bool, msg?:string }
+  async function checkNow(item) {
+    const lp = item.data?.litellm_params || {}
+    const mode = (item.data?.model_info || {}).mode || 'chat'
+    checkResult = { ...checkResult, [item.name]: { busy: true } }
+    try {
+      const r = await api.testModel({ litellm_params: lp, mode })
+      const ok = r.status === 'success'
+      checkResult = { ...checkResult, [item.name]: { ok, msg: ok ? 'OK' : 'Failed' } }
+    } catch (e) {
+      checkResult = { ...checkResult, [item.name]: { ok: false, msg: e.message } }
+    }
+  }
+
   // Flag helpers
   function flagAccent(flag) {
     if (flag === 'new') return 'row-new'
@@ -283,7 +297,7 @@
     {#if modelItems.length === 0}<p class="empty">No models yet. Add one to start serving.</p>
     {:else}
       <table>
-        <thead><tr><th>Model name</th><th>litellm model</th><th>Costs</th><th>Health</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Model name</th><th>litellm model</th><th>Costs</th><th>Health</th><th>Check</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {#each modelItems as item}
             {@const publicName = item.data?.model_name ?? item.name}
@@ -301,6 +315,17 @@
                 {:else}—{/if}
               </td>
               <td><span class="dot" style="background:{dot.color}" title={dot.title}></span></td>
+              <td>
+                {#if flag !== 'deleted'}
+                  {@const cr = checkResult[item.name]}
+                  <button onclick={() => checkNow(item)} disabled={cr?.busy} title="Run an on-demand health check now">
+                    {cr?.busy ? '…' : 'Check now'}
+                  </button>
+                  {#if cr && !cr.busy}
+                    <span class="check-res" class:ok={cr.ok} class:bad={!cr.ok} title={cr.msg}>{cr.ok ? '✓' : '✗'}</span>
+                  {/if}
+                {/if}
+              </td>
               <td>
                 {#if flag === 'new'}<span class="flag-tag flag-new">new</span>
                 {:else if flag === 'changed'}<span class="flag-tag flag-changed">changed</span>
@@ -344,6 +369,9 @@
   label.check{flex-direction:row;align-items:flex-start;gap:8px;flex-wrap:wrap}
   label.check input{margin-top:2px}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .check-res{margin-left:6px;font-weight:600}
+  .check-res.ok{color:#34c759}
+  .check-res.bad{color:#ff3b30}
   .lookup-row{display:flex;gap:6px;align-items:stretch}
   .lookup-row input{flex:1}
   .lookup-row button{white-space:nowrap;padding:8px 10px;font-size:12px}
