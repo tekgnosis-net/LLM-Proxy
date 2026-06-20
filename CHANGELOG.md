@@ -1,3 +1,17 @@
+# [1.19.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.18.1...v1.19.0) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ui:** virtual-key model-access list shows model names, not deployment UUIDs ([6535dc8](https://github.com/tekgnosis-net/LLM-Proxy/commit/6535dc83714685ea290f448411ebd5928705fbe2))
+
+
+### Features
+
+* **ui:** /api/usage/summary returns full dashboard (KPIs, by-provider/model/key, timeseries) ([ee64a4e](https://github.com/tekgnosis-net/LLM-Proxy/commit/ee64a4e78e0c6a8d6bc21f3edd0f62044099c60a))
+* **ui:** uPlot Chart.svelte wrapper ([a6452ad](https://github.com/tekgnosis-net/LLM-Proxy/commit/a6452ad134191c3fb847aecc340c3d7785fba167))
+* **ui:** Usage dashboard — KPIs, charts, by-provider/model/key tabs, recent feed, 24h/hourly ([82c8b14](https://github.com/tekgnosis-net/LLM-Proxy/commit/82c8b14e757798149edb26a5a12063629031e4a5))
+
 ## [1.18.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.18.0...v1.18.1) (2026-06-18)
 
 
