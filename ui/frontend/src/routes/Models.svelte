@@ -16,10 +16,15 @@
   let autofilled = $state(false)
   let autofillBusy = $state(false)
   let pendingNoKey = $state(false)
+  let baseErr = $state(false)
 
   // Clear the keyless warning as soon as the user picks a credential or env var
   $effect(() => {
     if (form.credential || form.api_key_env) pendingNoKey = false
+  })
+  // Clear the missing-base error once a base URL is supplied (or the provider isn't custom)
+  $effect(() => {
+    if (form.api_base?.trim() || !CUSTOM_PROVIDERS.has(providerSlug)) baseErr = false
   })
 
   // Derived: model items and credential items from the item store
@@ -59,6 +64,7 @@
     autofilled = false
     editingId = null
     pendingNoKey = false
+    baseErr = false
   }
 
   function editModel(item) {
@@ -130,6 +136,11 @@
   }
 
   async function saveModel() {
+    // Sanity gate: custom/local endpoints (custom_openai/ollama/vllm/…) REQUIRE a base URL.
+    // Without it LiteLLM falls through to api.openai.com → 401. Hard-block (no override).
+    if (CUSTOM_PROVIDERS.has(providerSlug) && !form.api_base?.trim()) {
+      baseErr = true; showAdvanced = true; return
+    }
     if (!form.credential && !form.api_key_env && !pendingNoKey) { pendingNoKey = true; return }
     pendingNoKey = false
     const id = editingId || uuidv4()
@@ -224,6 +235,11 @@
       <label>Input cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
       <label>Output cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.output_cost} placeholder="auto from catalog" /></label>
 
+      {#if baseErr}
+        <div class="banner err">This is a custom / self-hosted provider, so an <b>API base</b> URL is required.
+          Without it LiteLLM falls through to <code>api.openai.com</code> and the request fails with a 401.
+          Set the API base above, then Save.</div>
+      {/if}
       {#if pendingNoKey}
         <div class="banner warn">This deployment has no API key. LiteLLM requires one even for local providers
           (vLLM/llama.cpp) — requests will fail without it. Pick a saved credential (a reusable dummy key works)
