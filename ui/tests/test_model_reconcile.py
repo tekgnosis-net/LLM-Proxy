@@ -29,6 +29,13 @@ def test_diff_noop():
     assert d == {"to_add": [], "to_update": [], "to_delete": []}
 
 
+def test_diff_changed_id_not_in_live_is_add_not_update():
+    desired = {"a": _entry("a")}
+    d = diff_models(desired, [], changed_ids={"a"}, force_ids=set())
+    assert [e["model_info"]["id"] for e in d["to_add"]] == ["a"]
+    assert d["to_update"] == []   # 'a' is "changed" but absent from live → add, never update
+
+
 class FakeModelsClient:
     def __init__(self): self.added = []; self.updated = []; self.deleted = []
     async def add_model(self, p): self.added.append(p); return {}

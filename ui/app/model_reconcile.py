@@ -37,12 +37,12 @@ async def reconcile_models(desired_items: list[dict], live: list[dict], client,
         try:
             await client.add_model(entry); added += 1
         except Exception as e:
-            failed.append({"id": entry["model_info"]["id"], "op": "add", "error": str(e)})
+            failed.append({"id": (entry.get("model_info") or {}).get("id"), "op": "add", "error": str(e)})
     for entry in plan["to_update"]:
         try:
             await client.update_model(entry); updated += 1
         except Exception as e:
-            failed.append({"id": entry["model_info"]["id"], "op": "update", "error": str(e)})
+            failed.append({"id": (entry.get("model_info") or {}).get("id"), "op": "update", "error": str(e)})
     for mid in plan["to_delete"]:
         try:
             await client.delete_model(mid); deleted += 1
