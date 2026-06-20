@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, buildLitellmParams, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
+  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, CUSTOM_PROVIDERS, buildLitellmParams, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
   import { api } from '../lib/api.js'
   import { uuidv4 } from '../lib/browser.js'
   let { store } = $props()
@@ -73,7 +73,7 @@
       input_cost: lp.input_cost_per_token!=null ? perTokenToPerM(lp.input_cost_per_token) : '',
       output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '' }
     editingId = item.name; showAdd = true; testResult = null; autofilled = false
-    showAdvanced = !!(lp.api_base)
+    showAdvanced = !!(lp.api_base) || CUSTOM_PROVIDERS.has(providerSlug)
   }
 
   function currentProvider() { return providers.find(p => p.provider === providerSlug) || { provider: providerSlug } }
@@ -87,7 +87,7 @@
     // clear special/deployment fields so a previous provider's values can't leak into params
     form.api_base = ''; form.api_version = ''; form.aws_region_name = ''
     form.vertex_project = ''; form.vertex_location = ''
-    showAdvanced = false
+    showAdvanced = CUSTOM_PROVIDERS.has(providerSlug)   // auto-open Advanced (api_base) for custom/local providers
     const modes = providerModes()
     if (!modes.includes(form.mode)) form.mode = modes[0] || 'chat'
   }
