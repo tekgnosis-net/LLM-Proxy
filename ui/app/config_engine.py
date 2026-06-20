@@ -99,6 +99,8 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
             return {"applied": True, "servant": "unhealthy", "detail": str(e), "models": expected}
 
     # ---- hybrid flow ----
+    if models_client is None:
+        raise ApplyError("hybrid=True requires a models_client")
     settings_changed = any(s["kind"] in _RESTART_KINDS for s in staged)
     creds_changed = {s["name"] for s in staged if s["kind"] == "credential"}
     changed_ids = {s["name"] for s in staged if s["kind"] == "model" and s.get("flag") in ("new", "changed")}
@@ -130,12 +132,13 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
                                           changed_ids, creds_changed, resolve_key)
     out = {"applied": True, "hybrid": True, "models": model_report}
     if settings_changed:
-        expected = [it["name"] for it in desired_items]
+        expected = [(it["data"] or {}).get("model_name", it["name"]) for it in desired_items]
         try:
             await reloader.reload_and_verify(expected)
             out["restart"] = "healthy"
         except ReloadError as e:
-            out["restart"] = "unhealthy"; out["detail"] = str(e)
+            out["restart"] = "unhealthy"
+            out["detail"] = str(e)
     else:
         out["restart"] = "skipped"
     return out

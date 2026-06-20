@@ -40,6 +40,7 @@ class FakeReloader:
         self.calls = 0
 
     async def reload_and_verify(self, expected):
+        self.expected = expected
         self.calls += 1
         if not self.ok:
             from app.reloader import ReloadError
@@ -174,9 +175,6 @@ async def test_pending_status_empty():
 
 # --- Task 5: hybrid apply tests ---
 
-from app.config_engine import apply_config as _apply  # already imported above; alias for clarity
-
-
 class FakeModelsClient:
     def __init__(self): self.added=[]; self.updated=[]; self.deleted=[]
     async def list_models(self): return []
@@ -222,3 +220,23 @@ async def test_hybrid_settings_change_writes_and_restarts(tmp_path):
     assert cfg["router_settings"]["routing_strategy"] == "least-busy"
     assert cfg["model_list"] == []               # hybrid: settings-only, models not in yaml
     assert "credential_list" not in cfg
+
+
+class ModelPlusSettingStore(FakeStore):
+    """An applied model (public name 'gpt', store key 'uuid-1') + a staged settings change."""
+    def __init__(self):
+        self._applied = [{"kind": "model", "name": "uuid-1",
+                          "data": {"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o"}, "model_info": {}}}]
+        self._staged = [{"kind": "router_setting", "name": "routing_strategy", "data": "least-busy", "flag": "changed"}]
+        self.folded = False
+    async def fold(self): self.folded = True; self._staged = []
+
+
+@pytest.mark.asyncio
+async def test_hybrid_restart_verify_uses_public_model_name(tmp_path):
+    store = ModelPlusSettingStore(); mc = FakeModelsClient(); rl = FakeReloader(ok=True)
+    p = str(tmp_path / "config.yaml")
+    res = await apply_config(p, store, rl, decrypt=lambda b: "", models_client=mc, hybrid=True)
+    assert res["restart"] == "healthy"
+    # The reloader must be asked to verify the PUBLIC name 'gpt', never the store UUID 'uuid-1'
+    assert rl.expected == ["gpt"]
