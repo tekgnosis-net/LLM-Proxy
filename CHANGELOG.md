@@ -1,3 +1,10 @@
+## [1.19.2](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.1...v1.19.2) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ui:** block saving a custom/local model with no api_base (sanity gate) ([d041517](https://github.com/tekgnosis-net/LLM-Proxy/commit/d0415172350cfee13a71620f38a55a1068cdbde6))
+
 ## [1.19.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.0...v1.19.1) (2026-06-20)
 
 
