@@ -4,7 +4,7 @@
 
 **Goal:** Make the Usage dashboard auto-refresh update in place (no scroll reset), and give each model a Health control (disable billed background checks + on-demand "Check now"), plus an editable global health-check interval.
 
-**Architecture:** Frontend-only changes plus zero new backend code — the "Check now" path reuses the existing `POST /api/models/test` (→ LiteLLM `/health/test_connection`), and the per-model disable flag and global interval ride the existing `ui_config` staging machinery as `model_info.disable_background_health_check`, `general_settings.health_check_skip_disabled_background_models`, and `litellm_settings.health_check_interval` items. This is the `1.20.0` slice of the hybrid-hot-apply spec — independently shippable, no keystone risk.
+**Architecture:** Frontend-only changes plus zero new backend code — the "Check now" path reuses the existing `POST /api/models/test` (→ LiteLLM `/health/test_connection`), and the per-model disable flag and global interval ride the existing `ui_config` staging machinery as `model_info.disable_background_health_check`, `general_settings.health_check_skip_disabled_background_models`, and `general_settings.health_check_interval` items. This is the `1.20.0` slice of the hybrid-hot-apply spec — independently shippable, no keystone risk.
 
 **Tech Stack:** Svelte 5 (runes: `$state`/`$derived`/`$effect`), FastAPI (untouched here), the existing `ui_config` staging store, Vite build, Playwright for integration verification.
 
@@ -22,7 +22,7 @@
 
 - `ui/frontend/src/routes/Usage.svelte` — Task 1. The `load()` function gains a `silent` parameter; auto-refresh ticks call it silently.
 - `ui/frontend/src/routes/Models.svelte` — Tasks 2 & 3. Add a Health-check toggle to the add/edit form (writes `model_info.disable_background_health_check`, stages the one-time global skip flag) and a per-row "Check now" button.
-- `ui/frontend/src/routes/Settings.svelte` — Task 4. Add a "Health checks" card with an editable global interval (`litellm_settings.health_check_interval`).
+- `ui/frontend/src/routes/Settings.svelte` — Task 4. Add a "Health checks" card with an editable global interval (`general_settings.health_check_interval`).
 - Task 5 touches no source files — it is the integration-verification + release-prep gate.
 
 No backend files change in this plan.
@@ -295,8 +295,8 @@ git commit -m "feat(ui): per-model 'Check now' on-demand health button"
 - Modify: `ui/frontend/src/routes/Settings.svelte` — add a "Health checks" card (after the passthrough card, around line 65) and its script state.
 
 **Interfaces:**
-- Consumes: `store.itemsOfKind('litellm_setting')`, `store.stageItem('litellm_setting', 'health_check_interval', <int>)` (existing).
-- Produces: a staged `litellm_setting` `health_check_interval` (seconds). Applies on the next Apply (a settings change → restart, by design).
+- Consumes: `store.itemsOfKind('general_setting')`, `store.stageItem('general_setting', 'health_check_interval', <int>)` (existing).
+- Produces: a staged `general_setting` `health_check_interval` (seconds) — LiteLLM reads it under `general_settings`. Applies on the next Apply (a settings change → restart, by design).
 
 **Why here, not Models:** LiteLLM's interval is global (no per-model interval exists — spec §4/§9). Lengthening it spaces out checks for the free/local models that stay enabled.
 
@@ -305,11 +305,11 @@ git commit -m "feat(ui): per-model 'Check now' on-demand health button"
 In the `<script>` (after the passthrough state, ~line 35), add:
 
 ```js
-  // Global health-check interval (litellm_settings.health_check_interval, seconds)
+  // Global health-check interval (general_settings.health_check_interval, seconds)
   let hcInterval = $state('')
   let hcMsg = $state(''), hcErr = $state(''), hcBusy = $state(false)
   function loadHcInterval() {
-    const it = store.itemsOfKind('litellm_setting').find(i => i.name === 'health_check_interval')
+    const it = store.itemsOfKind('general_setting').find(i => i.name === 'health_check_interval')
     hcInterval = (it && it.data != null) ? String(it.data) : ''
   }
   async function saveHcInterval() {
@@ -317,7 +317,7 @@ In the `<script>` (after the passthrough state, ~line 35), add:
     try {
       const n = parseInt(hcInterval, 10)
       if (!Number.isFinite(n) || n < 30) { hcErr = 'Enter a whole number of seconds ≥ 30'; return }
-      await store.stageItem('litellm_setting', 'health_check_interval', n)
+      await store.stageItem('general_setting', 'health_check_interval', n)
       hcMsg = 'Staged. Click Apply to make it live (settings change → brief restart).'
     } catch (e) { hcErr = e.message }
     finally { hcBusy = false }
@@ -365,7 +365,7 @@ Expected: build succeeds.
 
 - [ ] **Step 4: Verify via Playwright (LAN IP)**
 
-On `http://10.0.20.85:8081` → Settings: enter `300` → Save interval → expect the "Staged" message; open `GET /api/config/rendered` (or the Review screen) → assert `litellm_settings.health_check_interval: 300`. Enter `5` → Save → expect the validation error and nothing staged.
+On `http://10.0.20.85:8081` → Settings: enter `300` → Save interval → expect the "Staged" message; open `GET /api/config/rendered` (or the Review screen) → assert `general_settings.health_check_interval: 300`. Enter `5` → Save → expect the validation error and nothing staged.
 
 - [ ] **Step 5: Commit**
 
@@ -416,4 +416,4 @@ Report: branch ready, all checks green, screenshots attached. The human merges �
 
 **Placeholder scan:** No TBDs; every code step shows exact code and exact insertion points (line anchors). Frontend "tests" are Playwright assertions (the codebase has no frontend unit harness) — stated explicitly in Global Constraints.
 
-**Type/name consistency:** `disableHealthCheck` (form field) ↔ `disable_background_health_check` (model_info key) used consistently in Tasks 2; `ensureHealthSkipFlag` defined and called in Task 2; `checkNow`/`checkResult` defined and used in Task 3; `health_check_interval` (litellm_setting) consistent in Task 4; `load(silent)` signature consistent in Task 1. `store.itemsOfKind` / `store.stageItem` match the existing `api.js`/store surface read from the codebase.
+**Type/name consistency:** `disableHealthCheck` (form field) ↔ `disable_background_health_check` (model_info key) used consistently in Tasks 2; `ensureHealthSkipFlag` defined and called in Task 2; `checkNow`/`checkResult` defined and used in Task 3; `health_check_interval` (general_setting) consistent in Task 4; `load(silent)` signature consistent in Task 1. `store.itemsOfKind` / `store.stageItem` match the existing `api.js`/store surface read from the codebase.

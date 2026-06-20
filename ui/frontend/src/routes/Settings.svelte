@@ -34,11 +34,11 @@
     } finally { ptBusy = false }
   }
 
-  // Global health-check interval (litellm_settings.health_check_interval, seconds)
+  // Global health-check interval (general_settings.health_check_interval, seconds)
   let hcInterval = $state('')
   let hcMsg = $state(''), hcErr = $state(''), hcBusy = $state(false)
   function loadHcInterval() {
-    const it = store.itemsOfKind('litellm_setting').find(i => i.name === 'health_check_interval')
+    const it = store.itemsOfKind('general_setting').find(i => i.name === 'health_check_interval')
     hcInterval = (it && it.data != null) ? String(it.data) : ''
   }
   async function saveHcInterval() {
@@ -46,7 +46,7 @@
     try {
       const n = parseInt(hcInterval, 10)
       if (!Number.isFinite(n) || n < 30) { hcErr = 'Enter a whole number of seconds ≥ 30'; return }
-      await store.stageItem('litellm_setting', 'health_check_interval', n)
+      await store.stageItem('general_setting', 'health_check_interval', n)
       hcMsg = 'Staged. Click Apply to make it live (settings change → brief restart).'
     } catch (e) { hcErr = e.message }
     finally { hcBusy = false }
