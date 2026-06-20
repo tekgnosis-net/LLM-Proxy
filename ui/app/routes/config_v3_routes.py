@@ -112,9 +112,10 @@ async def discard(kind: str | None = None, name: str | None = None):
 
 @router.get("/config/rendered", dependencies=[Depends(login_required)])
 async def rendered():
+    s = get_settings()
     store = make_config_store(); f = _fernet()
     eff = effective(await store.applied(), await store.staged())
-    cfg = render_config(eff, decrypt=lambda b: f.decrypt(b.encode()).decode())
+    cfg = render_config(eff, decrypt=lambda b: f.decrypt(b.encode()).decode(), hybrid=s.store_model_in_db)
     return {"config": redact_rendered(cfg)}
 
 @router.get("/config/passthrough", dependencies=[Depends(login_required)])

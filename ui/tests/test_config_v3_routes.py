@@ -109,6 +109,17 @@ def test_rendered_redacted(tmp_path):
     assert d["config"]["credential_list"][0]["credential_values"]["api_key"]=="***"
     assert d["config"]["router_settings"]["routing_strategy"]=="least-busy"
 
+def test_rendered_hybrid_is_settings_only(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    # FakeStore has an applied model (router_setting + credential); in hybrid mode
+    # the rendered config must omit model_list entries and credential_list.
+    d=_client(tmp_path, FakeStore()).get("/api/config/rendered").json()["config"]
+    assert d.get("model_list")==[]
+    assert "credential_list" not in d
+    get_settings.cache_clear()
+
 # Task 4: GET/PUT /api/config/passthrough
 
 def test_get_passthrough_empty(tmp_path):
