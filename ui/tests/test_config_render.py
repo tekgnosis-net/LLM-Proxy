@@ -1,4 +1,4 @@
-from app.config_render import effective, render_config, redact_rendered
+from app.config_render import effective, render_config, redact_rendered, render_model_entry
 
 
 def test_effective_overlays_staged_flags():
@@ -74,3 +74,54 @@ def test_model_render_sets_model_info_id_to_item_uuid():
     assert m["model_info"]["id"] == "uuid-123"
     assert m["model_info"]["mode"] == "chat"
     assert m["litellm_params"] == {"model":"openai/gpt-4o"}
+
+
+def _model_item(cred=None, env=None):
+    lp = {"model": "openai/gpt-4o"}
+    if cred: lp["litellm_credential_name"] = cred
+    if env: lp["api_key"] = env
+    return {"kind": "model", "name": "uuid-1",
+            "data": {"model_name": "gpt-4o", "litellm_params": lp, "model_info": {"mode": "chat"}}}
+
+
+def test_render_model_entry_sets_id_and_shape():
+    e = render_model_entry(_model_item())
+    assert e["model_name"] == "gpt-4o"
+    assert e["model_info"]["id"] == "uuid-1"
+    assert e["model_info"]["mode"] == "chat"
+    assert e["litellm_params"] == {"model": "openai/gpt-4o"}
+
+
+def test_render_model_entry_no_resolve_keeps_credential_name():
+    e = render_model_entry(_model_item(cred="openai"))
+    assert e["litellm_params"]["litellm_credential_name"] == "openai"
+    assert "api_key" not in e["litellm_params"]
+
+
+def test_render_model_entry_inlines_credential():
+    e = render_model_entry(_model_item(cred="openai"), resolve_key=lambda n: "sk-REAL")
+    assert e["litellm_params"]["api_key"] == "sk-REAL"
+    assert "litellm_credential_name" not in e["litellm_params"]
+
+
+def test_render_model_entry_missing_credential_raises():
+    import pytest
+    with pytest.raises(KeyError):
+        render_model_entry(_model_item(cred="ghost"), resolve_key=lambda n: None)
+
+
+def test_render_model_entry_env_key_passes_through():
+    e = render_model_entry(_model_item(env="os.environ/OPENAI_API_KEY"), resolve_key=lambda n: "sk-REAL")
+    assert e["litellm_params"]["api_key"] == "os.environ/OPENAI_API_KEY"   # no cred name → no inline
+
+
+def test_render_hybrid_omits_models_and_credentials():
+    items = [
+        {"kind": "model", "name": "uuid-1", "data": {"model_name": "gpt", "litellm_params": {"model": "openai/gpt-4o", "litellm_credential_name": "openai"}}, "flag": None},
+        {"kind": "credential", "name": "openai", "data": {"provider": "openai", "value_encrypted": "ENC"}, "flag": None},
+        {"kind": "router_setting", "name": "routing_strategy", "data": "least-busy", "flag": None},
+    ]
+    cfg = render_config(items, decrypt=lambda b: "sk-REAL", hybrid=True)
+    assert cfg["model_list"] == []
+    assert "credential_list" not in cfg
+    assert cfg["router_settings"] == {"routing_strategy": "least-busy"}

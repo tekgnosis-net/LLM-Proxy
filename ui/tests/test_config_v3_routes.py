@@ -42,6 +42,16 @@ def test_state_returns_effective_with_flags_redacted(tmp_path):
     cred=items[("credential","openai")]
     assert cred["data"].get("provider")=="openai"
     assert "value_encrypted" not in cred["data"] and cred["data"].get("api_key") in (None,"***")
+    # store_model_in_db exposed (default False with no env set)
+    assert d["store_model_in_db"] is False
+
+def test_state_returns_store_model_in_db_true_when_env_set(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    r = _client(tmp_path, FakeStore()).get("/api/config/state")
+    assert r.json()["store_model_in_db"] is True
+    get_settings.cache_clear()
 
 def test_put_item_stages_plain(tmp_path):
     s=FakeStore(); c=_client(tmp_path, s)
@@ -109,6 +119,17 @@ def test_rendered_redacted(tmp_path):
     assert d["config"]["credential_list"][0]["credential_values"]["api_key"]=="***"
     assert d["config"]["router_settings"]["routing_strategy"]=="least-busy"
 
+def test_rendered_hybrid_is_settings_only(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    # FakeStore has an applied model (router_setting + credential); in hybrid mode
+    # the rendered config must omit model_list entries and credential_list.
+    d=_client(tmp_path, FakeStore()).get("/api/config/rendered").json()["config"]
+    assert d.get("model_list")==[]
+    assert "credential_list" not in d
+    get_settings.cache_clear()
+
 # Task 4: GET/PUT /api/config/passthrough
 
 def test_get_passthrough_empty(tmp_path):
@@ -153,3 +174,83 @@ async def test_credential_data_encrypts_a_provided_key():
     from app.routes.config_v3_routes import _credential_data
     out = await _credential_data("K", {"provider": "openai", "api_key": "sk-real"}, _FakeStore([]))
     assert out["provider"] == "openai" and out["value_encrypted"] and out["value_encrypted"] != "sk-real"
+
+# Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
+
+# Task 7: POST /api/config/prepare-hot-apply
+
+def _client_prepare(tmp_path, store, ok=True):
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_reloader = lambda: FakeReloader(ok)
+    return c
+
+def test_prepare_hot_apply_writes_empty_model_list(tmp_path):
+    s = FakeStore(); c = _client_prepare(tmp_path, s, ok=True)
+    r = c.post("/api/config/prepare-hot-apply")
+    assert r.status_code == 200
+    assert r.json()["prepared"] is True
+    import yaml
+    written = yaml.safe_load(open(os.environ["CONFIG_PATH"]))
+    assert written.get("model_list") == []
+    assert "credential_list" not in written
+    assert ("general_setting", "store_model_in_db", True, False) in s.staged_calls
+
+# Task 8: GET /api/config/export
+
+def test_export_returns_items_with_encrypted_credentials(tmp_path):
+    s = FakeStore()
+    c = _client(tmp_path, s)
+    r = c.get("/api/config/export")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["version"] == 1
+    assert isinstance(d["items"], list)
+    # credential item must be present with value_encrypted intact
+    cred = next((i for i in d["items"] if i["kind"] == "credential" and i["name"] == "openai"), None)
+    assert cred is not None, "credential item missing from export"
+    assert cred["data"]["value_encrypted"] == "ENC:sk-REAL", "encrypted value not preserved"
+    # NO plaintext secret: the raw string "sk-REAL" must not appear outside the ENC: prefix
+    # (the payload contains "ENC:sk-REAL" which is fine; assert no bare "sk-REAL" leak)
+    import json
+    payload_text = json.dumps(d)
+    assert "api_key" not in payload_text, "plaintext api_key field leaked in export"
+    # value_encrypted is the only place the credential data lives; ENC:sk-REAL is fine
+    assert payload_text.count("sk-REAL") == payload_text.count("ENC:sk-REAL"), \
+        "plaintext sk-REAL appears outside ENC: prefix"
+    # Content-Disposition header
+    cd = r.headers.get("content-disposition", "")
+    assert "ui_config.json" in cd, f"Content-Disposition header missing ui_config.json: {cd!r}"
+
+def test_export_requires_login(tmp_path):
+    c = _client(tmp_path, FakeStore()); c.cookies.clear()
+    assert c.get("/api/config/export").status_code == 401
+
+# Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
+
+def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
+    import app.routes.config_v3_routes as cr
+    captured = {}
+    async def fake_apply(config_path, store, reloader, *, decrypt, models_client=None, hybrid=False):
+        captured["hybrid"] = hybrid
+        captured["has_client"] = models_client is not None
+        return {"applied": True, "hybrid": hybrid, "models": {"added": 0}, "restart": "skipped"}
+    monkeypatch.setattr(cr, "apply_config", fake_apply)
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    monkeypatch.setenv("SESSION_SECRET", "s")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("pw"))
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "c.yaml"))
+    monkeypatch.setenv("DATABASE_URL", "postgresql://x")
+    (tmp_path / "c.yaml").write_text("model_list: []\n")
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    from app.main import create_app
+    cr.make_config_store = lambda: FakeStore()
+    cr._fernet = lambda: _FakeFernet()
+    cr.make_reloader = lambda: FakeReloader(ok=True)
+    c = TestClient(create_app())
+    c.post("/api/auth/login", json={"password": "pw"})
+    resp = c.post("/api/apply")
+    assert resp.status_code == 200
+    assert captured.get("hybrid") is True
+    assert captured.get("has_client") is True

@@ -36,4 +36,5 @@ export const api = {
   proxyInfo: () => req('/api/proxy-info'),
   get: (path) => req(path),
   post: (path, body) => req(path, { method: 'POST', body: JSON.stringify(body) }),
+  prepareHotApply: () => req('/api/config/prepare-hot-apply', { method: 'POST' }),
 }

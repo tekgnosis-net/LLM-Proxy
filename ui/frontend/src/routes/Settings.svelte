@@ -52,6 +52,16 @@
     finally { hcBusy = false }
   }
 
+  let hotBusy = $state(false), hotMsg = $state(''), hotErr = $state('')
+  async function prepareHotApply() {
+    hotBusy = true; hotMsg = ''; hotErr = ''
+    try { const r = await api.prepareHotApply(); hotMsg = r.next } catch (e) { hotErr = e.message }
+    finally { hotBusy = false }
+  }
+  function confirmPrepareHotApply() {
+    if (confirm('This empties models from config.yaml and restarts the proxy (brief downtime). The model list is then served from the database. Continue?')) prepareHotApply()
+  }
+
   let catStatus = $state(null), catBusy = $state(false), catMsg = $state('')
   onMount(() => {
     api.catalogStatus().then(s => catStatus = s).catch(() => {})
@@ -80,7 +90,7 @@
     </div>
     {#if ptErr}<div class="banner err">{ptErr}</div>{/if}
     {#if ptMsg}<div class="banner ok">{ptMsg}</div>{/if}
-    {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
+    {#if store.applying}<div class="banner info">{store.storeModelInDb ? 'Applying changes…' : 'Applying… restarting the proxy (~25s)'}</div>{/if}
   </div>
   <div class="card"><h2>Health checks</h2>
     <p class="hint">How often LiteLLM runs background health checks (seconds), for models that keep them enabled. Per-model checks are toggled on the Models screen; paid providers should disable theirs to avoid recurring billed probes.</p>
@@ -93,10 +103,10 @@
     {#if hcErr}<div class="banner err">{hcErr}</div>{/if}
     {#if hcMsg}<div class="banner ok">{hcMsg}</div>{/if}
   </div>
-  <div class="card"><h2>Export config.yaml</h2>
-    <p class="hint">Download a snapshot of the current effective config.yaml.</p>
+  <div class="card"><h2>Export config (ui_config)</h2>
+    <p class="hint">Download a snapshot of the UI's source-of-truth config (models, settings, encrypted credentials). This is the reproducibility/backup artifact — restore it on a fresh stack. Credentials are exported encrypted (restoreable only with the same SESSION_SECRET).</p>
     <div class="row">
-      <a class="btn" href={api.exportConfigUrl} download>⬇ Export config.yaml</a>
+      <a class="btn" href={api.exportConfigUrl} download>⬇ Export ui_config.json</a>
     </div>
   </div>
   <div class="card"><h2>LiteLLM catalog</h2>
@@ -105,6 +115,12 @@
       · {catStatus.models} models · {catStatus.providers} providers{catStatus.last_error ? ` · last error: ${catStatus.last_error}` : ''}</p>{/if}
     <button onclick={syncCatalog} disabled={catBusy}>{catBusy ? 'Syncing…' : 'Sync now'}</button>
     {#if catMsg}<div class="banner ok">{catMsg}</div>{/if}
+  </div>
+  <div class="card"><h2>Enable hot-apply (model changes without restart)</h2>
+    <p class="hint">One-time migration. Step 1 empties the model list from config.yaml and restarts the proxy (brief downtime). Then set <code>STORE_MODEL_IN_DB=true</code> in <code>.env</code>, run <code>docker compose up -d</code>, and click Apply to fill the model DB. After this, model add/edit/delete apply instantly.</p>
+    <div class="row"><button onclick={confirmPrepareHotApply} disabled={hotBusy}>{hotBusy ? 'Preparing…' : 'Step 1: Prepare (empty config models + restart)'}</button></div>
+    {#if hotErr}<div class="banner err">{hotErr}</div>{/if}
+    {#if hotMsg}<div class="banner ok">{hotMsg}</div>{/if}
   </div>
   <div class="card"><h2>Change admin password</h2>
     <p class="hint">Updates the admin login password. The new password must be at least 8 characters.</p>

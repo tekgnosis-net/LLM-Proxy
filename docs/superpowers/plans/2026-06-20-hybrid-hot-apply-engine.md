@@ -876,11 +876,17 @@ Expected: FAIL — route not found (404).
 
 In `ui/app/routes/config_v3_routes.py`:
 
+**Task-1 finding folded in:** LiteLLM's env `STORE_MODEL_IN_DB=true` overrides `general_settings.store_model_in_db` (verified: `/model/new` worked with env=true while config said false). For reproducibility (the export is the master), `ui_config` must agree — so the migration stages `general_setting store_model_in_db=true`, which then renders into `config.yaml` and is folded by the post-recreate Apply.
+
 ```python
 @router.post("/config/prepare-hot-apply", dependencies=[Depends(login_required)])
 async def prepare_hot_apply():
     s = get_settings(); f = _fernet()
     store = make_config_store()
+    # Make ui_config (the master) agree with the STORE_MODEL_IN_DB=true env, so the
+    # rendered config + export are reproducible — not just the runtime env. Staged
+    # here; folded by the post-recreate Apply.
+    await store.stage('general_setting', 'store_model_in_db', True)
     eff = effective(await store.applied(), await store.staged())
     cfg = render_config(eff, decrypt=lambda b: f.decrypt(b.encode()).decode(), hybrid=True)
     try:

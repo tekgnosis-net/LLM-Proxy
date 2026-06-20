@@ -60,7 +60,7 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
-      STORE_MODEL_IN_DB: "false"
+      STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB:-false}"
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
       UI_USERNAME: admin
@@ -124,6 +124,7 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       LITELLM_PROXY_PORT: ${LITELLM_PROXY_PORT:-4000}
       LITELLM_PROXY_HOST: ${LITELLM_PROXY_HOST:-}
+      STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB:-false}"
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
     ports:

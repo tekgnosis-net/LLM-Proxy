@@ -33,13 +33,32 @@ def effective(applied: list[dict], staged: list[dict]) -> list[dict]:
     return list(out.values())
 
 
-def render_config(items: list[dict], decrypt: Callable[[Any], str]) -> dict:
-    """Pure: assemble a config.yaml dict from effective items. The kind='passthrough'
-    item (if any) is the lowest-precedence base; managed sections override it. `decrypt`
-    turns a credential's value_encrypted into the plaintext api_key. Deleted items excluded."""
-    base: dict = {}
+def render_model_entry(it, resolve_key=None):
+    """Build a LiteLLM model entry from a ui_config model item. model_info.id
+    defaults to the item name (UUID). When resolve_key is given, inline the
+    credential key (hybrid path): litellm_credential_name -> api_key."""
+    data, name = it["data"], it["name"]
+    entry = {"model_name": data.get("model_name", name)}
+    mi = dict(data.get("model_info") or {})
+    mi.setdefault("id", name)
+    entry.update({k: v for k, v in data.items() if k not in ("model_name", "model_info")})
+    entry["model_info"] = mi
+    if resolve_key is not None:
+        lp = dict(entry.get("litellm_params") or {})
+        cred_name = lp.pop("litellm_credential_name", None)
+        if cred_name:
+            key = resolve_key(cred_name)
+            if key is None:
+                raise KeyError(f"credential {cred_name!r} not found")
+            lp["api_key"] = key
+        entry["litellm_params"] = lp
+    return entry
+
+
+def render_config(items, decrypt, hybrid=False):
+    base = {}
     model_list, credential_list = [], []
-    sections: dict[str, dict] = {}
+    sections = {}
     for it in items:
         if it.get("flag") == "deleted":
             continue
@@ -47,27 +66,27 @@ def render_config(items: list[dict], decrypt: Callable[[Any], str]) -> dict:
         if kind == "passthrough":
             base = copy.deepcopy(data) if isinstance(data, dict) else {}
         elif kind == "model":
-            entry = {"model_name": data.get("model_name", name)}
-            mi = dict(data.get("model_info") or {})
-            mi.setdefault("id", name)        # the item UUID becomes LiteLLM's deployment id
-            entry.update({k: v for k, v in data.items() if k not in ("model_name", "model_info")})
-            entry["model_info"] = mi
-            model_list.append(entry)
+            if not hybrid:
+                model_list.append(render_model_entry(it))
         elif kind == "credential":
-            credential_list.append({"credential_name": name,
-                                    "credential_values": {"api_key": decrypt(data.get("value_encrypted"))},
-                                    "credential_info": {"provider": data.get("provider")}})
+            if not hybrid:
+                credential_list.append({"credential_name": name,
+                                        "credential_values": {"api_key": decrypt(data.get("value_encrypted"))},
+                                        "credential_info": {"provider": data.get("provider")}})
         elif kind in _SECTION_BY_KIND:
             sections.setdefault(_SECTION_BY_KIND[kind], {})[name] = data
     cfg = base
     for sec, kv in sections.items():
         cfg[sec] = _deep_merge(base.get(sec, {}), kv) if isinstance(base.get(sec), dict) else dict(kv)
-    if model_list:
-        cfg["model_list"] = model_list
+    if hybrid:
+        cfg.setdefault("model_list", [])      # empty: LiteLLM serves DB models only; no credential_list
     else:
-        cfg.setdefault("model_list", [])
-    if credential_list:
-        cfg["credential_list"] = credential_list
+        if model_list:
+            cfg["model_list"] = model_list
+        else:
+            cfg.setdefault("model_list", [])
+        if credential_list:
+            cfg["credential_list"] = credential_list
     return cfg
 
 
