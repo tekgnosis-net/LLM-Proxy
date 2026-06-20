@@ -34,10 +34,29 @@
     } finally { ptBusy = false }
   }
 
+  // Global health-check interval (general_settings.health_check_interval, seconds)
+  let hcInterval = $state('')
+  let hcMsg = $state(''), hcErr = $state(''), hcBusy = $state(false)
+  function loadHcInterval() {
+    const it = store.itemsOfKind('general_setting').find(i => i.name === 'health_check_interval')
+    hcInterval = (it && it.data != null) ? String(it.data) : ''
+  }
+  async function saveHcInterval() {
+    hcBusy = true; hcMsg = ''; hcErr = ''
+    try {
+      const n = parseInt(hcInterval, 10)
+      if (!Number.isFinite(n) || n < 30) { hcErr = 'Enter a whole number of seconds ≥ 30'; return }
+      await store.stageItem('general_setting', 'health_check_interval', n)
+      hcMsg = 'Staged. Click Apply to make it live (settings change → brief restart).'
+    } catch (e) { hcErr = e.message }
+    finally { hcBusy = false }
+  }
+
   let catStatus = $state(null), catBusy = $state(false), catMsg = $state('')
   onMount(() => {
     api.catalogStatus().then(s => catStatus = s).catch(() => {})
     loadPassthrough()
+    loadHcInterval()
   })
   async function syncCatalog() {
     catBusy = true; catMsg = ''
@@ -62,6 +81,17 @@
     {#if ptErr}<div class="banner err">{ptErr}</div>{/if}
     {#if ptMsg}<div class="banner ok">{ptMsg}</div>{/if}
     {#if store.applying}<div class="banner info">Applying… restarting the proxy (~25s)</div>{/if}
+  </div>
+  <div class="card"><h2>Health checks</h2>
+    <p class="hint">How often LiteLLM runs background health checks (seconds), for models that keep them enabled. Per-model checks are toggled on the Models screen; paid providers should disable theirs to avoid recurring billed probes.</p>
+    <label class="hc">Interval (seconds)
+      <input type="number" min="30" step="30" bind:value={hcInterval} placeholder="e.g. 300" />
+    </label>
+    <div class="row" style="margin-top:8px">
+      <button onclick={saveHcInterval} disabled={hcBusy}>{hcBusy ? 'Saving…' : 'Save interval'}</button>
+    </div>
+    {#if hcErr}<div class="banner err">{hcErr}</div>{/if}
+    {#if hcMsg}<div class="banner ok">{hcMsg}</div>{/if}
   </div>
   <div class="card"><h2>Export config.yaml</h2>
     <p class="hint">Download a snapshot of the current effective config.yaml.</p>
@@ -104,4 +134,5 @@
   .pw-fields{display:flex;flex-direction:column;gap:8px}
   .pw-fields label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text)}
   .pw-fields input{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:14px}
+  label.hc{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text);max-width:220px}
 </style>

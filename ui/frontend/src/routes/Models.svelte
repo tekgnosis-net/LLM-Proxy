@@ -9,7 +9,7 @@
   let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
   let providerSlug = $state('openai')
   let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
-  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' })
+  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false })
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
   let testResult = $state(null)  // { ok: bool, msg: string } | null
@@ -56,7 +56,7 @@
   })
 
   function resetForm() {
-    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' }
+    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false }
     providerSlug = 'openai'
     showAdvanced = false
     showAdd = false
@@ -77,7 +77,8 @@
       aws_region_name: lp.aws_region_name || '', vertex_project: lp.vertex_project || '', vertex_location: lp.vertex_location || '',
       credential: lp.litellm_credential_name || '', mode: (d.model_info||{}).mode || 'chat',
       input_cost: lp.input_cost_per_token!=null ? perTokenToPerM(lp.input_cost_per_token) : '',
-      output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '' }
+      output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '',
+      disableHealthCheck: !!((d.model_info||{}).disable_background_health_check) }
     editingId = item.name; showAdd = true; testResult = null; autofilled = false
     showAdvanced = !!(lp.api_base) || CUSTOM_PROVIDERS.has(providerSlug)
   }
@@ -144,12 +145,23 @@
     if (!form.credential && !form.api_key_env && !pendingNoKey) { pendingNoKey = true; return }
     pendingNoKey = false
     const id = editingId || uuidv4()
+    const mi = { mode: form.mode }
+    if (form.disableHealthCheck) mi.disable_background_health_check = true
     const ok = await store.stageItem('model', id, {
       model_name: form.modelName,
       litellm_params: buildParams(),
-      model_info: { mode: form.mode }
+      model_info: mi
     })
+    if (ok && form.disableHealthCheck) await ensureHealthSkipFlag()
     if (ok) resetForm()   // keep the user's input on a rejected save (422)
+  }
+
+  // LiteLLM only honors per-model disable_background_health_check when this global
+  // flag is set. Stage it once (idempotent) the first time any model disables its check.
+  async function ensureHealthSkipFlag() {
+    const exists = store.itemsOfKind('general_setting')
+      .some(i => i.name === 'health_check_skip_disabled_background_models')
+    if (!exists) await store.stageItem('general_setting', 'health_check_skip_disabled_background_models', true)
   }
 
   async function deleteModel(name) {
@@ -166,6 +178,20 @@
     if (st === false) return { color:'#ff3b30', title:'Unhealthy' }
     if (item.flag === 'new') return { color:'#c7c7cc', title:'Not applied yet — apply to start health checks' }
     return { color:'#8e8e93', title:'Health check pending (background check runs every ~5 min)' }
+  }
+
+  let checkResult = $state({})   // item.name → { busy?:bool, ok?:bool, msg?:string }
+  async function checkNow(item) {
+    const lp = item.data?.litellm_params || {}
+    const mode = (item.data?.model_info || {}).mode || 'chat'
+    checkResult = { ...checkResult, [item.name]: { busy: true } }
+    try {
+      const r = await api.testModel({ litellm_params: lp, mode })
+      const ok = r.status === 'success'
+      checkResult = { ...checkResult, [item.name]: { ok, msg: ok ? 'OK' : 'Failed' } }
+    } catch (e) {
+      checkResult = { ...checkResult, [item.name]: { ok: false, msg: e.message } }
+    }
   }
 
   // Flag helpers
@@ -226,6 +252,11 @@
         <span class="hint">The endpoint type used for the health check.</span>
       </label>
 
+      <label class="check"><input type="checkbox" bind:checked={form.disableHealthCheck} />
+        Disable background health check
+        <span class="hint">Recommended for paid providers (e.g. deepinfra) — the background check sends a real billed request on each interval. Use "Check now" on demand instead.</span>
+      </label>
+
       <!-- Advanced: custom endpoint (LiteLLM resolves the URL from the prefix otherwise) -->
       <button type="button" class="link" onclick={() => showAdvanced = !showAdvanced}>{showAdvanced ? '▾' : '▸'} Advanced: custom endpoint</button>
       {#if showAdvanced || specialFields().includes('api_base')}
@@ -266,7 +297,7 @@
     {#if modelItems.length === 0}<p class="empty">No models yet. Add one to start serving.</p>
     {:else}
       <table>
-        <thead><tr><th>Model name</th><th>litellm model</th><th>Costs</th><th>Health</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Model name</th><th>litellm model</th><th>Costs</th><th>Health</th><th>Check</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {#each modelItems as item}
             {@const publicName = item.data?.model_name ?? item.name}
@@ -284,6 +315,17 @@
                 {:else}—{/if}
               </td>
               <td><span class="dot" style="background:{dot.color}" title={dot.title}></span></td>
+              <td>
+                {#if flag !== 'deleted'}
+                  {@const cr = checkResult[item.name]}
+                  <button onclick={() => checkNow(item)} disabled={cr?.busy} title="Run an on-demand health check now">
+                    {cr?.busy ? '…' : 'Check now'}
+                  </button>
+                  {#if cr && !cr.busy}
+                    <span class="check-res" class:ok={cr.ok} class:bad={!cr.ok} title={cr.msg}>{cr.ok ? '✓' : '✗'}</span>
+                  {/if}
+                {/if}
+              </td>
               <td>
                 {#if flag === 'new'}<span class="flag-tag flag-new">new</span>
                 {:else if flag === 'changed'}<span class="flag-tag flag-changed">changed</span>
@@ -324,7 +366,12 @@
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}.banner.warn{background:#fff8e1;color:#7a4800}
   .hint{font-size:12px;color:#6e6e73}.empty{color:#6e6e73}
+  label.check{flex-direction:row;align-items:flex-start;gap:8px;flex-wrap:wrap}
+  label.check input{margin-top:2px}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .check-res{margin-left:6px;font-weight:600}
+  .check-res.ok{color:#34c759}
+  .check-res.bad{color:#ff3b30}
   .lookup-row{display:flex;gap:6px;align-items:stretch}
   .lookup-row input{flex:1}
   .lookup-row button{white-space:nowrap;padding:8px 10px;font-size:12px}

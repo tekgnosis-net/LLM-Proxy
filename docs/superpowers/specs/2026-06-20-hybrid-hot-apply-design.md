@@ -132,7 +132,7 @@ Flipping `STORE_MODEL_IN_DB=true` requires a LiteLLM restart (env change). The m
 **Design (the approved "per-model disable + on-demand"):**
 - **Model form** (`Models.svelte`) gains a **Health** control: *Background check: On / Off*. "Off" writes `model_info.disable_background_health_check = true` into the model item's `data.model_info`. Since model items apply via reconciliation (§3.3), the flag rides along **hot** — no restart to toggle it.
 - A **one-time global** `general_settings.health_check_skip_disabled_background_models: true` is staged the first time any model is set to "Off" (a `general_setting` item → config.yaml → restart, once). After that, toggles are hot.
-- **Global interval** becomes editable in Settings: `litellm_settings.health_check_interval` (a `litellm_setting`; restart on change — rare). Lengthening it spaces out checks for the free/local models that stay on.
+- **Global interval** becomes editable in Settings: `general_settings.health_check_interval` (a `general_setting`; restart on change — rare). Lengthening it spaces out checks for the free/local models that stay on. (LiteLLM groups `health_check_interval` and `background_health_checks` under `general_settings`, alongside the skip flag above — confirmed against `config.yaml.example` and the backend round-trip tests.)
 - **"Check now"** button per model → reuse `LitellmClient.test_connection(litellm_params)` (LiteLLM `/health/test_connection`, **already wired** in `models_routes.py::/models/test`). On-demand, operator-initiated, so its cost is intentional. Surfaces latency/ok/error inline.
 
 **Guidance baked into the form:** paid providers default the toggle to **Off** (no recurring billing); free/local (vLLM, llama.cpp, Ollama) stay **On**.

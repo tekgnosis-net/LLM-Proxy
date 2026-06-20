@@ -15,8 +15,9 @@
   let err = $state('')
   let loading = $state(true)
 
-  async function load() {
-    loading = true; err = ''; summary = null; recent = []
+  async function load(silent = false) {
+    if (!silent) { loading = true; summary = null; recent = [] }
+    err = ''
     try {
       const [d, rec] = await Promise.all([
         api.get(`/api/usage/summary?days=${days}`),
@@ -25,14 +26,14 @@
       summary = d
       recent = rec.recent ?? []
     } catch (e) { err = e.message }
-    finally { loading = false }
+    finally { if (!silent) loading = false }
   }
 
   $effect(() => { localStorage.setItem('usage.days', days); load() })          // range change → save + reload
   $effect(() => { localStorage.setItem('usage.refreshSec', refreshSec); arm() }) // interval change → save + re-arm
   function arm() {
     if (timer) { clearInterval(timer); timer = null }
-    if (refreshSec > 0 && !document.hidden) timer = setInterval(load, refreshSec * 1000)
+    if (refreshSec > 0 && !document.hidden) timer = setInterval(() => load(true), refreshSec * 1000)
   }
   function onVis() { arm() }                       // pause when hidden, resume when visible
   onMount(() => document.addEventListener('visibilitychange', onVis))
