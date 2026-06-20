@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.responses import JSONResponse
 from app.auth import login_required
 from app.settings import get_settings
 from app.config_db import ConfigStore
@@ -34,6 +35,13 @@ def _redact_item(it: dict) -> dict:
         d = it["data"] or {}
         return {**it, "data": {"provider": d.get("provider"), "api_key": "***"}}
     return it
+
+@router.get("/config/export", dependencies=[Depends(login_required)])
+async def export_config():
+    store = make_config_store()
+    items = await store.applied()   # [{kind,name,data}] — credentials carry value_encrypted, never plaintext
+    payload = {"version": 1, "items": items}
+    return JSONResponse(payload, headers={"Content-Disposition": "attachment; filename=ui_config.json"})
 
 @router.get("/config/state", dependencies=[Depends(login_required)])
 async def config_state():

@@ -175,6 +175,36 @@ def test_prepare_hot_apply_writes_empty_model_list(tmp_path):
     assert "credential_list" not in written
     assert ("general_setting", "store_model_in_db", True, False) in s.staged_calls
 
+# Task 8: GET /api/config/export
+
+def test_export_returns_items_with_encrypted_credentials(tmp_path):
+    s = FakeStore()
+    c = _client(tmp_path, s)
+    r = c.get("/api/config/export")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["version"] == 1
+    assert isinstance(d["items"], list)
+    # credential item must be present with value_encrypted intact
+    cred = next((i for i in d["items"] if i["kind"] == "credential" and i["name"] == "openai"), None)
+    assert cred is not None, "credential item missing from export"
+    assert cred["data"]["value_encrypted"] == "ENC:sk-REAL", "encrypted value not preserved"
+    # NO plaintext secret: the raw string "sk-REAL" must not appear outside the ENC: prefix
+    # (the payload contains "ENC:sk-REAL" which is fine; assert no bare "sk-REAL" leak)
+    import json
+    payload_text = json.dumps(d)
+    assert "api_key" not in payload_text, "plaintext api_key field leaked in export"
+    # value_encrypted is the only place the credential data lives; ENC:sk-REAL is fine
+    assert payload_text.count("sk-REAL") == payload_text.count("ENC:sk-REAL"), \
+        "plaintext sk-REAL appears outside ENC: prefix"
+    # Content-Disposition header
+    cd = r.headers.get("content-disposition", "")
+    assert "ui_config.json" in cd, f"Content-Disposition header missing ui_config.json: {cd!r}"
+
+def test_export_requires_login(tmp_path):
+    c = _client(tmp_path, FakeStore()); c.cookies.clear()
+    assert c.get("/api/config/export").status_code == 401
+
 # Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
 
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):

@@ -100,10 +100,10 @@
     {#if hcErr}<div class="banner err">{hcErr}</div>{/if}
     {#if hcMsg}<div class="banner ok">{hcMsg}</div>{/if}
   </div>
-  <div class="card"><h2>Export config.yaml</h2>
-    <p class="hint">Download a snapshot of the current effective config.yaml.</p>
+  <div class="card"><h2>Export config (ui_config)</h2>
+    <p class="hint">Download a snapshot of the UI's source-of-truth config (models, settings, encrypted credentials). This is the reproducibility/backup artifact — restore it on a fresh stack. Credentials are exported encrypted (restoreable only with the same SESSION_SECRET).</p>
     <div class="row">
-      <a class="btn" href={api.exportConfigUrl} download>⬇ Export config.yaml</a>
+      <a class="btn" href={api.exportConfigUrl} download>⬇ Export ui_config.json</a>
     </div>
   </div>
   <div class="card"><h2>LiteLLM catalog</h2>
