@@ -9,7 +9,7 @@
   let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
   let providerSlug = $state('openai')
   let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
-  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' })
+  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false })
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
   let testResult = $state(null)  // { ok: bool, msg: string } | null
@@ -56,7 +56,7 @@
   })
 
   function resetForm() {
-    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '' }
+    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false }
     providerSlug = 'openai'
     showAdvanced = false
     showAdd = false
@@ -77,7 +77,8 @@
       aws_region_name: lp.aws_region_name || '', vertex_project: lp.vertex_project || '', vertex_location: lp.vertex_location || '',
       credential: lp.litellm_credential_name || '', mode: (d.model_info||{}).mode || 'chat',
       input_cost: lp.input_cost_per_token!=null ? perTokenToPerM(lp.input_cost_per_token) : '',
-      output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '' }
+      output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '',
+      disableHealthCheck: !!((d.model_info||{}).disable_background_health_check) }
     editingId = item.name; showAdd = true; testResult = null; autofilled = false
     showAdvanced = !!(lp.api_base) || CUSTOM_PROVIDERS.has(providerSlug)
   }
@@ -144,12 +145,23 @@
     if (!form.credential && !form.api_key_env && !pendingNoKey) { pendingNoKey = true; return }
     pendingNoKey = false
     const id = editingId || uuidv4()
+    const mi = { mode: form.mode }
+    if (form.disableHealthCheck) mi.disable_background_health_check = true
     const ok = await store.stageItem('model', id, {
       model_name: form.modelName,
       litellm_params: buildParams(),
-      model_info: { mode: form.mode }
+      model_info: mi
     })
+    if (ok && form.disableHealthCheck) await ensureHealthSkipFlag()
     if (ok) resetForm()   // keep the user's input on a rejected save (422)
+  }
+
+  // LiteLLM only honors per-model disable_background_health_check when this global
+  // flag is set. Stage it once (idempotent) the first time any model disables its check.
+  async function ensureHealthSkipFlag() {
+    const exists = store.itemsOfKind('general_setting')
+      .some(i => i.name === 'health_check_skip_disabled_background_models')
+    if (!exists) await store.stageItem('general_setting', 'health_check_skip_disabled_background_models', true)
   }
 
   async function deleteModel(name) {
@@ -224,6 +236,11 @@
           {#each providerModes() as m}<option value={m}>{modeLabel(m)}</option>{/each}
         </select>
         <span class="hint">The endpoint type used for the health check.</span>
+      </label>
+
+      <label class="check"><input type="checkbox" bind:checked={form.disableHealthCheck} />
+        Disable background health check
+        <span class="hint">Recommended for paid providers (e.g. deepinfra) — the background check sends a real billed request on each interval. Use "Check now" on demand instead.</span>
       </label>
 
       <!-- Advanced: custom endpoint (LiteLLM resolves the URL from the prefix otherwise) -->
@@ -324,6 +341,8 @@
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}.banner.warn{background:#fff8e1;color:#7a4800}
   .hint{font-size:12px;color:#6e6e73}.empty{color:#6e6e73}
+  label.check{flex-direction:row;align-items:flex-start;gap:8px;flex-wrap:wrap}
+  label.check input{margin-top:2px}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
   .lookup-row{display:flex;gap:6px;align-items:stretch}
   .lookup-row input{flex:1}
