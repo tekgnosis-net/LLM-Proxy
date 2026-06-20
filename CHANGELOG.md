@@ -1,3 +1,10 @@
+## [1.19.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.19.0...v1.19.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ui:** auto-open Advanced (api_base) for custom/local providers ([99b9f01](https://github.com/tekgnosis-net/LLM-Proxy/commit/99b9f01e980953fce6bae03709ccc9467edd1343))
+
 # [1.19.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.18.1...v1.19.0) (2026-06-20)
 
 
