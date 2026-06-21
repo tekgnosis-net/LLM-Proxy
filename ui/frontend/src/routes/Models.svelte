@@ -181,7 +181,7 @@
     return { color:'#8e8e93', title:'Health check pending (background check runs every ~5 min)' }
   }
 
-  let drift = $state(null)   // { hybrid, in_sync, missing_in_litellm:[], extra_in_litellm:[] } | null
+  let drift = $state(null)   // { hybrid, in_sync, missing_in_litellm:[], extra_in_litellm:[], content_drifted:[] } | null
   let resyncMsg = $state(null)   // { ok: boolean, text: string } | null
   async function loadDrift() {
     try { drift = await api.drift() } catch (_) { drift = null }
@@ -192,12 +192,12 @@
     try { d = await api.drift() } catch (e) { resyncMsg = { ok: false, text: e.message }; return }
     if (!d.hybrid) return
     if (d.in_sync) { resyncMsg = { ok: true, text: 'Already in sync with the proxy.' }; return }
-    const miss = d.missing_in_litellm || [], extra = d.extra_in_litellm || []
-    const plan = `Resync to proxy:\n  + add ${miss.length}: ${miss.map(m => m.model_name).join(', ') || '—'}\n  - delete ${extra.length}: ${extra.map(m => m.model_name).join(', ') || '—'}\n\nProceed?`
+    const miss = d.missing_in_litellm || [], extra = d.extra_in_litellm || [], upd = d.content_drifted || []
+    const plan = `Resync to proxy:\n  + add ${miss.length}: ${miss.map(m => m.model_name).join(', ') || '—'}\n  ~ update ${upd.length}: ${upd.map(m => m.model_name).join(', ') || '—'}\n  - delete ${extra.length}: ${extra.map(m => m.model_name).join(', ') || '—'}\n\nProceed?`
     if (!confirm(plan)) return
     try {
       const r = await api.resync()
-      resyncMsg = { ok: true, text: `Resynced — ${r.added} added, ${r.deleted} deleted${(r.failed && r.failed.length) ? `, ${r.failed.length} failed` : ''}.` }
+      resyncMsg = { ok: true, text: `Resynced — ${r.added} added, ${r.updated} updated, ${r.deleted} deleted${(r.failed && r.failed.length) ? `, ${r.failed.length} failed` : ''}.` }
     } catch (e) { resyncMsg = { ok: false, text: e.message } }
     await loadDrift()
   }
@@ -238,7 +238,7 @@
     {#if drift && drift.hybrid}
       <span class="drift" class:ok={drift.in_sync} class:warn={!drift.in_sync}
         title={drift.in_sync ? 'ui_config and the proxy agree' : 'ui_config and the proxy differ'}>
-        {drift.in_sync ? 'In sync ✓' : `⚠ ${(drift.missing_in_litellm.length + drift.extra_in_litellm.length)} out of sync`}
+        {drift.in_sync ? 'In sync ✓' : `⚠ ${(drift.missing_in_litellm.length + drift.extra_in_litellm.length + (drift.content_drifted?.length || 0))} out of sync`}
       </span>
       {#if !drift.in_sync}
         <button onclick={resyncToProxy} disabled={store.applying || store.saving}>Resync to proxy</button>
