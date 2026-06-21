@@ -129,7 +129,8 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
     desired_items = [it for it in eff if it["kind"] == "model" and it.get("flag") != "deleted"]
     live = await models_client.list_models()
     model_report = await reconcile_models(desired_items, live, models_client,
-                                          changed_ids, creds_changed, resolve_key)
+                                          changed_item_names=changed_ids, creds_changed=creds_changed,
+                                          resolve_key=resolve_key)
     out = {"applied": True, "hybrid": True, "models": model_report}
     if settings_changed:
         expected = [(it["data"] or {}).get("model_name", it["name"]) for it in desired_items]
