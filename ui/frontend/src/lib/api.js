@@ -37,4 +37,6 @@ export const api = {
   get: (path) => req(path),
   post: (path, body) => req(path, { method: 'POST', body: JSON.stringify(body) }),
   prepareHotApply: () => req('/api/config/prepare-hot-apply', { method: 'POST' }),
+  drift: () => req('/api/config/drift'),
+  resync: () => req('/api/config/resync', { method: 'POST' }),
 }
