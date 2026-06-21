@@ -316,6 +316,44 @@ def test_resync_requires_hybrid(tmp_path, monkeypatch):
     from app.settings import get_settings as gs; gs.cache_clear()
     assert _client(tmp_path, ModelStore([_m("a")])).post("/api/config/resync").status_code == 422
 
+# Task 4 (1.23.0): content_drifted in drift + converge_content in resync
+
+def _m_mi(name, model_info):
+    return {"kind": "model", "name": name,
+            "data": {"model_name": name, "litellm_params": {"model": "openai/x"}, "model_info": dict(model_info)}}
+
+
+def test_drift_reports_content_drift(tmp_path, monkeypatch):
+    store = ModelStore([_m_mi("a", {"id": "a", "disable_background_health_check": True})])
+    live = [{"model_name": "a", "model_info": {"id": "a"}}]   # present but flag absent → content drift
+    d = _client_hybrid(tmp_path, store, live, monkeypatch).get("/api/config/drift").json()
+    assert d["in_sync"] is False
+    assert d["missing_in_litellm"] == [] and d["extra_in_litellm"] == []
+    assert d["content_drifted"] == [{"id": "a", "model_name": "a",
+                                     "fields": ["disable_background_health_check"]}]
+
+
+def test_drift_content_in_sync_when_flag_matches(tmp_path, monkeypatch):
+    store = ModelStore([_m_mi("a", {"id": "a", "disable_background_health_check": True})])
+    live = [{"model_name": "a", "model_info": {"id": "a", "disable_background_health_check": True}}]
+    d = _client_hybrid(tmp_path, store, live, monkeypatch).get("/api/config/drift").json()
+    assert d["in_sync"] is True and d["content_drifted"] == []
+
+
+def test_resync_updates_content_drift(tmp_path, monkeypatch):
+    store = ModelStore([_m_mi("a", {"id": "a", "disable_background_health_check": True})])
+    fake = FakeModelsClientRoutes([{"model_name": "a", "model_info": {"id": "a"}}])  # flag absent
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings as gs; gs.cache_clear()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_models_client = lambda: fake
+    r = c.post("/api/config/resync").json()
+    assert r["updated"] == 1 and r["added"] == 0 and r["deleted"] == 0
+    assert fake.updated[0]["model_info"]["id"] == "a"
+    gs.cache_clear()
+
+
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}

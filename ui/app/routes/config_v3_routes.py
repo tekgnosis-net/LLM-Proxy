@@ -10,6 +10,7 @@ from app.config_store import ConfigError, validate_config, write_config_atomic
 from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
+from app.model_content import content_diff
 import yaml as _yaml
 
 router = APIRouter(prefix="/api")
@@ -176,7 +177,8 @@ async def config_resync():
     client = make_models_client()
     live = await client.list_models()
     return await reconcile_models(model_items, live, client,
-                                  changed_item_names=set(), creds_changed=set(), resolve_key=resolve_key)
+                                  changed_item_names=set(), creds_changed=set(),
+                                  resolve_key=resolve_key, converge_content=True)
 
 @router.get("/config/drift", dependencies=[Depends(login_required)])
 async def config_drift():
@@ -191,8 +193,15 @@ async def config_drift():
     except Exception as e:
         return {"error": "query_failed", "detail": str(e)}
     plan = diff_models(desired, live, set(), set())
-    live_by_id = {(m.get("model_info") or {}).get("id"): m for m in live}
+    live_by_id = {(m.get("model_info") or {}).get("id"): m
+                  for m in live if (m.get("model_info") or {}).get("id")}
     missing = [{"id": e["model_info"]["id"], "model_name": e.get("model_name")} for e in plan["to_add"]]
     extra = [{"id": i, "model_name": (live_by_id.get(i) or {}).get("model_name")} for i in plan["to_delete"]]
-    return {"hybrid": True, "in_sync": not missing and not extra,
-            "missing_in_litellm": missing, "extra_in_litellm": extra}
+    content = []
+    for mid in sorted(set(desired) & set(live_by_id)):
+        fields = content_diff(desired[mid].get("model_info") or {},
+                              (live_by_id[mid].get("model_info") or {}))
+        if fields:
+            content.append({"id": mid, "model_name": desired[mid].get("model_name"), "fields": fields})
+    return {"hybrid": True, "in_sync": not missing and not extra and not content,
+            "missing_in_litellm": missing, "extra_in_litellm": extra, "content_drifted": content}
