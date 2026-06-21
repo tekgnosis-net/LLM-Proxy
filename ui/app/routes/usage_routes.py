@@ -36,6 +36,24 @@ def _ms(v):
     return int(round(v)) if v is not None else None
 
 
+def _iso_utc(dt):
+    """ISO-8601 with an explicit UTC offset.
+
+    LiteLLM_SpendLogs."startTime"/"endTime" are `timestamp WITHOUT time zone`, so
+    asyncpg returns NAIVE datetimes whose wall-clock is UTC. A plain `.isoformat()`
+    emits no offset, and the browser's `new Date()` then parses it as LOCAL time —
+    defeating the frontend's `toLocaleString()` and surfacing raw UTC numbers.
+    Stamping +00:00 lets the client convert to the user's local zone.
+    """
+    if dt is None:
+        return None
+    # date_trunc()/startTime arrive as naive datetimes whose wall-clock is UTC.
+    # A plain date (no time component) carries no zone — emit it unchanged.
+    if isinstance(dt, datetime) and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _cols(rows):
     out = []
     for r in rows:
@@ -45,7 +63,7 @@ def _cols(rows):
              "p50_ms": _ms(r.get("p50_ms")), "p95_ms": _ms(r.get("p95_ms")),
              "err_pct": float(r["err_pct"] or 0)}
         if r.get("last_used"):
-            d["last_used"] = r["last_used"].isoformat()
+            d["last_used"] = _iso_utc(r["last_used"])
         out.append(d)
     return out
 
@@ -60,7 +78,7 @@ def _shape_summary(days, granularity, kpis, by_provider, by_model, by_key, times
                  "avg_latency_ms": _ms(k.get("avg_latency_ms")), "p95_latency_ms": _ms(k.get("p95_latency_ms")),
                  "cache_hit_rate": float(k["cache_hit_rate"]) if k.get("cache_hit_rate") is not None else None},
         "by_provider": _cols(by_provider), "by_model": _cols(by_model), "by_key": _cols(by_key),
-        "timeseries": [{"bucket": r["bucket"].isoformat(), "requests": r["requests"],
+        "timeseries": [{"bucket": _iso_utc(r["bucket"]), "requests": r["requests"],
                         "spend": float(r["spend"] or 0), "p95_ms": _ms(r.get("p95_ms"))} for r in timeseries],
     }
 
@@ -72,7 +90,7 @@ def _cache_bool(v):
 
 
 def _shape_recent(rows):
-    return {"recent": [{"time": r["time"].isoformat(), "model": r["model"], "provider": r["provider"] or "",
+    return {"recent": [{"time": _iso_utc(r["time"]), "model": r["model"], "provider": r["provider"] or "",
                         "key": r["key"], "tok_in": r["tok_in"] or 0, "tok_out": r["tok_out"] or 0,
                         "latency_ms": r["latency_ms"] or 0, "status": r["status"] or "",
                         "cache_hit": _cache_bool(r["cache_hit"])} for r in rows]}
