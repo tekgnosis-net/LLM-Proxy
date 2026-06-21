@@ -160,3 +160,42 @@ def test_build_desired_duplicate_id_keeps_first_and_reports():
     assert len(failed) == 1
     assert failed[0]["id"] == "shared-id"
     assert failed[0]["op"] == "duplicate_id"
+
+
+def _model_item_mi(name, model_info):
+    return {"kind": "model", "name": name,
+            "data": {"model_name": name, "litellm_params": {"model": "openai/x"}, "model_info": dict(model_info)},
+            "flag": None}
+
+
+@pytest.mark.asyncio
+async def test_converge_content_updates_drifted_model_info():
+    client = FakeModelsClient()
+    # ui_config wants disable=true; live (id "a") has it absent → content drift
+    items = [_model_item_mi("a", {"id": "a", "disable_background_health_check": True})]
+    live = [{"model_name": "a", "litellm_params": {"model": "openai/x"}, "model_info": {"id": "a"}}]
+    rep = await reconcile_models(items, live, client, changed_item_names=set(), creds_changed=set(),
+                                 resolve_key=lambda n: None, converge_content=True)
+    assert rep["updated"] == 1
+    assert client.updated[0]["model_info"]["id"] == "a"
+
+
+@pytest.mark.asyncio
+async def test_converge_content_false_leaves_drift_untouched():
+    client = FakeModelsClient()
+    items = [_model_item_mi("a", {"id": "a", "disable_background_health_check": True})]
+    live = [{"model_name": "a", "litellm_params": {"model": "openai/x"}, "model_info": {"id": "a"}}]
+    rep = await reconcile_models(items, live, client, changed_item_names=set(), creds_changed=set(),
+                                 resolve_key=lambda n: None, converge_content=False)
+    assert rep["updated"] == 0 and client.updated == []
+
+
+@pytest.mark.asyncio
+async def test_converge_content_skips_when_content_matches():
+    client = FakeModelsClient()
+    items = [_model_item_mi("a", {"id": "a", "disable_background_health_check": True})]
+    live = [{"model_name": "a", "litellm_params": {"model": "openai/x"},
+             "model_info": {"id": "a", "disable_background_health_check": True}}]
+    rep = await reconcile_models(items, live, client, changed_item_names=set(), creds_changed=set(),
+                                 resolve_key=lambda n: None, converge_content=True)
+    assert rep["updated"] == 0   # already converged → no update

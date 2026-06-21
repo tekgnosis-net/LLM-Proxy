@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from app.config_render import render_model_entry
+from app.model_content import content_diff
 
 
 def _live_ids(live: list[dict]) -> set[str]:
@@ -58,7 +59,8 @@ def _is_already_exists(e) -> bool:
 
 async def reconcile_models(desired_items, live, client,
                            changed_item_names: set[str], creds_changed: set[str],
-                           resolve_key: Callable[[str], Optional[str]]) -> dict[str, Any]:
+                           resolve_key: Callable[[str], Optional[str]],
+                           converge_content: bool = False) -> dict[str, Any]:
     """Invariant: desired, changed_ids, force_ids, and live are all keyed/compared in model_info.id-space (build_desired + the translations below) before diff_models."""
     desired, name_to_id, failed = build_desired(desired_items, resolve_key)
     # Translate staged signals (item-names, credential-names) into model_info.id space.
@@ -70,6 +72,12 @@ async def reconcile_models(desired_items, live, client,
         cred = (it["data"].get("litellm_params") or {}).get("litellm_credential_name")
         if cred and cred in creds_changed:
             force_ids.add(name_to_id[it["name"]])
+    if converge_content:
+        live_by_id = {(m.get("model_info") or {}).get("id"): m for m in live}
+        content_ids = {mid for mid in (set(desired) & set(live_by_id))
+                       if content_diff(desired[mid].get("model_info") or {},
+                                       (live_by_id[mid].get("model_info") or {}))}
+        changed_ids = changed_ids | content_ids
     plan = diff_models(desired, live, changed_ids, force_ids)
     added = updated = deleted = 0
     for entry in plan["to_add"]:
