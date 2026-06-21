@@ -1,3 +1,18 @@
+# [1.22.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.21.1...v1.22.0) (2026-06-21)
+
+
+### Bug Fixes
+
+* **ui:** render resync result banner outside the hybrid/drift block so errors always surface (Task 3 review) ([0a420d9](https://github.com/tekgnosis-net/LLM-Proxy/commit/0a420d9f6e33d2839c8a03495c5f559c1ec9c2e2))
+* **ui:** resync result uses local state (store error/notice are read-only getters) (Task 3 review) ([f2e8749](https://github.com/tekgnosis-net/LLM-Proxy/commit/f2e8749d354ffffc619e5ea11d9ad5a05091a38e))
+
+
+### Features
+
+* GET /api/config/drift + build_desired duplicate-id reporting ([19ff71b](https://github.com/tekgnosis-net/LLM-Proxy/commit/19ff71b07f83dba49ce13275b18df3e0cc9bd3dc))
+* POST /api/config/resync — on-demand presence convergence (hot, no restart) ([f51c46f](https://github.com/tekgnosis-net/LLM-Proxy/commit/f51c46fb59fdebb5bb46b2a531341489eacb4a5f))
+* **ui:** drift badge + Resync-to-proxy (preview/confirm) on Models screen ([c5f8a1f](https://github.com/tekgnosis-net/LLM-Proxy/commit/c5f8a1f3aa8f9d5c63f16dc6cd1e08aba74995d3))
+
 ## [1.21.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.21.0...v1.21.1) (2026-06-21)
 
 
