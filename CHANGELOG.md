@@ -1,3 +1,11 @@
+## [1.21.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.21.0...v1.21.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **reconcile:** idempotent /model/new (constraint→update) + guard force_ids against null credential ([e959176](https://github.com/tekgnosis-net/LLM-Proxy/commit/e959176600a2c0822af291d3cc63f24720211462))
+* **reconcile:** key desired by model_info.id + translate changed/credential signals to id-space ([6611867](https://github.com/tekgnosis-net/LLM-Proxy/commit/66118671ba58166b3b846b487c6832a28c0ca4c4))
+
 # [1.21.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.20.0...v1.21.0) (2026-06-20)
 
 
