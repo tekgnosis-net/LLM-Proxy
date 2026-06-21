@@ -144,3 +144,19 @@ async def test_reconcile_no_credential_not_force_updated():
                                  changed_item_names=set(), creds_changed={"Groq"}, resolve_key=lambda n: "sk")
     assert client.updated == [] and rep["updated"] == 0     # must NOT force-update
     assert rep == {"added": 0, "updated": 0, "deleted": 0, "failed": []}
+
+
+def test_build_desired_duplicate_id_keeps_first_and_reports():
+    # Two items that render to the same model_info.id → first wins, second reported as duplicate_id
+    item1 = _item_explicit_id("fff", "shared-id")
+    item2 = _item_explicit_id("ggg", "shared-id")
+    desired, name_to_id, failed = build_desired([item1, item2], resolve_key=None)
+    # First writer wins
+    assert "shared-id" in desired
+    assert desired["shared-id"]["model_info"]["id"] == "shared-id"
+    assert name_to_id.get("fff") == "shared-id"
+    assert "ggg" not in name_to_id
+    # Second item is reported as duplicate
+    assert len(failed) == 1
+    assert failed[0]["id"] == "shared-id"
+    assert failed[0]["op"] == "duplicate_id"

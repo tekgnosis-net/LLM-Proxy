@@ -228,6 +228,54 @@ def test_export_requires_login(tmp_path):
 
 # Task 6: hybrid path chosen when STORE_MODEL_IN_DB=true
 
+# Task 1 (1.22.0): GET /api/config/drift
+
+class FakeModelsClientRoutes:
+    def __init__(self, live): self._live = live; self.added=[]; self.updated=[]; self.deleted=[]
+    async def list_models(self): return self._live
+    async def add_model(self, p): self.added.append(p); return {}
+    async def update_model(self, p): self.updated.append(p); return {}
+    async def delete_model(self, i): self.deleted.append(i); return {}
+
+def _client_hybrid(tmp_path, store, live, monkeypatch):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings as gs
+    gs.cache_clear()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_models_client = lambda: FakeModelsClientRoutes(live)
+    return c
+
+class ModelStore(FakeStore):
+    def __init__(self, applied_models):
+        self._applied = applied_models
+        self._staged = []
+        self.staged_calls=[]; self.cleared=None; self.folded=False
+
+def _m(name, mid=None):
+    return {"kind":"model","name":name,"data":{"model_name":name,"litellm_params":{"model":"openai/x"},"model_info":{"id":mid or name}}}
+
+def test_drift_in_sync(tmp_path, monkeypatch):
+    store = ModelStore([_m("a"), _m("b")])
+    live = [{"model_name":"a","model_info":{"id":"a"}},{"model_name":"b","model_info":{"id":"b"}}]
+    d = _client_hybrid(tmp_path, store, live, monkeypatch).get("/api/config/drift").json()
+    assert d["hybrid"] is True and d["in_sync"] is True
+    assert d["missing_in_litellm"]==[] and d["extra_in_litellm"]==[]
+
+def test_drift_reports_missing_and_extra(tmp_path, monkeypatch):
+    store = ModelStore([_m("a"), _m("b")])               # master wants a,b
+    live = [{"model_name":"a","model_info":{"id":"a"}},{"model_name":"z","model_info":{"id":"z"}}]  # litellm has a,z
+    d = _client_hybrid(tmp_path, store, live, monkeypatch).get("/api/config/drift").json()
+    assert d["in_sync"] is False
+    assert [x["id"] for x in d["missing_in_litellm"]] == ["b"]
+    assert [x["id"] for x in d["extra_in_litellm"]] == ["z"]
+
+def test_drift_config_only_is_na(tmp_path, monkeypatch):
+    monkeypatch.delenv("STORE_MODEL_IN_DB", raising=False)
+    from app.settings import get_settings as gs; gs.cache_clear()
+    d = _client(tmp_path, ModelStore([_m("a")])).get("/api/config/drift").json()
+    assert d["hybrid"] is False and d["in_sync"] is True
+
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}
