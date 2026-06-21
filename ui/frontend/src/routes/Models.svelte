@@ -182,21 +182,23 @@
   }
 
   let drift = $state(null)   // { hybrid, in_sync, missing_in_litellm:[], extra_in_litellm:[] } | null
+  let resyncMsg = $state(null)   // { ok: boolean, text: string } | null
   async function loadDrift() {
     try { drift = await api.drift() } catch (_) { drift = null }
   }
   async function resyncToProxy() {
+    resyncMsg = null
     let d
-    try { d = await api.drift() } catch (e) { store.error = e.message; return }
+    try { d = await api.drift() } catch (e) { resyncMsg = { ok: false, text: e.message }; return }
     if (!d.hybrid) return
-    if (d.in_sync) { store.notice = 'Already in sync with the proxy.'; return }
+    if (d.in_sync) { resyncMsg = { ok: true, text: 'Already in sync with the proxy.' }; return }
     const miss = d.missing_in_litellm || [], extra = d.extra_in_litellm || []
     const plan = `Resync to proxy:\n  + add ${miss.length}: ${miss.map(m => m.model_name).join(', ') || '—'}\n  - delete ${extra.length}: ${extra.map(m => m.model_name).join(', ') || '—'}\n\nProceed?`
     if (!confirm(plan)) return
     try {
       const r = await api.resync()
-      store.notice = `Resynced — ${r.added} added, ${r.deleted} deleted${(r.failed && r.failed.length) ? `, ${r.failed.length} failed` : ''}.`
-    } catch (e) { store.error = e.message }
+      resyncMsg = { ok: true, text: `Resynced — ${r.added} added, ${r.deleted} deleted${(r.failed && r.failed.length) ? `, ${r.failed.length} failed` : ''}.` }
+    } catch (e) { resyncMsg = { ok: false, text: e.message } }
     await loadDrift()
   }
 
@@ -241,6 +243,7 @@
       {#if !drift.in_sync}
         <button onclick={resyncToProxy} disabled={store.applying || store.saving}>Resync to proxy</button>
       {/if}
+      {#if resyncMsg}<div class="banner {resyncMsg.ok ? 'ok' : 'err'}">{resyncMsg.text}</div>{/if}
     {/if}
     <button class="primary" onclick={() => { editingId = null; showAdd = !showAdd }} disabled={store.applying}>＋ Add model</button>
   </header>
