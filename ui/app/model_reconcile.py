@@ -73,7 +73,8 @@ async def reconcile_models(desired_items, live, client,
         if cred and cred in creds_changed:
             force_ids.add(name_to_id[it["name"]])
     if converge_content:
-        live_by_id = {(m.get("model_info") or {}).get("id"): m for m in live}
+        live_by_id = {(m.get("model_info") or {}).get("id"): m
+                      for m in live if (m.get("model_info") or {}).get("id")}
         content_ids = {mid for mid in (set(desired) & set(live_by_id))
                        if content_diff(desired[mid].get("model_info") or {},
                                        (live_by_id[mid].get("model_info") or {}))}
