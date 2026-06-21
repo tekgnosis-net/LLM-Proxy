@@ -1,5 +1,5 @@
 import types, pytest
-from datetime import datetime, date
+from datetime import datetime
 from app.routes.usage_routes import _shape_summary
 
 def _row(label, **kw):
@@ -12,13 +12,15 @@ def test_shape_summary_maps_everything():
             "avg_latency_ms": 880.6, "p95_latency_ms": 900.4, "cache_hit_rate": 0.25}
     out = _shape_summary(30, "day", kpis, [_row("deepinfra")], [_row("gpt-oss-20b")],
                          [_row("team-a", last_used=datetime(2026,6,19,9,0))],
-                         [{"bucket": date(2026,6,19), "requests": 5, "spend": 0.3, "p95_ms": 700.7}])
+                         # date_trunc() returns a naive timestamp (UTC wall-clock), not a date
+                         [{"bucket": datetime(2026,6,19,0,0), "requests": 5, "spend": 0.3, "p95_ms": 700.7}])
     assert out["range_days"] == 30 and out["granularity"] == "day"
     assert out["kpis"]["avg_latency_ms"] == 881 and out["kpis"]["cache_hit_rate"] == 0.25
     assert out["by_provider"][0]["label"] == "deepinfra" and out["by_provider"][0]["p95_ms"] == 900
-    assert out["by_key"][0]["last_used"] == "2026-06-19T09:00:00"
+    # timestamps carry an explicit +00:00 so the browser converts UTC→local
+    assert out["by_key"][0]["last_used"] == "2026-06-19T09:00:00+00:00"
     assert "last_used" not in out["by_provider"][0]
-    assert out["timeseries"][0] == {"bucket": "2026-06-19", "requests": 5, "spend": 0.3, "p95_ms": 701}
+    assert out["timeseries"][0] == {"bucket": "2026-06-19T00:00:00+00:00", "requests": 5, "spend": 0.3, "p95_ms": 701}
 
 def test_shape_summary_none_guards():
     kpis = {"spend": None, "requests": 0, "tok_in": None, "tok_out": None, "error_rate": None,
@@ -78,7 +80,7 @@ def test_shape_recent_maps_rows():
              "latency_ms": 41200, "status": "success", "cache_hit": "True"}]
     out = _shape_recent(rows)
     r = out["recent"][0]
-    assert r["time"] == "2026-06-19T18:42:03" and r["provider"] == "deepinfra"
+    assert r["time"] == "2026-06-19T18:42:03+00:00" and r["provider"] == "deepinfra"
     assert r["cache_hit"] is True and r["status"] == "success" and r["latency_ms"] == 41200
 
 def test_shape_recent_cache_false_and_none():

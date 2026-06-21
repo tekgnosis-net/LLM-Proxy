@@ -8,13 +8,32 @@
   let preEl = $state(null)
   let es = null
 
+  // Docker's /logs?timestamps=1 prepends each line with an RFC3339 UTC timestamp
+  // (e.g. "2026-06-21T12:00:00.123456789Z …"). The container runs in UTC and has
+  // no idea what the viewer's zone is, so the UTC→local conversion must happen
+  // here in the browser. Reformat just that leading token to local HH:MM:SS.mmm;
+  // synthetic backend notices ("[log stream …]") have no timestamp and pass through.
+  const TS_RE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/
+  function fmtLogLine(raw) {
+    const sp = raw.indexOf(' ')
+    if (sp <= 0) return raw
+    const tok = raw.slice(0, sp)
+    if (!TS_RE.test(tok)) return raw
+    const d = new Date(tok)
+    if (isNaN(d.getTime())) return raw
+    const p = (n, w = 2) => String(n).padStart(w, '0')
+    const local = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`
+    return local + raw.slice(sp)
+  }
+
   function openStream() {
     if (es) { es.close(); es = null }
     es = new EventSource('/api/logs/stream?tail=200')
     es.onmessage = async (e) => {
+      const ln = fmtLogLine(e.data)
       lines = lines.length >= 2000
-        ? [...lines.slice(lines.length - 1999), e.data]
-        : [...lines, e.data]
+        ? [...lines.slice(lines.length - 1999), ln]
+        : [...lines, ln]
       await tick()
       if (preEl) preEl.scrollTop = preEl.scrollHeight
     }

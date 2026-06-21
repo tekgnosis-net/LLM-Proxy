@@ -39,3 +39,48 @@ def test_usage_resilient_to_partial_failure(tmp_path):
     d = _client(tmp_path, Partial()).get("/api/usage").json()
     assert d["total"]["spend"] == 4.23     # other sections still present
     assert d["by_model"] == []             # failed section degrades to empty
+
+
+# ---------------------------------------------------------------------------
+# Timezone serialization: LiteLLM_SpendLogs."startTime" is `timestamp WITHOUT
+# time zone`, so asyncpg hands us NAIVE datetimes (their wall-clock is UTC).
+# `.isoformat()` on a naive datetime emits no offset, and the browser then
+# parses it as LOCAL time — so the user sees raw UTC numbers. Every datetime we
+# serialize must carry an explicit +00:00 so the frontend's toLocaleString()
+# converts it to the browser's local zone.
+# ---------------------------------------------------------------------------
+from datetime import datetime, timezone
+import app.routes.usage_routes as _ur
+
+
+def test_iso_utc_marks_naive_as_utc():
+    assert _ur._iso_utc(datetime(2026, 6, 21, 12, 0, 0)) == "2026-06-21T12:00:00+00:00"
+
+
+def test_iso_utc_none_passthrough():
+    assert _ur._iso_utc(None) is None
+
+
+def test_iso_utc_preserves_already_aware():
+    aware = datetime(2026, 6, 21, 12, 0, 0, tzinfo=timezone.utc)
+    assert _ur._iso_utc(aware) == "2026-06-21T12:00:00+00:00"
+
+
+def test_shape_recent_time_has_utc_offset():
+    rows = [{"time": datetime(2026, 6, 21, 12, 0, 0), "model": "m", "provider": "p",
+             "key": "k", "tok_in": 1, "tok_out": 2, "latency_ms": 3,
+             "status": "success", "cache_hit": None}]
+    assert _ur._shape_recent(rows)["recent"][0]["time"].endswith("+00:00")
+
+
+def test_shape_summary_bucket_has_utc_offset():
+    ts = [{"bucket": datetime(2026, 6, 21, 0, 0, 0), "requests": 5, "spend": 0.1, "p95_ms": 12}]
+    out = _ur._shape_summary(7, "day", {}, [], [], [], ts)
+    assert out["timeseries"][0]["bucket"].endswith("+00:00")
+
+
+def test_cols_last_used_has_utc_offset():
+    rows = [{"label": "k", "requests": 1, "tok_in": 1, "tok_out": 1, "spend": 0.0,
+             "cost_per_1m": None, "p50_ms": None, "p95_ms": None, "err_pct": 0.0,
+             "last_used": datetime(2026, 6, 21, 12, 0, 0)}]
+    assert _ur._cols(rows)[0]["last_used"].endswith("+00:00")

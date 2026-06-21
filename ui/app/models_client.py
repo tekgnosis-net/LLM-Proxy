@@ -1,6 +1,8 @@
 from __future__ import annotations
 import httpx
 from typing import Any, Optional
+from urllib.parse import quote
+from app.model_content import normalized_managed
 
 
 class ModelsClient:
@@ -29,8 +31,18 @@ class ModelsClient:
             return r.json()
 
     async def update_model(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # LiteLLM's old POST /model/update drops model_info; the PATCH endpoint
+        # /model/{id}/update persists it. Overlay normalized_managed so UI-managed
+        # model_info fields are explicit → PATCH-merge overwrites both ways.
+        mid = (payload.get("model_info") or {}).get("id")
+        if not mid:
+            raise ValueError("update_model requires model_info.id")
+        body = dict(payload)
+        mi = dict(payload.get("model_info") or {})
+        mi.update(normalized_managed(mi))
+        body["model_info"] = mi
         async with self._client() as c:
-            r = await c.post(f"{self._base}/model/update", json=payload)
+            r = await c.patch(f"{self._base}/model/{quote(str(mid), safe='')}/update", json=body)
             r.raise_for_status()
             return r.json()
 
