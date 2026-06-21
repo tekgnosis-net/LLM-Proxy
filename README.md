@@ -12,8 +12,8 @@ Master dispatches via a rendered `config.yaml`.
 > encrypted-in-DB credentials, a **passthrough** editor for advanced keys, and a
 > **rendered-config preview**. An optional **hybrid hot-apply** engine
 > (`STORE_MODEL_IN_DB=true`) applies model changes **live** with no restart, and the
-> Models screen now shows a **drift indicator** with one-click **Resync to proxy** to
-> keep the live proxy and the UI's intent in sync. Released via CI to GHCR. See
+> Models screen shows a **content-aware drift indicator** with one-click **Resync to
+> proxy** to keep the live proxy and the UI's intent in sync. Released via CI to GHCR. See
 > **[`docs/admin-ui.md`](docs/admin-ui.md)** and the
 > [v3 design spec](docs/superpowers/specs/2026-06-08-llm-proxy-ui-v3-master-servant-config.md).
 
@@ -117,16 +117,23 @@ Model reconciliation is **declarative and keyed by `model_info.id`**: the engine
 diffs the desired set (the UI's applied models) against the proxy's live set and
 computes add / update / delete, rather than replaying mutations. Keying by the stable
 `model_info.id` (not the display name) is what lets a model be renamed or re-credentialed
-without churning its live identity.
+without churning its live identity. Updates use LiteLLM's `PATCH /model/{id}/update`
+endpoint so that **`model_info` changes persist** (e.g. toggling a model's background
+health check) — the older `POST /model/update` silently kept only `litellm_params`.
 
 **Drift detection & Resync.** Because the live `/model/*` table can drift from the UI's
 intent — a direct API call, a failed partial apply, a hand-edit — the Models screen
 shows a **drift badge** in hybrid mode: **In sync ✓** when the UI's applied models match
-the proxy's live `/model/info` (compared by `model_info.id`), or **⚠ N out of sync**
-when they differ. **Resync to proxy** previews the converge plan (`+ add` / `- delete`),
-asks for confirmation before any deletion, then drives the live proxy back to the UI's
-applied config — hot, no restart. Resync is presence-only: it adds models missing from
-the proxy and removes extras, restoring each by its original `model_info.id`.
+the proxy's live `/model/info`, or **⚠ N out of sync** when they differ. Drift is
+**content-aware**: it detects models **missing** from the proxy, **extra** ones the UI
+no longer wants, *and* models present on both sides whose **`model_info` content differs**
+(compared field-by-field over the UI-managed fields only, so litellm-derived fields never
+raise a false alarm). **Resync to proxy** previews the converge plan
+(`+ add` / `~ update` / `- delete`), asks for confirmation before any deletion, then
+drives the live proxy back to the UI's applied config — hot, no restart: it adds missing
+models, **updates content-drifted ones** (via the PATCH endpoint above), and removes
+extras, restoring each by its original `model_info.id`. Normal **Apply** pushes only your
+staged edits; **Resync** is the on-demand full-convergence action.
 
 ## Stack
 

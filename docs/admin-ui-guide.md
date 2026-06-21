@@ -109,6 +109,11 @@ key."
 Read-only. Covers the last 30 days. Data comes from LiteLLM's spend tracking
 (runtime API, not the staged config).
 
+> **Timezones:** all times and dates on this screen (and in the live **Logs** view)
+> are shown in **your browser's local timezone**. The backend stores and emits UTC;
+> the conversion happens client-side, so two viewers in different zones each see their
+> own local clock.
+
 ### Summary cards
 
 | Card | Shows |
@@ -186,6 +191,7 @@ list above is the fallback when catalog data is unavailable.
 | **API base (override / self-hosted)** | URL, e.g. `https://your-endpoint/v1`. Leave blank for managed providers. | Passed as `api_base` in `litellm_params`. LiteLLM resolves the URL from the provider prefix for managed providers; only set this for self-hosted or custom deployments. |
 | **Input cost ($ / 1M tokens)** | Non-negative number; blank = use LiteLLM's built-in catalog price | The input token cost in US dollars per **1 million** tokens. Stored internally as per-token (`÷ 1e6`) in `litellm_params.input_cost_per_token`. Used for spend tracking. |
 | **Output cost ($ / 1M tokens)** | Non-negative number; blank = use LiteLLM's built-in catalog price | The output token cost in US dollars per **1 million** tokens. Stored internally as per-token in `litellm_params.output_cost_per_token`. |
+| **Disable background health check** (checkbox) | Tick to exclude this deployment from the periodic background health probe | Sets `model_info.disable_background_health_check`. Recommended for paid providers (e.g. deepinfra), where the background check sends a real, billed request each interval — use the **Check now** button on demand instead. Honored once `general_settings.health_check_skip_disabled_background_models` is enabled (the UI stages that global flag automatically the first time you disable a model). In hybrid mode this is a `model_info` change, so it converges via the PATCH update path and is what the **content-aware drift** detector watches. |
 | **Test connection** button | Requires Public model name + Provider model id | Sends a test inference request to the provider using the current form values (without saving). Reports "Connection successful" or the error. Does not stage anything. |
 | **Save** button | Requires Public model name + Provider model id | Stages the model as a `new` item (uuid identity) in `ui_config_staged`. The model appears in the table with a `new` badge. Takes effect on Apply. |
 
@@ -197,8 +203,32 @@ list above is the fallback when catalog data is unavailable.
 | **litellm model** | The full `litellm_params.model` string (e.g. `openai/gpt-4o`). This is what LiteLLM uses when calling the upstream API. |
 | **Costs** | Input and output cost in `$ / 1M` tokens (converted from the stored per-token values). Shows "—" if no costs are set. |
 | **Health** | A dot: green = healthy (last health check passed), red = unhealthy, grey = unknown (no health data yet). |
+| **Check** | **Check now** button — runs an on-demand health check for that one deployment and shows the result inline. Useful for deployments whose background check is disabled. |
 | **Status** | `new` / `changed` / `deleted` badge if the row has a staged change; blank if clean. |
-| **Action** | **Delete** button (stages a `deleted` flag; row stays with strikethrough until Apply). **Undo** button (visible when `deleted`; discards the deletion). |
+| **Action** | **Edit** button (re-opens the form to change the deployment in place, re-staged under the same uuid). **Delete** button (stages a `deleted` flag; row stays with strikethrough until Apply). **Undo** button (visible when `deleted`; discards the deletion). |
+
+### Drift & Resync (hybrid mode only)
+
+When the proxy runs in hybrid hot-apply mode (`STORE_MODEL_IN_DB=true`), the Models
+header shows a **drift badge** comparing the UI's applied models against the proxy's
+live deployments:
+
+- **In sync ✓** — the live proxy matches the UI's intent.
+- **⚠ N out of sync** — they differ. Drift is **content-aware**: it counts models
+  **missing** from the proxy, **extra** deployments the UI no longer wants, and models
+  present on both sides whose **`model_info` content differs** (e.g. the background
+  health-check toggle). Only UI-managed fields are compared, so litellm's own derived
+  fields never trigger a false warning.
+
+A **Resync to proxy** button appears when out of sync. It shows a confirmation preview
+of the plan — `+ add` (missing), `~ update` (content-drifted), `- delete` (extras) —
+and, on confirmation, converges the live proxy to the UI's applied config **hot, with no
+restart**: it adds missing models, PATCHes drifted ones, and removes extras, restoring
+each by its original `model_info.id`. Deletions happen only after you confirm.
+
+Normal **Apply** pushes only your staged edits; **Resync** is the on-demand
+full-convergence action for when the live proxy has drifted out-of-band (a direct API
+call, a hand-edit, or a failed partial apply).
 
 ---
 
