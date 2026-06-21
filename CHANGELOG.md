@@ -1,3 +1,20 @@
+# [1.23.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.22.0...v1.23.0) (2026-06-21)
+
+
+### Bug Fixes
+
+* guard live_by_id against id-less live models in converge_content (mirror _live_ids) ([05d3b59](https://github.com/tekgnosis-net/LLM-Proxy/commit/05d3b59d8de848b7757c92df54a96214aaf322bb))
+* **ui:** render Usage & Logs timestamps in the browser's local timezone ([beefcc0](https://github.com/tekgnosis-net/LLM-Proxy/commit/beefcc0ba4e08787d3dece58e171d176709bf186))
+* update_model uses PATCH /model/{id}/update (old POST drops model_info) ([5fa4b10](https://github.com/tekgnosis-net/LLM-Proxy/commit/5fa4b1067d552505a5f4aa784c2f5fe103acaee1))
+
+
+### Features
+
+* drift reports content_drifted; resync converges content (converge_content=True) ([7d59a9a](https://github.com/tekgnosis-net/LLM-Proxy/commit/7d59a9a1c442b4e8c613ffc80883341d0271cfb1))
+* model_content — shared UI-managed model_info allowlist + content_diff ([9bf9dc5](https://github.com/tekgnosis-net/LLM-Proxy/commit/9bf9dc5c07ce068d6b194bb207619a419a0b8f59))
+* reconcile_models converge_content flag (resync-only content convergence) ([c8fec46](https://github.com/tekgnosis-net/LLM-Proxy/commit/c8fec46df4e64ea6dbeae3c1bcec51fd1e30f2af))
+* **ui:** drift badge + resync preview/result include content drift ([1f9c588](https://github.com/tekgnosis-net/LLM-Proxy/commit/1f9c58830b68c2f0eb4c99ddb0fe12a5995c9a01))
+
 # [1.22.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.21.1...v1.22.0) (2026-06-21)
 
 
