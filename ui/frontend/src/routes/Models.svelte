@@ -53,6 +53,7 @@
         providers = [...pinned, ...rest]
       }
     } catch (_) { providers = FALLBACK_PROVIDERS }
+    await loadDrift()
   })
 
   function resetForm() {
@@ -180,6 +181,35 @@
     return { color:'#8e8e93', title:'Health check pending (background check runs every ~5 min)' }
   }
 
+  let drift = $state(null)   // { hybrid, in_sync, missing_in_litellm:[], extra_in_litellm:[] } | null
+  let resyncMsg = $state(null)   // { ok: boolean, text: string } | null
+  async function loadDrift() {
+    try { drift = await api.drift() } catch (_) { drift = null }
+  }
+  async function resyncToProxy() {
+    resyncMsg = null
+    let d
+    try { d = await api.drift() } catch (e) { resyncMsg = { ok: false, text: e.message }; return }
+    if (!d.hybrid) return
+    if (d.in_sync) { resyncMsg = { ok: true, text: 'Already in sync with the proxy.' }; return }
+    const miss = d.missing_in_litellm || [], extra = d.extra_in_litellm || []
+    const plan = `Resync to proxy:\n  + add ${miss.length}: ${miss.map(m => m.model_name).join(', ') || '—'}\n  - delete ${extra.length}: ${extra.map(m => m.model_name).join(', ') || '—'}\n\nProceed?`
+    if (!confirm(plan)) return
+    try {
+      const r = await api.resync()
+      resyncMsg = { ok: true, text: `Resynced — ${r.added} added, ${r.deleted} deleted${(r.failed && r.failed.length) ? `, ${r.failed.length} failed` : ''}.` }
+    } catch (e) { resyncMsg = { ok: false, text: e.message } }
+    await loadDrift()
+  }
+
+  // Reload drift after a successful Apply
+  let _prevApplying = false
+  $effect(() => {
+    const cur = store.applying
+    if (_prevApplying && !cur && !store.error) loadDrift()
+    _prevApplying = cur
+  })
+
   let checkResult = $state({})   // item.name → { busy?:bool, ok?:bool, msg?:string }
   async function checkNow(item) {
     const lp = item.data?.litellm_params || {}
@@ -205,6 +235,16 @@
 
 <div class="page">
   <header><h1>Models</h1>
+    {#if drift && drift.hybrid}
+      <span class="drift" class:ok={drift.in_sync} class:warn={!drift.in_sync}
+        title={drift.in_sync ? 'ui_config and the proxy agree' : 'ui_config and the proxy differ'}>
+        {drift.in_sync ? 'In sync ✓' : `⚠ ${(drift.missing_in_litellm.length + drift.extra_in_litellm.length)} out of sync`}
+      </span>
+      {#if !drift.in_sync}
+        <button onclick={resyncToProxy} disabled={store.applying || store.saving}>Resync to proxy</button>
+      {/if}
+    {/if}
+    {#if resyncMsg}<div class="banner {resyncMsg.ok ? 'ok' : 'err'}">{resyncMsg.text}</div>{/if}
     <button class="primary" onclick={() => { editingId = null; showAdd = !showAdd }} disabled={store.applying}>＋ Add model</button>
   </header>
   {#if store.error}<div class="banner err">{store.error}</div>{/if}
@@ -379,6 +419,11 @@
   .prefix{display:inline-flex;align-items:center;padding:0 8px;background:#f0f0f3;border:1px solid #ccc;border-right:0;border-radius:8px 0 0 8px;font:inherit;color:#6e6e73;white-space:nowrap}
   .lookup-row .prefix + input{border-radius:0}
   button.link{background:none;border:0;color:#0a84ff;cursor:pointer;font-size:12px;padding:0;text-align:left;width:fit-content}
+
+  /* Drift badge */
+  .drift{font-size:12px;padding:3px 10px;border-radius:20px}
+  .drift.ok{background:#e7f7ec;color:#1d7a33}
+  .drift.warn{background:#fff4e5;color:#9a5b00}
 
   /* Flag row accents */
   .row-new{background:rgba(10,132,255,.06)}

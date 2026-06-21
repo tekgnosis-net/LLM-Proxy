@@ -35,6 +35,9 @@ def build_desired(items, resolve_key=None):
             failed.append({"id": it["name"], "op": "resolve", "error": str(e)})
             continue
         mid = entry["model_info"]["id"]
+        if mid in desired:
+            failed.append({"id": mid, "op": "duplicate_id", "error": f"duplicate model_info.id {mid!r}"})
+            continue
         desired[mid] = entry
         name_to_id[it["name"]] = mid
     return desired, name_to_id, failed
@@ -56,6 +59,7 @@ def _is_already_exists(e) -> bool:
 async def reconcile_models(desired_items, live, client,
                            changed_item_names: set[str], creds_changed: set[str],
                            resolve_key: Callable[[str], Optional[str]]) -> dict[str, Any]:
+    """Invariant: desired, changed_ids, force_ids, and live are all keyed/compared in model_info.id-space (build_desired + the translations below) before diff_models."""
     desired, name_to_id, failed = build_desired(desired_items, resolve_key)
     # Translate staged signals (item-names, credential-names) into model_info.id space.
     changed_ids = {name_to_id[n] for n in changed_item_names if n in name_to_id}

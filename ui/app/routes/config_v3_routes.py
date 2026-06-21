@@ -4,11 +4,12 @@ from app.auth import login_required
 from app.settings import get_settings
 from app.config_db import ConfigStore
 from app.config_render import effective, render_config, redact_rendered
-from app.config_engine import apply_config, pending_status, ApplyError
+from app.config_engine import apply_config, pending_status, ApplyError, _make_resolve_key
 from app.credentials_store import fernet_from_secret
 from app.config_store import ConfigError, validate_config, write_config_atomic
 from app.reloader import Reloader
 from app.models_client import ModelsClient
+from app.model_reconcile import build_desired, diff_models, reconcile_models
 import yaml as _yaml
 
 router = APIRouter(prefix="/api")
@@ -162,3 +163,36 @@ async def prepare_hot_apply():
     return {"prepared": True,
             "next": "config.yaml now has no models. Set STORE_MODEL_IN_DB=true in .env, run "
                     "`docker compose up -d` to recreate the stack, then click Apply to fill the model DB."}
+
+@router.post("/config/resync", dependencies=[Depends(login_required)])
+async def config_resync():
+    s = get_settings()
+    if not s.store_model_in_db:
+        raise HTTPException(status_code=422, detail="resync requires hybrid mode (STORE_MODEL_IN_DB=true)")
+    f = _fernet(); store = make_config_store()
+    applied = await store.applied()
+    model_items = [it for it in applied if it["kind"] == "model"]
+    resolve_key = _make_resolve_key(applied, lambda b: f.decrypt(b.encode()).decode())
+    client = make_models_client()
+    live = await client.list_models()
+    return await reconcile_models(model_items, live, client,
+                                  changed_item_names=set(), creds_changed=set(), resolve_key=resolve_key)
+
+@router.get("/config/drift", dependencies=[Depends(login_required)])
+async def config_drift():
+    s = get_settings()
+    if not s.store_model_in_db:
+        return {"hybrid": False, "in_sync": True, "missing_in_litellm": [], "extra_in_litellm": []}
+    store = make_config_store()
+    model_items = [it for it in await store.applied() if it["kind"] == "model"]
+    desired, _, _ = build_desired(model_items, resolve_key=None)   # presence only — no key needed
+    try:
+        live = await make_models_client().list_models()
+    except Exception as e:
+        return {"error": "query_failed", "detail": str(e)}
+    plan = diff_models(desired, live, set(), set())
+    live_by_id = {(m.get("model_info") or {}).get("id"): m for m in live}
+    missing = [{"id": e["model_info"]["id"], "model_name": e.get("model_name")} for e in plan["to_add"]]
+    extra = [{"id": i, "model_name": (live_by_id.get(i) or {}).get("model_name")} for i in plan["to_delete"]]
+    return {"hybrid": True, "in_sync": not missing and not extra,
+            "missing_in_litellm": missing, "extra_in_litellm": extra}
