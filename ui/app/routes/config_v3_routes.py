@@ -4,7 +4,7 @@ from app.auth import login_required
 from app.settings import get_settings
 from app.config_db import ConfigStore
 from app.config_render import effective, render_config, redact_rendered
-from app.config_engine import apply_config, pending_status, ApplyError
+from app.config_engine import apply_config, pending_status, ApplyError, _make_resolve_key
 from app.credentials_store import fernet_from_secret
 from app.config_store import ConfigError, validate_config, write_config_atomic
 from app.reloader import Reloader
@@ -163,6 +163,20 @@ async def prepare_hot_apply():
     return {"prepared": True,
             "next": "config.yaml now has no models. Set STORE_MODEL_IN_DB=true in .env, run "
                     "`docker compose up -d` to recreate the stack, then click Apply to fill the model DB."}
+
+@router.post("/config/resync", dependencies=[Depends(login_required)])
+async def config_resync():
+    s = get_settings()
+    if not s.store_model_in_db:
+        raise HTTPException(status_code=422, detail="resync requires hybrid mode (STORE_MODEL_IN_DB=true)")
+    f = _fernet(); store = make_config_store()
+    applied = await store.applied()
+    model_items = [it for it in applied if it["kind"] == "model"]
+    resolve_key = _make_resolve_key(applied, lambda b: f.decrypt(b.encode()).decode())
+    client = make_models_client()
+    live = await client.list_models()
+    return await reconcile_models(model_items, live, client,
+                                  changed_item_names=set(), creds_changed=set(), resolve_key=resolve_key)
 
 @router.get("/config/drift", dependencies=[Depends(login_required)])
 async def config_drift():

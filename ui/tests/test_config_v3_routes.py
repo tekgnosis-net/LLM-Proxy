@@ -287,6 +287,35 @@ def test_drift_query_failed(tmp_path, monkeypatch):
     assert c.get("/api/config/drift").json()["error"] == "query_failed"
     gs.cache_clear()
 
+def test_resync_adds_missing(tmp_path, monkeypatch):
+    store = ModelStore([_m("a"), _m("b")])
+    fake = FakeModelsClientRoutes([{"model_name":"a","model_info":{"id":"a"}}])  # missing b
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings as gs; gs.cache_clear()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_models_client = lambda: fake
+    r = c.post("/api/config/resync").json()
+    assert r["added"] == 1 and r["deleted"] == 0
+    assert fake.added[0]["model_info"]["id"] == "b"
+
+def test_resync_deletes_extra(tmp_path, monkeypatch):
+    store = ModelStore([_m("a")])
+    fake = FakeModelsClientRoutes([{"model_name":"a","model_info":{"id":"a"}},
+                                   {"model_name":"z","model_info":{"id":"z"}}])  # extra z
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings as gs; gs.cache_clear()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_models_client = lambda: fake
+    r = c.post("/api/config/resync").json()
+    assert r["deleted"] == 1 and fake.deleted == ["z"]
+
+def test_resync_requires_hybrid(tmp_path, monkeypatch):
+    monkeypatch.delenv("STORE_MODEL_IN_DB", raising=False)
+    from app.settings import get_settings as gs; gs.cache_clear()
+    assert _client(tmp_path, ModelStore([_m("a")])).post("/api/config/resync").status_code == 422
+
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}
