@@ -10,7 +10,10 @@ Master dispatches via a rendered `config.yaml`.
 > complete through **v3**: a **DB-authoritative, staged-item config model** (Master =
 > UI + Postgres; Servant = LiteLLM), a per-item **Save → Apply / Discard** workflow,
 > encrypted-in-DB credentials, a **passthrough** editor for advanced keys, and a
-> **rendered-config preview**. Released via CI to GHCR. See
+> **rendered-config preview**. An optional **hybrid hot-apply** engine
+> (`STORE_MODEL_IN_DB=true`) applies model changes **live** with no restart, and the
+> Models screen now shows a **drift indicator** with one-click **Resync to proxy** to
+> keep the live proxy and the UI's intent in sync. Released via CI to GHCR. See
 > **[`docs/admin-ui.md`](docs/admin-ui.md)** and the
 > [v3 design spec](docs/superpowers/specs/2026-06-08-llm-proxy-ui-v3-master-servant-config.md).
 
@@ -29,7 +32,8 @@ appears whenever there are DB-backed staged changes — one Apply renders → va
 writes `config.yaml` → restarts the proxy → verifies health.
 
 **Screens:** Dashboard (KPI cards) · Usage & Spend · Models (catalog-driven provider
-picker, credential dropdown, CRUD + test/health/costs) · Provider Keys (encrypted
+picker, credential dropdown, CRUD + test/health/costs; in hybrid mode a **drift
+badge** + **Resync to proxy**) · Provider Keys (encrypted
 in DB; staged items) · Routing (strategy, timeout/cooldown, fallbacks) · Caching
 (read-only status) · Rendered config preview (secrets redacted) · Virtual Keys
 (create/budget/delete) · DB Housekeeping · Settings (passthrough/advanced YAML
@@ -56,7 +60,11 @@ the design:
 - **Master = the UI app + its Postgres DB.** The DB owns *intent* — the desired
   configuration. It is the single source of truth.
 - **Servant = LiteLLM.** It owns *execution* — it runs whatever the Master
-  dispatches. It stays in config-only mode (`store_model_in_db: false`).
+  dispatches. By default it stays in config-only mode (`store_model_in_db: false`),
+  so every Apply re-renders `config.yaml` and restarts the proxy. With the optional
+  **hybrid hot-apply** engine (`STORE_MODEL_IN_DB=true`) the Master instead dispatches
+  model changes live over LiteLLM's `/model/*` admin API — no restart for model edits
+  (see [Hybrid hot-apply](#hybrid-hot-apply-optional) below).
 - **`config.yaml` is a rendered artifact**, not a source of truth. The Master renders
   and writes it on every Apply; a hand-edit is overwritten on the next Apply.
 
@@ -88,11 +96,43 @@ keys the UI doesn't model. Merged into the render at Apply; managed sections win
 YAML-validated before staging so a bad free-form key is caught before it can crash
 the Servant.
 
+### Hybrid hot-apply (optional)
+
+By default an Apply restarts the proxy. That's safe but disruptive: a model edit
+takes the whole gateway down for ~25s. Set **`STORE_MODEL_IN_DB=true`** (on *both*
+the `litellm` and `llm-proxy-ui` services) to enable the **hybrid** engine, which
+splits Apply by what changed:
+
+- **Model changes apply live** — added / changed / deleted models are dispatched over
+  LiteLLM's `/model/new`, `/model/update`, `/model/delete` admin API. No restart;
+  in-flight requests are undisturbed.
+- **Settings still restart** — `router_settings`, `litellm_settings`,
+  `general_settings`, and passthrough are rendered to `config.yaml` and the proxy is
+  restarted, exactly as in config-only mode.
+- **`config.yaml` stays secret-free** — credentials are resolved inline into the live
+  `/model/*` calls, so the rendered file never holds a materialized provider key in
+  hybrid mode.
+
+Model reconciliation is **declarative and keyed by `model_info.id`**: the engine
+diffs the desired set (the UI's applied models) against the proxy's live set and
+computes add / update / delete, rather than replaying mutations. Keying by the stable
+`model_info.id` (not the display name) is what lets a model be renamed or re-credentialed
+without churning its live identity.
+
+**Drift detection & Resync.** Because the live `/model/*` table can drift from the UI's
+intent — a direct API call, a failed partial apply, a hand-edit — the Models screen
+shows a **drift badge** in hybrid mode: **In sync ✓** when the UI's applied models match
+the proxy's live `/model/info` (compared by `model_info.id`), or **⚠ N out of sync**
+when they differ. **Resync to proxy** previews the converge plan (`+ add` / `- delete`),
+asks for confirmation before any deletion, then drives the live proxy back to the UI's
+applied config — hot, no restart. Resync is presence-only: it adds models missing from
+the proxy and removes extras, restoring each by its original `model_info.id`.
+
 ## Stack
 
 | Service | Image | Purpose |
 |---|---|---|
-| `litellm` | `ghcr.io/berriai/litellm:main-stable` | OpenAI-compatible gateway (config-only; bundled UI not used) |
+| `litellm` | `ghcr.io/berriai/litellm:main-stable` | OpenAI-compatible gateway (config-only, or hybrid hot-apply via `STORE_MODEL_IN_DB`; bundled UI not used) |
 | `llm-proxy-ui` | `ghcr.io/tekgnosis-net/llm-proxy-ui` | Apple-HIG admin UI (FastAPI + Svelte) |
 | `postgres` | `postgres:16-alpine` | Virtual keys, budgets, spend logs, and **UI config staging tables** |
 | `valkey` | `valkey/valkey:8-alpine` | Response cache + rate-limit state (Redis-protocol, BSD-3 fork) |
