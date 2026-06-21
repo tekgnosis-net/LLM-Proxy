@@ -114,3 +114,33 @@ async def test_reconcile_credential_rotation_force_updates_referencing_models():
 def test_build_desired_keys_by_id_and_maps_names():
     desired, name_to_id, failed = build_desired([_item_explicit_id("fff", "aaa")], resolve_key=None)
     assert set(desired) == {"aaa"} and name_to_id == {"fff": "aaa"} and failed == []
+
+
+class ConstraintOnAddClient(FakeModelsClient):
+    async def add_model(self, p):
+        import httpx
+        req = httpx.Request("POST", "http://x/model/new")
+        resp = httpx.Response(500, text='{"error":"Failed to add model to db. Check your server logs."}', request=req)
+        raise httpx.HTTPStatusError("500", request=req, response=resp)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_add_constraint_falls_back_to_update():
+    client = ConstraintOnAddClient()
+    items = [_model_item("m1")]                      # 'm1' not in live → planned as to_add
+    rep = await reconcile_models(items, live=[], client=client,
+                                 changed_item_names=set(), creds_changed=set(), resolve_key=lambda n: "sk")
+    assert client.updated and client.updated[0]["model_info"]["id"] == "m1"   # fell back to update
+    assert rep["added"] == 0 and rep["updated"] == 1 and rep["failed"] == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_no_credential_not_force_updated():
+    # model with NO credential, creds_changed={"Groq"}, model already live → must NOT be updated
+    client = FakeModelsClient()
+    items = [_model_item("m1")]  # NO cred specified
+    live = [{"model_name": "m1", "model_info": {"id": "m1"}}]   # already live
+    rep = await reconcile_models(items, live=live, client=client,
+                                 changed_item_names=set(), creds_changed={"Groq"}, resolve_key=lambda n: "sk")
+    assert client.updated == [] and rep["updated"] == 0     # must NOT force-update
+    assert rep == {"added": 0, "updated": 0, "deleted": 0, "failed": []}

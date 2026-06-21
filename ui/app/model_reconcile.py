@@ -59,19 +59,26 @@ async def reconcile_models(desired_items, live, client,
     desired, name_to_id, failed = build_desired(desired_items, resolve_key)
     # Translate staged signals (item-names, credential-names) into model_info.id space.
     changed_ids = {name_to_id[n] for n in changed_item_names if n in name_to_id}
-    force_ids = {
-        name_to_id[it["name"]]
-        for it in desired_items
-        if it["name"] in name_to_id
-        and (it["data"].get("litellm_params") or {}).get("litellm_credential_name") in creds_changed
-    }
+    force_ids = set()
+    for it in desired_items:
+        if it["name"] not in name_to_id:
+            continue
+        cred = (it["data"].get("litellm_params") or {}).get("litellm_credential_name")
+        if cred and cred in creds_changed:
+            force_ids.add(name_to_id[it["name"]])
     plan = diff_models(desired, live, changed_ids, force_ids)
     added = updated = deleted = 0
     for entry in plan["to_add"]:
         try:
             await client.add_model(entry); added += 1
         except Exception as e:
-            failed.append({"id": entry["model_info"]["id"], "op": "add", "error": str(e)})
+            if _is_already_exists(e):
+                try:
+                    await client.update_model(entry); updated += 1
+                except Exception as e2:
+                    failed.append({"id": entry["model_info"]["id"], "op": "add->update", "error": str(e2)})
+            else:
+                failed.append({"id": entry["model_info"]["id"], "op": "add", "error": str(e)})
     for entry in plan["to_update"]:
         try:
             await client.update_model(entry); updated += 1
