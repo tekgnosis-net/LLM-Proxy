@@ -243,8 +243,8 @@
       {#if !drift.in_sync}
         <button onclick={resyncToProxy} disabled={store.applying || store.saving}>Resync to proxy</button>
       {/if}
-      {#if resyncMsg}<div class="banner {resyncMsg.ok ? 'ok' : 'err'}">{resyncMsg.text}</div>{/if}
     {/if}
+    {#if resyncMsg}<div class="banner {resyncMsg.ok ? 'ok' : 'err'}">{resyncMsg.text}</div>{/if}
     <button class="primary" onclick={() => { editingId = null; showAdd = !showAdd }} disabled={store.applying}>＋ Add model</button>
   </header>
   {#if store.error}<div class="banner err">{store.error}</div>{/if}
