@@ -276,6 +276,17 @@ def test_drift_config_only_is_na(tmp_path, monkeypatch):
     d = _client(tmp_path, ModelStore([_m("a")])).get("/api/config/drift").json()
     assert d["hybrid"] is False and d["in_sync"] is True
 
+def test_drift_query_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings as gs; gs.cache_clear()
+    c = _client(tmp_path, ModelStore([_m("a")]))
+    import app.routes.config_v3_routes as cr
+    class _Raises:
+        async def list_models(self): raise RuntimeError("boom")
+    cr.make_models_client = lambda: _Raises()
+    assert c.get("/api/config/drift").json()["error"] == "query_failed"
+    gs.cache_clear()
+
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}
