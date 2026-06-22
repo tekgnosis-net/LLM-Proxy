@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LLM Proxy">
+  <title>LLM Proxy</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="1" stop-color="#5e5ce6"/>
+    </linearGradient>
+  </defs>
+  <!-- app tile: matches the in-app "LP" logo gradient -->
+  <rect width="512" height="512" rx="113" fill="url(#tile)"/>
+  <!-- PCB traces: proxy core fanning out to endpoints -->
+  <g stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-opacity="0.86">
+    <line x1="174" y1="174" x2="115" y2="115"/>
+    <line x1="338" y1="174" x2="397" y2="115"/>
+    <line x1="174" y1="338" x2="115" y2="397"/>
+    <line x1="338" y1="338" x2="397" y2="397"/>
+  </g>
+  <!-- chip frame: the proxy / tekgnosis core -->
+  <rect x="174" y="174" width="164" height="164" rx="26"
+        fill="none" stroke="#fff" stroke-width="15" stroke-opacity="0.96"/>
+  <!-- core + endpoint nodes -->
+  <g fill="#fff">
+    <circle cx="256" cy="256" r="27"/>
+    <circle cx="115" cy="115" r="27" fill-opacity="0.96"/>
+    <circle cx="397" cy="115" r="27" fill-opacity="0.96"/>
+    <circle cx="115" cy="397" r="27" fill-opacity="0.96"/>
+    <circle cx="397" cy="397" r="27" fill-opacity="0.96"/>
+  </g>
+</svg>
