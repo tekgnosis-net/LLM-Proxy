@@ -1,9 +1,12 @@
 # LiteLLM `config.yaml` schema — UI config dictionary (reference)
 
-The authoritative parameter set the admin UI must generate and validate. The UI
-generates **config-only** `config.yaml` (`store_model_in_db: false`), so a wrong
-or incomplete config crashes the proxy on reload or fails silently. Phase 2's
-`config_store` pydantic models + safe-apply validator implement this dictionary.
+The authoritative parameter set the admin UI must generate and validate. In **default
+mode** (`STORE_MODEL_IN_DB=false`) the UI generates a full `config.yaml` that includes
+`model_list`; in **hybrid hot-apply mode** (`STORE_MODEL_IN_DB=true`) the UI renders a
+settings-only `config.yaml` (no `model_list`, no `credential_list`) and pushes models
+live via the LiteLLM model API instead. Either way, a wrong or incomplete config
+crashes the proxy on reload or fails silently. The `config_store` pydantic models and
+safe-apply validator implement this dictionary.
 
 > **Version anchor:** cross-checked against BerriAI/litellm `main` @ `22186f4`
 > (2026-06) — `litellm/types/router.py` (`LiteLLMParamsTypedDict`,
@@ -76,8 +79,9 @@ unknown keys it didn't set on round-trip.**
 ### `model_info`
 | param | type | notes |
 |---|---|---|
-| `id` | str | auto-UUID if omitted |
+| `id` | str | auto-UUID if omitted; used as the stable identity key for hybrid reconcile (add/update/delete keyed by `model_info.id`, not `model_name`) |
 | `mode` | str | `chat`/`embedding`/`completion`/`image_generation`/`audio_transcription`/`rerank`/`moderations` — wrong → health/routing misbehave (silent) |
+| `disable_background_health_check` | bool | Exclude this deployment from the periodic background health probe. Requires `general_settings.health_check_skip_disabled_background_models: true` (the UI stages this automatically). In hybrid mode this is a `model_info` change tracked by the content-aware drift detector and converged via PATCH update. |
 | `base_model` | str | Azure: real model for correct cost tracking |
 | `input_cost_per_token` / `output_cost_per_token` | float | pricing (also accepted in litellm_params) |
 | `input_cost_per_character`/`output_cost_per_character` | float | Vertex char pricing |
@@ -156,7 +160,7 @@ valid.** UI restricts to a dropdown of these exact strings.
 |---|---|---|
 | `master_key` | str | **SECRET** → `os.environ/LITELLM_MASTER_KEY` |
 | `database_url` | str | **SECRET** → `os.environ/DATABASE_URL` (keys/spend; not models in config-only) |
-| `store_model_in_db` | bool | **our stack: `false`** |
+| `store_model_in_db` | bool | `false` = config-only (default); `true` = hybrid hot-apply (models live in litellm DB, `model_list` absent from rendered config). Must match `STORE_MODEL_IN_DB` in `.env` for both the UI and the litellm container. |
 | `disable_spend_logs` / `disable_spend_updates` | bool | spend-log writes |
 | `maximum_spend_logs_retention_period` | str | e.g. `30d`; invalid duration → warning, cleanup silently skipped |
 | `maximum_spend_logs_retention_interval` | str | cleanup cadence (default `1d`) |
@@ -165,7 +169,10 @@ valid.** UI restricts to a dropdown of these exact strings.
 | `max_request_size_mb` / `max_response_size_mb` | int | size limits |
 | `alerting` / `alert_types` / `alerting_threshold` / `alert_to_webhook_url` / `alerting_args` | list/dict | alerting (webhook URLs **SECRET-adjacent**) |
 | `allow_requests_on_db_unavailable` | bool | serve when DB down |
-| `background_health_checks` / `health_check_interval` / `health_check_details` | bool/int | health |
+| `background_health_checks` | bool | Enable/disable the background health-check loop. Default `true`. Set `false` to stop all periodic health checks globally. |
+| `health_check_interval` | int | Interval in seconds between background health checks. Default `300` (5 min). Staged and applied via the UI's General Settings; editable without a schema reload. |
+| `health_check_skip_disabled_background_models` | bool | When `true`, deployments with `model_info.disable_background_health_check: true` are excluded from the background health loop. The UI stages this flag automatically the first time any model has its background check disabled. |
+| `health_check_details` | bool | Include extra detail in health-check results. |
 | `allowed_routes` / `allowed_ips` | list | access restriction |
 | `ui_access_mode` | enum | `admin_only`/`all` |
 | `proxy_batch_write_at` | int | batch spend writes (default 10s) |
@@ -192,5 +199,5 @@ The generator omits them; the validator rejects them if pasted in.
 - wrong `model_info.mode`; wrong `api_base`/`aws_region_name`/`vertex_location` (fail only at request time); wrong cost-per-token (wrong spend); `drop_params:false` vs a strict provider (silent 400s); invalid retention duration (cleanup silently skipped)
 
 ## How the UI uses this
-- **Generation:** typed models mirror these params; secrets emitted as `os.environ/`; unknown keys preserved on round-trip.
-- **Validation (safe-apply):** parse YAML → validate structure against this schema (hard-reject crash-class issues incl. the forbidden ssl keys + invalid routing_strategy) → LiteLLM-fidelity check → atomic write+backup → SIGHUP → verify health + `/v1/models` → auto-rollback. See the spec's "Config generation & safe-apply" section.
+- **Generation:** typed models mirror these params; secrets emitted as `os.environ/`; unknown keys preserved on round-trip. In hybrid mode the rendered config omits `model_list` and `credential_list`; `store_model_in_db: true` is present in `general_settings`.
+- **Validation (safe-apply):** parse YAML → validate structure against this schema (hard-reject crash-class issues incl. the forbidden ssl keys + invalid routing_strategy) → atomic write+readback → fold staged into applied → restart + verify. In hybrid mode, if only model items changed the file write and restart are skipped; model changes are instead reconciled live via the LiteLLM model API. See `ui/app/config_engine.py` for the authoritative pipeline.

@@ -2,15 +2,35 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { copyText } from '../lib/browser.js'
+  import { rulesToFallbacks, fallbacksToRules } from '../lib/fallbacks.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
   let availableModels = $state([])
   let editingToken = $state(null)
   const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
-  const FALLBACKS_PLACEHOLDER = '[{"gpt-4": ["gpt-4o"]}]'
+  const FALLBACKS_PLACEHOLDER = '[{"primary-model-name": ["backup-model-name"]}]'
   let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '', router_num_retries: '', router_timeout: '', router_cooldown_time: '', router_allowed_fails: '', router_retry_after: '' })
   let showRouterSettings = $state(false)
+  // Fallbacks editor: structured picker by default, raw-JSON escape hatch for advanced cases ("*").
+  let fbMode = $state('picker')   // 'picker' | 'json'
+  let fbRules = $state([])        // [{ primary: string, backups: string[] }]
+  let fbErr = $state('')
+  // Picker options come from the key's Allowed models (or all models if unrestricted),
+  // so a key can only ever fall back to models it is permitted to call.
+  let fbOptions = $derived((form.models && form.models.length) ? form.models : availableModels)
+  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = '' }
+  function addFbRule() { fbRules = [...fbRules, { primary: '', backups: [] }] }
+  function rmFbRule(i) { fbRules = fbRules.filter((_, j) => j !== i) }
+  function switchFbToJson() { form.router_fallbacks = JSON.stringify(rulesToFallbacks(fbRules), null, 2); fbErr = ''; fbMode = 'json' }
+  function switchFbToPicker() {
+    let val
+    try { val = form.router_fallbacks.trim() ? JSON.parse(form.router_fallbacks) : [] }
+    catch { fbErr = 'Invalid JSON — fix it or clear the box to use the picker.'; return }
+    const { rules, representable } = fallbacksToRules(val)
+    if (!representable) { fbErr = "This JSON can't be shown in the picker (e.g. it uses the \"*\" wildcard). Keep editing as JSON."; return }
+    fbRules = rules; fbErr = ''; fbMode = 'picker'
+  }
 
   async function load() {
     loading = true; err = ''
@@ -41,10 +61,16 @@
     }
     const rs = {}
     if (form.router_strategy) rs.routing_strategy = form.router_strategy
-    if (form.router_fallbacks.trim()) {
-      try { rs.fallbacks = JSON.parse(form.router_fallbacks) }
-      catch { return null }  // caller checks for null on parse error
+    let fb
+    if (fbMode === 'json') {
+      if (form.router_fallbacks.trim()) {
+        try { fb = JSON.parse(form.router_fallbacks) }
+        catch { return null }  // caller checks for null on parse error
+      }
+    } else {
+      fb = rulesToFallbacks(fbRules)
     }
+    if (fb && fb.length) rs.fallbacks = fb
     for (const [k, v] of [['num_retries', form.router_num_retries], ['timeout', form.router_timeout],
         ['cooldown_time', form.router_cooldown_time], ['allowed_fails', form.router_allowed_fails],
         ['retry_after', form.router_retry_after]]) {
@@ -61,10 +87,17 @@
       max_budget: k.max_budget ?? '', budget_duration: k.budget_duration || '',
       duration: '', rpm_limit: k.rpm_limit ?? '', tpm_limit: k.tpm_limit ?? '',
       router_strategy: (k.router_settings?.routing_strategy) || '',
-      router_fallbacks: k.router_settings?.fallbacks ? JSON.stringify(k.router_settings.fallbacks) : '',
+      router_fallbacks: '',
       router_num_retries: k.router_settings?.num_retries ?? '', router_timeout: k.router_settings?.timeout ?? '',
       router_cooldown_time: k.router_settings?.cooldown_time ?? '', router_allowed_fails: k.router_settings?.allowed_fails ?? '',
       router_retry_after: k.router_settings?.retry_after ?? '' }
+    // Load existing fallbacks into the picker; fall back to the JSON editor if they
+    // can't be represented (e.g. a "*" wildcard) so nothing is silently dropped.
+    const fb = k.router_settings?.fallbacks
+    const { rules, representable } = fallbacksToRules(fb)
+    if (fb && !representable) { fbMode = 'json'; fbRules = []; form.router_fallbacks = JSON.stringify(fb, null, 2) }
+    else { fbMode = 'picker'; fbRules = rules }
+    fbErr = ''
     editingToken = k.token; showCreate = true; showRouterSettings = !!k.router_settings
   }
 
@@ -94,7 +127,7 @@
 </script>
 
 <div class="page">
-  <header><h1>Virtual Keys</h1><button class="primary" onclick={() => { editingToken = null; showCreate = true; newKey = null }} disabled={busy}>＋ New key</button></header>
+  <header><h1>Virtual Keys</h1><button class="primary" onclick={() => { editingToken = null; showCreate = true; newKey = null; resetFb() }} disabled={busy}>＋ New key</button></header>
   {#if err}<div class="banner err">{err}</div>{/if}
   {#if newKey && !editingToken}
     <div class="banner key">
@@ -131,8 +164,34 @@
             </select>
           </label>
           <label>Fallbacks
-            <textarea bind:value={form.router_fallbacks} rows="3" placeholder={FALLBACKS_PLACEHOLDER}></textarea>
-            <span class="hint">Optional. JSON list of {'{'}model: [fallback models]{'}'}.</span>
+            {#if fbMode === 'picker'}
+              {#if fbOptions.length === 0}
+                <span class="hint">Add models on the Models screen first — fallbacks pick from this key's allowed models.</span>
+              {/if}
+              {#each fbRules as rule, i}
+                <div class="fb-rule">
+                  <select bind:value={rule.primary} aria-label="primary model">
+                    <option value="">— primary —</option>
+                    {#each fbOptions as m}<option value={m}>{m}</option>{/each}
+                  </select>
+                  <span class="fb-arrow">falls back to →</span>
+                  <select multiple bind:value={rule.backups} aria-label="backup models"
+                          size={Math.min(4, Math.max(2, fbOptions.length))}>
+                    {#each fbOptions.filter(m => m !== rule.primary) as m}<option value={m}>{m}</option>{/each}
+                  </select>
+                  <button type="button" class="fb-rm" title="Remove" onclick={() => rmFbRule(i)}>✕</button>
+                </div>
+              {/each}
+              <div class="fb-actions">
+                <button type="button" class="fb-add" onclick={addFbRule}>+ Add fallback</button>
+                <button type="button" class="linkbtn" onclick={switchFbToJson}>Advanced (JSON)</button>
+              </div>
+              <span class="hint">If the primary is failing or in cooldown, requests retry on the backup(s), in order. Choices come from this key's <strong>Allowed models</strong> above, so a key only falls back to models it can call.</span>
+            {:else}
+              <textarea bind:value={form.router_fallbacks} rows="4" placeholder={FALLBACKS_PLACEHOLDER}></textarea>
+              <span class="hint">Advanced: raw LiteLLM fallbacks JSON (supports the <code>"*"</code> wildcard). Every model named must also be in <strong>Allowed models</strong>. <button type="button" class="linkbtn" onclick={switchFbToPicker}>Back to picker</button></span>
+            {/if}
+            {#if fbErr}<span class="fb-err">{fbErr}</span>{/if}
           </label>
           <div class="grid">
             <label>Num retries
@@ -158,7 +217,7 @@
           </div>
         </div>
       </details>
-      <div class="row"><button class="primary" onclick={create} disabled={busy}>{editingToken ? 'Save' : 'Create'}</button><button onclick={() => { showCreate = false; editingToken = null; form.router_strategy = ''; form.router_fallbacks = ''; form.router_num_retries = ''; form.router_timeout = ''; form.router_cooldown_time = ''; form.router_allowed_fails = ''; form.router_retry_after = ''; showRouterSettings = false }}>Cancel</button></div>
+      <div class="row"><button class="primary" onclick={create} disabled={busy}>{editingToken ? 'Save' : 'Create'}</button><button onclick={() => { showCreate = false; editingToken = null; form.router_strategy = ''; form.router_num_retries = ''; form.router_timeout = ''; form.router_cooldown_time = ''; form.router_allowed_fails = ''; form.router_retry_after = ''; showRouterSettings = false; resetFb() }}>Cancel</button></div>
     </div>
   {/if}
 
@@ -212,6 +271,14 @@
   .router-body{display:flex;flex-direction:column;gap:10px;padding:10px 10px 12px}
   textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;resize:vertical}
   .hint{font-size:11px;color:#6e6e73;margin-top:2px}
+  .fb-rule{display:flex;align-items:flex-start;gap:8px;margin-top:6px}
+  .fb-rule select{flex:1;min-width:0}
+  .fb-arrow{font-size:11px;color:#6e6e73;white-space:nowrap;align-self:center}
+  .fb-rm{border:0;background:transparent;color:#b00020;cursor:pointer;font-size:14px;line-height:1;padding:4px}
+  .fb-actions{display:flex;gap:12px;align-items:center;margin-top:8px}
+  .fb-add{font-size:12px;padding:4px 10px;border:1px solid var(--border,rgba(0,0,0,.15));border-radius:7px;background:var(--card,#fff);cursor:pointer;color:inherit}
+  .linkbtn{background:none;border:0;padding:0;color:#0a84ff;cursor:pointer;font:inherit;font-size:12px;text-decoration:underline}
+  .fb-err{font-size:11px;color:#b00020;margin-top:4px}
   .form-heading{margin:0 0 4px;font-size:15px;font-weight:600;color:#1c1c1e}
   .actions{display:flex;gap:6px}
 </style>
