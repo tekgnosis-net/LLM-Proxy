@@ -54,7 +54,7 @@ unknown keys it didn't set on round-trip.**
 | `tpm` / `rpm` | int | no | routing rate inputs |
 | `weight` / `order` | int | no | load-balancing weight / priority |
 | `max_parallel_requests` | int | no | per-deployment cap |
-| `timeout` / `stream_timeout` | float\|str | no | per-request timeouts (str → `os.environ/`) |
+| `timeout` / `stream_timeout` | float\|str | no | per-deployment request timeout — *total* budget incl. generation (str → `os.environ/`). Editable in **Models → Advanced → Timeout (s)**; overrides the router/key/global timeout for this deployment |
 | `max_retries` / `num_retries` | int | no | SDK / router retries |
 | `input_cost_per_token` / `output_cost_per_token` | float | no | custom pricing |
 | `input_cost_per_second` / `output_cost_per_second` | float | no | time-based pricing |

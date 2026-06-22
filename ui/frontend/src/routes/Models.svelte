@@ -9,7 +9,7 @@
   let providers = $state(FALLBACK_PROVIDERS)     // catalog list (or fallback)
   let providerSlug = $state('openai')
   let showAdvanced = $state(false)               // reveals api_base for custom/self-hosted
-  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false })
+  let form = $state({ modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', timeout: '', disableHealthCheck: false })
   let healthMap = $state({})   // model_name → true(healthy) | false(unhealthy) | undefined(unknown)
   let busy = $state(false)
   let testResult = $state(null)  // { ok: bool, msg: string } | null
@@ -57,7 +57,7 @@
   })
 
   function resetForm() {
-    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', disableHealthCheck: false }
+    form = { modelName: '', modelId: '', api_key_env: '', api_base: '', api_version: '', aws_region_name: '', vertex_project: '', vertex_location: '', credential: '', mode: 'chat', input_cost: '', output_cost: '', timeout: '', disableHealthCheck: false }
     providerSlug = 'openai'
     showAdvanced = false
     showAdd = false
@@ -79,6 +79,7 @@
       credential: lp.litellm_credential_name || '', mode: (d.model_info||{}).mode || 'chat',
       input_cost: lp.input_cost_per_token!=null ? perTokenToPerM(lp.input_cost_per_token) : '',
       output_cost: lp.output_cost_per_token!=null ? perTokenToPerM(lp.output_cost_per_token) : '',
+      timeout: lp.timeout != null ? lp.timeout : '',
       disableHealthCheck: !!((d.model_info||{}).disable_background_health_check) }
     editingId = item.name; showAdd = true; testResult = null; autofilled = false
     showAdvanced = !!(lp.api_base) || CUSTOM_PROVIDERS.has(providerSlug)
@@ -121,6 +122,7 @@
     if (form.credential) { delete lp.api_key; lp.litellm_credential_name = form.credential }
     if (form.input_cost !== '' && form.input_cost != null) lp.input_cost_per_token = perMToPerToken(form.input_cost)
     if (form.output_cost !== '' && form.output_cost != null) lp.output_cost_per_token = perMToPerToken(form.output_cost)
+    if (form.timeout !== '' && form.timeout != null) lp.timeout = Number(form.timeout)
     return lp
   }
 
@@ -301,6 +303,11 @@
       <button type="button" class="link" onclick={() => showAdvanced = !showAdvanced}>{showAdvanced ? '▾' : '▸'} Advanced: custom endpoint</button>
       {#if showAdvanced || specialFields().includes('api_base')}
         <label>API base (override / self-hosted) <input bind:value={form.api_base} placeholder="https://your-endpoint/v1 — leave blank to let LiteLLM resolve" /></label>
+      {/if}
+      {#if showAdvanced}
+        <label>Timeout (s) <input type="number" min="0" step="1" bind:value={form.timeout} placeholder="blank = use router/global timeout" />
+          <span class="hint">Per-deployment request timeout (total, incl. generation). Leave blank to inherit the router/global timeout. Set a short value on fast cloud backends so a hung call fails over quickly; leave blank/high on slow local backends.</span>
+        </label>
       {/if}
 
       <label>Input cost ($ / 1M tokens) <input type="number" step="0.001" min="0" bind:value={form.input_cost} placeholder="auto from catalog" /></label>
