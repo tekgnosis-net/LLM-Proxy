@@ -106,37 +106,65 @@ key."
 
 ## Usage & Spend
 
-Read-only. Covers the last 30 days. Data comes from LiteLLM's spend tracking
-(runtime API, not the staged config).
+Read-only. Data comes from the UI's own Postgres queries against `LiteLLM_SpendLogs`
+(not the staged config). Requires `DATABASE_URL` to be set.
 
-> **Timezones:** all times and dates on this screen (and in the live **Logs** view)
-> are shown in **your browser's local timezone**. The backend stores and emits UTC;
-> the conversion happens client-side, so two viewers in different zones each see their
-> own local clock.
+> **Timezones:** all times and dates on this screen are shown in **your browser's
+> local timezone**. The backend stamps and emits UTC; the conversion happens
+> client-side, so two viewers in different zones each see their own local clock.
 
-### Summary cards
+### Range and auto-refresh
+
+A row of buttons selects the lookback window: **24h | 7d | 30d | 90d**. The
+selection is persisted in `localStorage` and reloads the page data on change. An
+**Auto-refresh** dropdown (Off / 10s / 30s / 60s / 5m) triggers a silent background
+reload on the selected interval; the timer pauses when the browser tab is hidden.
+
+### KPI row
+
+Seven stat cards summarising the selected period:
 
 | Card | Shows |
 |---|---|
-| **Total spend** | Aggregate USD spend across all keys for the period |
-| **Requests (30d)** | Total API request count |
-| **Tokens (30d)** | Total token count (input + output) |
+| **Total spend** | Aggregate USD spend across all keys |
+| **Requests** | Total request count |
+| **Tokens** | Prompt tokens in / completion tokens out (separate counts) |
+| **Error rate** | `failure` requests as % of total; shown in red when > 0 |
+| **Avg latency** | Mean `request_duration_ms` (excluding zero-duration rows) |
+| **p95 latency** | 95th-percentile request duration |
+| **Cache hit** | Cache hits as % of **cache-eligible** requests only (rows where `cache_hit` is `True` or `False`; rows where the cache was not consulted are excluded from both numerator and denominator) |
 
-### Spend by model
+### Activity over time (chart)
 
-Horizontal bar chart. Each bar is one model (the public model name the key
-called). Bar width is proportional to spend relative to the highest-spend model.
-Dollar amount shown at the right.
+A uPlot time-series chart with three series: **Requests**, **Spend $**, and
+**p95 latency (ms)**. Granularity is **hourly** for ranges ≤ 2 days, **daily** for
+longer ranges (shown in the chart heading). Rendered only when there is data.
 
-### Spend by key
+### By provider | By model | By key (breakdown tabs)
 
-Table. Columns: Key alias (or key name), Spend (USD). One row per virtual key
-that has spend recorded.
+Three tabs over a single sortable table. Click a column header to sort (click again
+to reverse direction). All numeric columns are sortable.
 
-### Daily requests
+| Column | Shows |
+|---|---|
+| **Label** | Provider name, model name, or key alias (first 10 chars of token if no alias) |
+| **Requests** | Count for the period |
+| **Tok in / Tok out** | Token counts |
+| **Spend** | USD spend |
+| **Cost/1M** | Effective cost per million tokens (`spend ÷ total_tokens × 1e6`); "—" when no tokens |
+| **p50 / p95** | Median and 95th-percentile latency in ms (or seconds when ≥ 1000 ms) |
+| **Err%** | Error percentage; shown in red when > 0 |
+| **Last used** | (By key tab only) Timestamp of the most recent request from that key |
 
-Sparkbar chart. One column per day; height proportional to request count. Hover
-for the exact date and count.
+Up to 50 rows per tab. Rows labelled `failed / no backend` represent requests where
+the provider could not be determined.
+
+### Recent activity feed
+
+The most recent ~50 requests (metadata only — no prompts or completions). Columns:
+Time (local), Model, Provider, Key, Tok in, Tok out, Latency, Status (✓/✗), Cache
+(hit / miss / —). Loaded once on page open; re-fetched on each range change or
+auto-refresh cycle.
 
 ---
 
@@ -340,12 +368,65 @@ immediately via the LiteLLM API.
 | Field | Expects | Does |
 |---|---|---|
 | **Alias** | Free text, e.g. `ci-pipeline` (optional) | A human-readable label for the key. Shown in the key list and spend reports. |
-| **Models** | Multi-select from the list of configured model names (hold Ctrl/Cmd to select multiple; select none = all models allowed) | Restricts which public model names this key may call. A key with no models selected can call any model. |
+| **Models** | Multi-select from the list of configured model names (hold Ctrl/Cmd to select multiple; select none = all models allowed) | Restricts which public model names this key may call. A key with no models selected can call any model. **Also sets the candidate pool for the Fallbacks picker** — see below. |
 | **Max budget ($)** | Non-negative number, e.g. `50` (optional) | Maximum USD spend allowed for this key. When reached, further requests are rejected. |
 | **Budget resets** | Duration string, e.g. `30d`, `7d` (optional) | How often the spend counter resets. Leave blank for a one-time lifetime budget. |
 | **Expires** | Duration string, e.g. `30d`, `90d`, blank = never (optional) | When the key expires. After expiry, requests using it are rejected. |
 | **RPM limit** | Non-negative integer (optional) | Maximum requests per minute for this key. |
 | **TPM limit** | Non-negative integer (optional) | Maximum tokens per minute for this key. |
+
+### Router Settings (per key, optional)
+
+A collapsible **Router Settings** section below the standard fields lets you override
+routing behavior for this key specifically. Leave everything blank to inherit global
+defaults. Settings are applied hot via `/key/update` — no proxy restart required.
+
+Precedence: **Key > Team > Global** — a per-key setting always wins over the
+equivalent global `router_settings` value. Fields left blank inherit the next level.
+
+| Field | Expects | Does |
+|---|---|---|
+| **Routing strategy** | Select from the six valid strategies, or "Inherit global" | Per-key routing strategy. Same enum as global (see Routing screen). |
+| **Fallbacks** | Structured picker (default) or Advanced JSON | See below. |
+| **Num retries** | Non-negative integer, blank = inherit | Retry count before giving up on a failed request. |
+| **Timeout (s)** | Non-negative number, blank = inherit | Per-request timeout. |
+| **Cooldown time (s)** | Non-negative number, blank = inherit | Seconds a failed deployment is excluded from routing after exceeding `allowed_fails`. |
+| **Allowed fails** | Non-negative integer, blank = inherit | Errors per minute before a deployment is put into cooldown. |
+| **Retry after (s)** | Non-negative number, blank = inherit | Minimum seconds before retrying a failed deployment. |
+
+#### Fallbacks picker
+
+The Fallbacks field is a **structured picker** — not a JSON textarea. You add one or
+more *rules*, each consisting of a **Primary** model and one or more **Backup**
+models. The dropdowns are sourced from the key's **Allowed models** (the Models
+multi-select above), so you can only choose models the key is permitted to call.
+
+**The rule you most commonly get wrong when writing fallbacks by hand:** both the
+primary and all its backups must be in the key's Allowed models. The picker enforces
+this automatically. A model never falls back to itself (filtered out).
+
+| Step | What to do |
+|---|---|
+| 1. | Click **+ Add fallback** to create a new rule. |
+| 2. | In the **primary** dropdown, pick the model clients will normally request. |
+| 3. | In the **backup(s)** multi-select, pick one or more fallback models to try if the primary fails or is in cooldown. |
+| 4. | Repeat for additional primary models if needed. |
+
+Under the hood the picker serialises to LiteLLM's wire format:
+`[{ "<primary>": ["<backup>", ...] }]`.
+
+**Worked example:** a key whose Allowed models are `gpt-oss-20b` and
+`gpt-oss-20b-deepinfra`. Add a rule: Primary = `gpt-oss-20b`, Backup =
+`gpt-oss-20b-deepinfra`. Clients always request `gpt-oss-20b`; if it errors or
+enters cooldown, LiteLLM retries on `gpt-oss-20b-deepinfra` transparently.
+
+**Advanced (JSON) toggle:** click **Advanced (JSON)** to drop into a raw textarea.
+This supports the `"*"` wildcard (a catch-all fallback for any primary model not
+explicitly listed), which the picker cannot represent. Every model named in the JSON
+must still be in the key's Allowed models — the picker enforces that; the JSON mode
+does not, so you must verify it yourself. Click **Back to picker** to return to the
+picker; if the JSON can't be represented (e.g. it uses `"*"`) the picker will decline
+the switch with an explanatory message and keep you in JSON mode.
 
 ### Key list columns
 
@@ -355,7 +436,7 @@ immediately via the LiteLLM API.
 | **Models** | The allowed model names, comma-separated; "all" if unrestricted. |
 | **Spend / budget** | Current spend vs. budget (e.g. `$1.23 / $50.00`), or just current spend if no budget. |
 | **Expires** | Expiry date in locale format, or "never". |
-| **Action** | **Delete** button — permanently revokes the key. A confirmation dialog is shown. Requests using the key will stop working immediately. |
+| **Action** | **Edit** button (re-opens the form to update the key in place, applied hot via `/key/update`). **Delete** button — permanently revokes the key. A confirmation dialog is shown. Requests using the key will stop working immediately. |
 
 ---
 
