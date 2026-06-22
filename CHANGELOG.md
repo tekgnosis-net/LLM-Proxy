@@ -1,3 +1,10 @@
+# [1.27.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.26.0...v1.27.0) (2026-06-22)
+
+
+### Features
+
+* **ui:** per-deployment Timeout (s) field on Models → Advanced (litellm_params.timeout) ([c626653](https://github.com/tekgnosis-net/LLM-Proxy/commit/c62665302144cbf177fd80ff4a35d7b88710000b))
+
 # [1.26.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.25.0...v1.26.0) (2026-06-22)
 
 
