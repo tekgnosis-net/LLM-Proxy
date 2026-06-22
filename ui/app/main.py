@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
     seed_config_from_example(s.config_path)
     app = FastAPI(title="LLM Proxy UI", lifespan=lifespan)
     app.add_middleware(SessionMiddleware, secret_key=s.session_secret,
-                       same_site="lax", https_only=False)
+                       same_site="lax", https_only=s.session_cookie_secure)
     app.include_router(auth_routes.router)
     app.include_router(health_routes.router)
     app.include_router(config_v3_routes.router)

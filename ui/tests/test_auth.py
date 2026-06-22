@@ -40,3 +40,38 @@ def test_login_then_access(tmp_path):
     assert c.post("/api/auth/login", json={"password": "letmein"}).status_code == 200
     # After login, auth passes; no DATABASE_URL in test env → 503 (not 401)
     assert c.get("/api/config/state").status_code != 401
+
+
+def _client_cookie_secure(tmp_path, monkeypatch, value):
+    """Build the app with SESSION_COOKIE_SECURE set to `value`. Uses monkeypatch
+    (auto-restores env) + cache_clear before/after so the cached Settings don't
+    leak a Secure-cookie config into later tests (an http TestClient would then
+    drop the Secure cookie and unrelated auth tests would fail)."""
+    from app.settings import get_settings
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", hash_password("letmein"))
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.yaml"))
+    (tmp_path / "config.yaml").write_text("general_settings: {}\n")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", value)
+    get_settings.cache_clear()
+    from app.main import create_app
+    return TestClient(create_app())
+
+
+def test_session_cookie_secure_flag_set_when_enabled(tmp_path, monkeypatch):
+    c = _client_cookie_secure(tmp_path, monkeypatch, "true")
+    r = c.post("/api/auth/login", json={"password": "letmein"})
+    assert r.status_code == 200
+    assert "secure" in r.headers.get("set-cookie", "").lower()
+    from app.settings import get_settings
+    get_settings.cache_clear()
+
+
+def test_session_cookie_not_secure_by_default(tmp_path, monkeypatch):
+    c = _client_cookie_secure(tmp_path, monkeypatch, "false")
+    r = c.post("/api/auth/login", json={"password": "letmein"})
+    assert r.status_code == 200
+    sc = r.headers.get("set-cookie", "").lower()
+    assert "session=" in sc and "secure" not in sc
+    from app.settings import get_settings
+    get_settings.cache_clear()
