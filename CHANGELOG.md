@@ -1,3 +1,10 @@
+# [1.25.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.24.0...v1.25.0) (2026-06-22)
+
+
+### Features
+
+* **ui:** add app favicon (circuit-core proxy mark on the brand gradient tile) ([ecdab69](https://github.com/tekgnosis-net/LLM-Proxy/commit/ecdab698de07d77e82c014b20e1fa741bca2eefd)), closes [#0a84](https://github.com/tekgnosis-net/LLM-Proxy/issues/0a84) [#5e5ce6](https://github.com/tekgnosis-net/LLM-Proxy/issues/5e5ce6)
+
 # [1.24.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.23.0...v1.24.0) (2026-06-22)
 
 
