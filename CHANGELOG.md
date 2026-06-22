@@ -1,3 +1,10 @@
+# [1.26.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.25.0...v1.26.0) (2026-06-22)
+
+
+### Features
+
+* **ui:** per-key fallbacks picker (no JSON) + refresh docs to current state ([f5c2bae](https://github.com/tekgnosis-net/LLM-Proxy/commit/f5c2bae9683fc2f16151562db0b1abe0701a395e))
+
 # [1.25.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.24.0...v1.25.0) (2026-06-22)
 
 
