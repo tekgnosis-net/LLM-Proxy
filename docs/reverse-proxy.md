@@ -28,8 +28,10 @@ There are only a handful of app-specific things to get right:
   routes**, so you do **not** need a `try_files` / SPA fallback — just proxy
   everything to the app.
 - **The session cookie is `SameSite=Lax` and not `Secure` by default.** It works
-  over HTTPS as-is; to add the `Secure` flag without rebuilding the image, have
-  the proxy stamp it (shown below).
+  over HTTPS as-is. To add the `Secure` flag you have two options: set
+  **`SESSION_COOKIE_SECURE=true`** in `.env` (app-native, proxy-independent — the
+  recommended way), or have the proxy stamp it (`proxy_cookie_flags`, shown below)
+  if you can't change env.
 
 ---
 
@@ -70,8 +72,8 @@ location / {
     proxy_read_timeout 120s;
     proxy_send_timeout 120s;
 
-    # Add the Secure flag to the session cookie at the proxy (no app change).
-    # nginx >= 1.19.3. The Starlette cookie is named `session`.
+    # Prefer SESSION_COOKIE_SECURE=true in .env instead. This proxy-side line is
+    # only needed if you can't set env. nginx >= 1.19.3; cookie is named `session`.
     proxy_cookie_flags session secure samesite=lax;
 }
 
@@ -218,7 +220,8 @@ LITELLM_PROXY_PORT=443
 
 - [ ] Upstream ports bound to `127.0.0.1` (Step 0) — no direct, non-TLS access.
 - [ ] HTTPS enforced (HTTP→HTTPS redirect on).
-- [ ] `Secure` flag on the session cookie (`proxy_cookie_flags` / `Header edit`).
+- [ ] `Secure` flag on the session cookie — `SESSION_COOKIE_SECURE=true` in `.env`
+      (preferred), or `proxy_cookie_flags` / `Header edit` at the proxy.
 - [ ] Basic Auth on the **admin UI** vhost; **never** on `/v1`.
 - [ ] Strong admin password (`ADMIN_PASSWORD_HASH`, argon2 — see
       [`admin-ui.md`](admin-ui.md) for the `$$` escaping rule).

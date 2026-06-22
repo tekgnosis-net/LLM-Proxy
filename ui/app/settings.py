@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     litellm_master_key: str = ""
     admin_password_hash: str = ""     # argon2 hash
     session_secret: str               # required — no insecure default (signs session cookies)
+    session_cookie_secure: bool = False  # set true behind TLS → marks the session cookie Secure (SESSION_COOKIE_SECURE)
     config_path: str = "/config/config.yaml"
     socket_proxy_url: str = "http://socket-proxy:2375"
     litellm_container: str = "litellm-proxy"
