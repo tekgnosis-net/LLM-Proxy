@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.23.0...v1.24.0) (2026-06-22)
+
+
+### Features
+
+* SESSION_COOKIE_SECURE env to mark the session cookie Secure behind TLS ([cc53bba](https://github.com/tekgnosis-net/LLM-Proxy/commit/cc53bbacce338b82da2ac38b503cea6e35ef2c96))
+
 # [1.23.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.22.0...v1.23.0) (2026-06-21)
 
 
