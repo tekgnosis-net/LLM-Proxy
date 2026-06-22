@@ -248,6 +248,7 @@ If Postgres shows permission errors on first boot:
 - **[`docs/admin-ui.md`](docs/admin-ui.md)** — the admin UI (architecture, run, features).
 - **[`docs/admin-ui-guide.md`](docs/admin-ui-guide.md)** — per-screen field reference (what each setting expects and does).
 - **[`docs/config-schema.md`](docs/config-schema.md)** — LiteLLM config.yaml parameter reference.
+- **[`docs/reverse-proxy.md`](docs/reverse-proxy.md)** — running behind nginx / Apache / CloudPanel (TLS, the Apply timeout, SSE log streaming, directory password, secure cookie).
 - **[`docs/superpowers/specs/`](docs/superpowers/specs/)** — design specs (v1, v2, v3).
 - **[`docs/superpowers/plans/`](docs/superpowers/plans/)** — per-phase implementation plans.
 - **[`docs/archive/`](docs/archive/)** — legacy guides for the bundled LiteLLM UI (concepts still valid).
