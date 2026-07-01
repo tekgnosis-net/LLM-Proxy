@@ -429,6 +429,30 @@ does not, so you must verify it yourself. Click **Back to picker** to return to 
 picker; if the JSON can't be represented (e.g. it uses `"*"`) the picker will decline
 the switch with an explanatory message and keep you in JSON mode.
 
+#### Model aliases
+
+A key can carry **model aliases** — a map of `alias name → real model`. A client
+using the key can request the alias name and LiteLLM transparently routes to the
+real model. Useful for handing a client app a stable, familiar name (e.g.
+`gpt-4`) that you can repoint to any of your deployments without the client
+changing anything.
+
+- The **alias name** is free text — whatever clients will send. It need not be a
+  real model.
+- The **target** is picked from the key's **Allowed models** (the picker sources
+  the dropdown from them), so an alias can only point at a model the key may call
+  — access is enforced on the *resolved target*, not the alias name.
+- Add a row with **+ Add alias**; remove with ✕. Applied hot via `/key/update`
+  (no restart).
+
+**Worked example:** a key allowed `gpt-oss-20b`, with an alias `gpt-4` →
+`gpt-oss-20b`. A client sending `model: "gpt-4"` on that key is served by
+`gpt-oss-20b`.
+
+Not to be confused with **key alias** (the human label for the key itself, in the
+Alias field) or the global `model_group_alias` (a proxy-wide alias in
+`router_settings`).
+
 ### Key list columns
 
 | Column | Shows |
