@@ -1,3 +1,16 @@
+# [1.28.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.27.0...v1.28.0) (2026-07-01)
+
+
+### Bug Fixes
+
+* **ui:** auto-expand Router Settings on edit when the key has aliases (they live there) ([d082d4d](https://github.com/tekgnosis-net/LLM-Proxy/commit/d082d4dc347c6eb2840556e42e5c4c246e810010))
+
+
+### Features
+
+* **ui:** aliases.js — per-key model-alias rows↔dict converter ([4e3eac5](https://github.com/tekgnosis-net/LLM-Proxy/commit/4e3eac53f10212d555a55ebe8e5e2cda18fb880d))
+* **ui:** per-key Model aliases picker in Virtual Keys Router Settings ([ca4047b](https://github.com/tekgnosis-net/LLM-Proxy/commit/ca4047bbcbff6438c4bd9db554e6919d1c68bac1))
+
 # [1.27.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.26.0...v1.27.0) (2026-06-22)
 
 
