@@ -106,7 +106,8 @@
     else { fbMode = 'picker'; fbRules = rules }
     fbErr = ''
     aliasRows = aliasesToRules(k.aliases)
-    editingToken = k.token; showCreate = true; showRouterSettings = !!k.router_settings
+    editingToken = k.token; showCreate = true
+    showRouterSettings = !!k.router_settings || aliasRows.length > 0
   }
 
   async function create() {
