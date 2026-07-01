@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js'
   import { copyText } from '../lib/browser.js'
   import { rulesToFallbacks, fallbacksToRules } from '../lib/fallbacks.js'
+  import { rulesToAliases, aliasesToRules } from '../lib/aliases.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
@@ -19,7 +20,7 @@
   // Picker options come from the key's Allowed models (or all models if unrestricted),
   // so a key can only ever fall back to models it is permitted to call.
   let fbOptions = $derived((form.models && form.models.length) ? form.models : availableModels)
-  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = '' }
+  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = [] }
   function addFbRule() { fbRules = [...fbRules, { primary: '', backups: [] }] }
   function rmFbRule(i) { fbRules = fbRules.filter((_, j) => j !== i) }
   function switchFbToJson() { form.router_fallbacks = JSON.stringify(rulesToFallbacks(fbRules), null, 2); fbErr = ''; fbMode = 'json' }
@@ -31,6 +32,10 @@
     if (!representable) { fbErr = "This JSON can't be shown in the picker (e.g. it uses the \"*\" wildcard). Keep editing as JSON."; return }
     fbRules = rules; fbErr = ''; fbMode = 'picker'
   }
+  // Per-key model aliases: { name → target }, target from the key's Allowed models.
+  let aliasRows = $state([])   // [{ name, target }]
+  function addAlias() { aliasRows = [...aliasRows, { name: '', target: '' }] }
+  function rmAlias(i) { aliasRows = aliasRows.filter((_, j) => j !== i) }
 
   async function load() {
     loading = true; err = ''
@@ -77,6 +82,8 @@
       if (v !== '' && v != null) rs[k] = Number(v)
     }
     if (Object.keys(rs).length) payload.router_settings = rs
+    const aliases = rulesToAliases(aliasRows)
+    if (Object.keys(aliases).length) payload.aliases = aliases
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     return payload
   }
@@ -98,6 +105,7 @@
     if (fb && !representable) { fbMode = 'json'; fbRules = []; form.router_fallbacks = JSON.stringify(fb, null, 2) }
     else { fbMode = 'picker'; fbRules = rules }
     fbErr = ''
+    aliasRows = aliasesToRules(k.aliases)
     editingToken = k.token; showCreate = true; showRouterSettings = !!k.router_settings
   }
 
@@ -193,6 +201,21 @@
             {/if}
             {#if fbErr}<span class="fb-err">{fbErr}</span>{/if}
           </label>
+          <label>Model aliases
+            {#each aliasRows as row, i}
+              <div class="fb-rule">
+                <input placeholder="alias name (what clients send)" bind:value={row.name} />
+                <span class="fb-arrow">→</span>
+                <select bind:value={row.target} aria-label="target model">
+                  <option value="">— target model —</option>
+                  {#each fbOptions as m}<option value={m}>{m}</option>{/each}
+                </select>
+                <button type="button" class="fb-rm" title="Remove" onclick={() => rmAlias(i)}>✕</button>
+              </div>
+            {/each}
+            <div class="fb-actions"><button type="button" class="fb-add" onclick={addAlias}>+ Add alias</button></div>
+            <span class="hint">Let this key request a name that maps to a real model. The <strong>name</strong> is anything clients send (e.g. <code>gpt-4</code>); the <strong>target</strong> is one of the key's <strong>Allowed models</strong>. Applied hot, no restart.</span>
+          </label>
           <div class="grid">
             <label>Num retries
               <input type="number" min="0" bind:value={form.router_num_retries} placeholder="e.g. 3" />
@@ -272,7 +295,7 @@
   textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;resize:vertical}
   .hint{font-size:11px;color:#6e6e73;margin-top:2px}
   .fb-rule{display:flex;align-items:flex-start;gap:8px;margin-top:6px}
-  .fb-rule select{flex:1;min-width:0}
+  .fb-rule select,.fb-rule input{flex:1;min-width:0}
   .fb-arrow{font-size:11px;color:#6e6e73;white-space:nowrap;align-self:center}
   .fb-rm{border:0;background:transparent;color:#b00020;cursor:pointer;font-size:14px;line-height:1;padding:4px}
   .fb-actions{display:flex;gap:12px;align-items:center;margin-top:8px}
