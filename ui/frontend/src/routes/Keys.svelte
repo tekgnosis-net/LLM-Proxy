@@ -3,7 +3,7 @@
   import { api } from '../lib/api.js'
   import { copyText } from '../lib/browser.js'
   import { rulesToFallbacks, fallbacksToRules } from '../lib/fallbacks.js'
-  import { rulesToAliases, aliasesToRules } from '../lib/aliases.js'
+  import { rulesToAliases, aliasesToRules, withAliasNames, stripAliasNames } from '../lib/aliases.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
@@ -83,14 +83,17 @@
     }
     if (Object.keys(rs).length) payload.router_settings = rs
     const aliases = rulesToAliases(aliasRows)
-    if (Object.keys(aliases).length) payload.aliases = aliases
+    payload.aliases = aliases   // always send so removing the last alias clears it (/key/update replaces)
+    // LiteLLM checks the raw model name against allowed models BEFORE resolving a
+    // per-key alias (#25281), so a restricted key must also list the alias names.
+    payload.models = withAliasNames(form.models, Object.keys(aliases))
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     return payload
   }
 
   function editKey(k) {
     form = { ...form,
-      key_alias: k.key_alias || '', models: (k.models || []),
+      key_alias: k.key_alias || '', models: stripAliasNames(k.models, k.aliases),
       max_budget: k.max_budget ?? '', budget_duration: k.budget_duration || '',
       duration: '', rpm_limit: k.rpm_limit ?? '', tpm_limit: k.tpm_limit ?? '',
       router_strategy: (k.router_settings?.routing_strategy) || '',
@@ -133,6 +136,7 @@
     try { await api.deleteKey([token]); await load() } catch (e) { err = e.message } finally { busy = false }
   }
   function budget(k) { return k.max_budget != null ? `$${(k.spend ?? 0).toFixed(2)} / $${k.max_budget}` : `$${(k.spend ?? 0).toFixed(2)}` }
+  function keyModels(k) { const m = stripAliasNames(k.models, k.aliases); return m.length ? m.join(', ') : 'all' }
 </script>
 
 <div class="page">
@@ -255,7 +259,7 @@
           {#each keys as k}
             <tr>
               <td>{k.key_alias || '—'}</td>
-              <td>{(k.models && k.models.length) ? k.models.join(', ') : 'all'}</td>
+              <td>{keyModels(k)}</td>
               <td>{budget(k)}</td>
               <td>{k.expires ? new Date(k.expires).toLocaleDateString() : 'never'}</td>
               <td class="actions">

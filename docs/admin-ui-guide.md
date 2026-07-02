@@ -440,14 +440,23 @@ changing anything.
 - The **alias name** is free text — whatever clients will send. It need not be a
   real model.
 - The **target** is picked from the key's **Allowed models** (the picker sources
-  the dropdown from them), so an alias can only point at a model the key may call
-  — access is enforced on the *resolved target*, not the alias name.
+  the dropdown from them), so an alias can only point at a model the key may call.
 - Add a row with **+ Add alias**; remove with ✕. Applied hot via `/key/update`
   (no restart).
 
+> **Why the alias name also lands in Allowed models:** LiteLLM checks the raw
+> requested model name against a key's allowed models *before* resolving a per-key
+> alias ([issue #25281](https://github.com/BerriAI/litellm/issues/25281)) — so on a
+> *restricted* key the alias name itself must be in allowed models or the request
+> is denied (`403 ... not allowed to access model`). The UI handles this for you:
+> when you save a restricted key, its alias names are automatically added to the
+> key's allowed-models list (and hidden again in the form, so you keep managing
+> real models and aliases separately). Unrestricted keys (no models selected = all
+> allowed) need nothing extra.
+
 **Worked example:** a key allowed `gpt-oss-20b`, with an alias `gpt-4` →
 `gpt-oss-20b`. A client sending `model: "gpt-4"` on that key is served by
-`gpt-oss-20b`.
+`gpt-oss-20b` (and `gpt-4` shows up in that key's `/v1/models`).
 
 Not to be confused with **key alias** (the human label for the key itself, in the
 Alias field) or the global `model_group_alias` (a proxy-wide alias in
