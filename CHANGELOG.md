@@ -1,3 +1,10 @@
+## [1.28.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.28.0...v1.28.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* **ui:** make per-key aliases actually work + fix alias deletion ([0fb0d1d](https://github.com/tekgnosis-net/LLM-Proxy/commit/0fb0d1daf784f6c39a5bcef075c44dad18ff338c)), closes [#25281](https://github.com/tekgnosis-net/LLM-Proxy/issues/25281)
+
 # [1.28.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.27.0...v1.28.0) (2026-07-01)
 
 
