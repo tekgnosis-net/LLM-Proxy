@@ -66,11 +66,11 @@ def test_iso_utc_preserves_already_aware():
     assert _ur._iso_utc(aware) == "2026-06-21T12:00:00+00:00"
 
 
-def test_shape_recent_time_has_utc_offset():
-    rows = [{"time": datetime(2026, 6, 21, 12, 0, 0), "model": "m", "provider": "p",
-             "key": "k", "tok_in": 1, "tok_out": 2, "latency_ms": 3,
-             "status": "success", "cache_hit": None}]
-    assert _ur._shape_recent(rows)["recent"][0]["time"].endswith("+00:00")
+def test_shape_activity_row_time_has_utc_offset():
+    row = {"id": "r1", "time": datetime(2026, 6, 21, 12, 0, 0), "model": "m", "provider": "p",
+           "key": "k", "tok_in": 1, "tok_out": 2, "spend": 0.0, "latency_ms": 3,
+           "status": "success", "cache_hit": None, "call_type": "acompletion"}
+    assert _ur._shape_activity_row(row)["time"].endswith("+00:00")
 
 
 def test_shape_summary_bucket_has_utc_offset():
