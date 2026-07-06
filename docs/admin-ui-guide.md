@@ -159,12 +159,30 @@ to reverse direction). All numeric columns are sortable.
 Up to 50 rows per tab. Rows labelled `failed / no backend` represent requests where
 the provider could not be determined.
 
-### Recent activity feed
+### Activity (Recent | History)
 
-The most recent ~50 requests (metadata only — no prompts or completions). Columns:
-Time (local), Model, Provider, Key, Tok in, Tok out, Latency, Status (✓/✗), Cache
-(hit / miss / —). Loaded once on page open; re-fetched on each range change or
-auto-refresh cycle.
+The activity card has a two-mode switcher (persisted per browser):
+
+- **Recent** — the newest requests in the selected range, silently refreshed by
+  Auto-refresh. A live tail for "what's happening right now".
+- **History** — browse the full selected range (24h/7d/30d/90d — the same range
+  selector at the top governs both modes). Filter chips narrow by **Status**
+  (All / Success / Failure), **Model**, and **Key**; a stat strip above the list
+  shows request count, error %, and **p50/p90/p95/p99 latency computed over
+  exactly the filtered set**. **Load more** appends older pages (cursor-based, so
+  new incoming traffic never shifts or duplicates what you've already loaded).
+  Auto-refresh deliberately leaves History alone — no scroll rug-pulls.
+
+**Click any row** (either mode) to expand its transaction detail in place:
+request id (with Copy), call type, route (model group → actual model, provider,
+API base), token counts, spend and **cost per 1M tokens**, cache hit, a timing
+line (**TTFT · generation · total**, when the backend reported them), session /
+end-user / tags — and for failures, the **error class, code, provider, message,
+and a collapsible traceback** as recorded by LiteLLM.
+
+> Prompts and responses are **not** stored (LiteLLM's
+> `store_prompts_in_spend_logs` is off in this stack) — the detail view is
+> metadata-only by design.
 
 ---
 
