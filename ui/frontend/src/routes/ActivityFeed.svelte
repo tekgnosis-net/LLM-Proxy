@@ -72,7 +72,9 @@
       detail = { ...detail, [id]: { loading: true } }
       try {
         const d = await api.get(`/api/usage/tx/${encodeURIComponent(id)}`)
-        if (d && d.error) detail = { ...detail, [id]: { error: String(d.error) } }
+        // A failed TRANSACTION legitimately carries error:{class,...} (data, not a
+        // fault) — only a string marker like "query_failed" means the fetch itself failed.
+        if (d && typeof d.error === 'string') detail = { ...detail, [id]: { error: d.error } }
         else detail = { ...detail, [id]: { data: d } }
       } catch (e) {
         detail = { ...detail, [id]: { error: e.message } }
