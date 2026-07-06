@@ -72,7 +72,8 @@
       detail = { ...detail, [id]: { loading: true } }
       try {
         const d = await api.get(`/api/usage/tx/${encodeURIComponent(id)}`)
-        detail = { ...detail, [id]: { data: d } }
+        if (d && d.error) detail = { ...detail, [id]: { error: String(d.error) } }
+        else detail = { ...detail, [id]: { data: d } }
       } catch (e) {
         detail = { ...detail, [id]: { error: e.message } }
       }
@@ -170,14 +171,14 @@
                     <span class="dl">Route</span>
                     <span class="dv">{t.model_group || '—'} → {t.model || '—'}{t.provider ? ` (${t.provider})` : ''}</span>
                     {#if t.api_base}<span class="dl">API base</span><span class="dv mono">{t.api_base}</span>{/if}
-                    <span class="dl">Tokens</span><span class="dv">{t.tok_in.toLocaleString()} in / {t.tok_out.toLocaleString()} out / {t.tok_total.toLocaleString()} total</span>
+                    <span class="dl">Tokens</span><span class="dv">{(t.tok_in ?? 0).toLocaleString()} in / {(t.tok_out ?? 0).toLocaleString()} out / {(t.tok_total ?? 0).toLocaleString()} total</span>
                     <span class="dl">Spend</span>
                     <span class="dv">{money(t.spend)}{t.cost_per_1m != null ? ` · $${t.cost_per_1m.toFixed(4)}/1M` : ''}</span>
                     <span class="dl">Timing</span><span class="dv">{timing(t)}</span>
                     <span class="dl">Cache</span><span class="dv">{t.cache_hit === true ? 'hit' : t.cache_hit === false ? 'miss' : '—'}</span>
                     {#if t.session_id}<span class="dl">Session</span><span class="dv mono">{t.session_id}</span>{/if}
                     {#if t.end_user}<span class="dl">End user</span><span class="dv">{t.end_user}</span>{/if}
-                    {#if t.tags.length}<span class="dl">Tags</span><span class="dv">{t.tags.join(', ')}</span>{/if}
+                    {#if (t.tags ?? []).length}<span class="dl">Tags</span><span class="dv">{t.tags.join(', ')}</span>{/if}
                   </div>
                   {#if t.error}
                     <div class="errbox">
