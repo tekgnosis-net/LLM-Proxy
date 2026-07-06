@@ -1,3 +1,17 @@
+# [1.29.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.28.1...v1.29.0) (2026-07-06)
+
+
+### Bug Fixes
+
+* **ui:** harden tx-detail panel — error-body handling + null-guarded token/tag fields ([04710e5](https://github.com/tekgnosis-net/LLM-Proxy/commit/04710e55fccc47372562313586104e8f0be03139))
+* **ui:** tx-detail error guard must not misread a failed transaction's error field as a fetch failure ([2abe90d](https://github.com/tekgnosis-net/LLM-Proxy/commit/2abe90d02342f057c990fd994bfd81c12d74e637))
+
+
+### Features
+
+* **ui:** Recent|History activity feed with filters, percentile strip, load-more + expand-in-place tx detail ([f13d866](https://github.com/tekgnosis-net/LLM-Proxy/commit/f13d866a0dbe743f99ef23799a3bc61c39c8e247))
+* usage activity endpoint (windowed, filtered, keyset-paged, stats) + per-tx detail endpoint ([cae3aee](https://github.com/tekgnosis-net/LLM-Proxy/commit/cae3aee94843977aa0560145d9c1e1686839b062))
+
 ## [1.28.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.28.0...v1.28.1) (2026-07-02)
 
 
