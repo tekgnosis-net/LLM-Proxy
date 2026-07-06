@@ -69,24 +69,22 @@ async def test_usage_summary_binds_days_as_int(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Task 2: _shape_recent tests
+# Task 2: _shape_activity_row tests
 # ---------------------------------------------------------------------------
-from app.routes.usage_routes import _shape_recent
+from app.routes.usage_routes import _shape_activity_row
 from datetime import datetime as _dt
 
-def test_shape_recent_maps_rows():
-    rows = [{"time": _dt(2026,6,19,18,42,3), "model": "deepinfra/openai/gpt-oss-20b",
-             "provider": "deepinfra", "key": "hindsight-cbr", "tok_in": 1200, "tok_out": 340,
-             "latency_ms": 41200, "status": "success", "cache_hit": "True"}]
-    out = _shape_recent(rows)
-    r = out["recent"][0]
-    assert r["time"] == "2026-06-19T18:42:03+00:00" and r["provider"] == "deepinfra"
-    assert r["cache_hit"] is True and r["status"] == "success" and r["latency_ms"] == 41200
+def test_shape_activity_row_maps_fields():
+    r = _shape_activity_row({"id": "rid", "time": _dt(2026, 6, 19, 18, 42, 3),
+        "model": "deepinfra/openai/gpt-oss-20b", "provider": "deepinfra", "key": "hindsight-cbr",
+        "tok_in": 1200, "tok_out": 340, "spend": 0.004, "latency_ms": 41200,
+        "status": "success", "cache_hit": "True", "call_type": "acompletion"})
+    assert r["time"] == "2026-06-19T18:42:03+00:00" and r["cache_hit"] is True
+    assert r["id"] == "rid" and r["latency_ms"] == 41200
 
-def test_shape_recent_cache_false_and_none():
-    rows = [{"time": _dt(2026,6,19,1,0), "model":"m","provider":"groq","key":"k","tok_in":1,
-             "tok_out":2,"latency_ms":500,"status":"success","cache_hit":"False"},
-            {"time": _dt(2026,6,19,1,1), "model":"m","provider":"groq","key":"k","tok_in":1,
-             "tok_out":2,"latency_ms":500,"status":"failure","cache_hit":None}]
-    out = _shape_recent(rows)
-    assert out["recent"][0]["cache_hit"] is False and out["recent"][1]["cache_hit"] is None
+def test_shape_activity_row_cache_false_and_none():
+    base = {"id": "r", "time": _dt(2026, 6, 19, 1, 0), "model": "m", "provider": "groq",
+            "key": "k", "tok_in": 1, "tok_out": 2, "spend": 0.0, "latency_ms": 500,
+            "status": "success", "call_type": ""}
+    assert _shape_activity_row({**base, "cache_hit": "False"})["cache_hit"] is False
+    assert _shape_activity_row({**base, "cache_hit": None})["cache_hit"] is None

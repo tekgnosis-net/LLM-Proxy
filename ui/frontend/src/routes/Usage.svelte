@@ -2,6 +2,8 @@
   import { onMount, onDestroy } from 'svelte'
   import { api } from '../lib/api.js'
   import Chart from '../lib/Chart.svelte'
+  import ActivityFeed from './ActivityFeed.svelte'
+  import { money, fmtMs } from '../lib/format.js'
 
   // ── v3.8 range/refresh persistence (PRESERVED) ────────────────────────────
   function initDays() { const v = +localStorage.getItem('usage.days'); return [1,7,30,90].includes(v) ? v : 30 }
@@ -11,20 +13,17 @@
   let timer = null
 
   let summary = $state(null)
-  let recent = $state([])
   let err = $state('')
   let loading = $state(true)
 
+  let refreshTick = $state(0)
+
   async function load(silent = false) {
-    if (!silent) { loading = true; summary = null; recent = [] }
+    if (!silent) { loading = true; summary = null }
     err = ''
     try {
-      const [d, rec] = await Promise.all([
-        api.get(`/api/usage/summary?days=${days}`),
-        api.get('/api/usage/recent?limit=50')
-      ])
-      summary = d
-      recent = rec.recent ?? []
+      summary = await api.get(`/api/usage/summary?days=${days}`)
+      if (silent) refreshTick++          // nudge ActivityFeed (Recent mode only)
     } catch (e) { err = e.message }
     finally { if (!silent) loading = false }
   }
@@ -38,13 +37,6 @@
   function onVis() { arm() }                       // pause when hidden, resume when visible
   onMount(() => document.addEventListener('visibilitychange', onVis))
   onDestroy(() => { if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', onVis) })
-
-  // ── formatters ────────────────────────────────────────────────────────────
-  const money = (n) => `$${Number(n ?? 0).toFixed(4)}`
-  function fmtMs(ms) {
-    if (ms == null) return '—'
-    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
-  }
 
   // ── chart data derived from summary.timeseries ────────────────────────────
   const chartSeries = [
@@ -218,41 +210,10 @@
       {/if}
     </div>
 
-    <!-- ── Recent activity feed ── -->
-    <div class="card">
-      <h2>Recent activity</h2>
-      {#if recent.length === 0}
-        <p class="empty">No recent activity.</p>
-      {:else}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th><th>Model</th><th>Provider</th><th>Key</th>
-                <th>Tok in</th><th>Tok out</th><th>Latency</th><th>Status</th><th>Cache</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each recent.slice(0, 50) as r}
-                <tr>
-                  <td class="nowrap">{new Date(r.time).toLocaleTimeString()}</td>
-                  <td class="trunc" title={r.model}>{r.model}</td>
-                  <td>{r.provider || '—'}</td>
-                  <td>{r.key}</td>
-                  <td>{(r.tok_in ?? 0).toLocaleString()}</td>
-                  <td>{(r.tok_out ?? 0).toLocaleString()}</td>
-                  <td>{fmtMs(r.latency_ms)}</td>
-                  <td class:green={r.status === 'success'} class:red={r.status !== 'success'}>
-                    {r.status === 'success' ? '✓' : '✗'}
-                  </td>
-                  <td>{r.cache_hit === true ? 'hit' : r.cache_hit === false ? 'miss' : '—'}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      {/if}
-    </div>
+    <!-- ── Activity feed (Recent | History) ── -->
+    <ActivityFeed {days} {refreshTick}
+      byModel={(summary.by_model ?? []).map(r => r.label).filter(l => l && l !== '(none)')}
+      byKey={(summary.by_key ?? []).map(r => r.label).filter(Boolean)} />
 
   {/if}
 </div>
@@ -284,7 +245,4 @@
   .empty{color:#6e6e73}
   .muted{color:#a0a0a5;font-style:italic}
   .red{color:#c0271d}
-  .green{color:#1a7f37}
-  .trunc{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .nowrap{white-space:nowrap}
 </style>

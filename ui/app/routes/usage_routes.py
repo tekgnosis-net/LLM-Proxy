@@ -1,7 +1,8 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 import asyncpg
 from app.auth import login_required
 from app.spend_client import SpendClient
@@ -89,11 +90,117 @@ def _cache_bool(v):
     return None
 
 
-def _shape_recent(rows):
-    return {"recent": [{"time": _iso_utc(r["time"]), "model": r["model"], "provider": r["provider"] or "",
-                        "key": r["key"], "tok_in": r["tok_in"] or 0, "tok_out": r["tok_out"] or 0,
-                        "latency_ms": r["latency_ms"] or 0, "status": r["status"] or "",
-                        "cache_hit": _cache_bool(r["cache_hit"])} for r in rows]}
+# ── activity feed: cursor + WHERE + shapers ─────────────────────────────────
+
+def _encode_cursor(ts, rid):
+    return f"{_iso_utc(ts)}|{rid}"
+
+
+def _decode_cursor(s):
+    """Opaque keyset cursor '<iso>|<request_id>' → (naive-UTC datetime, id).
+    Raises ValueError on anything malformed (route maps it to 422)."""
+    ts_s, sep, rid = (s or "").partition("|")
+    if not sep or not rid:
+        raise ValueError("malformed cursor")
+    try:
+        ts = datetime.fromisoformat(ts_s)
+    except Exception as e:
+        raise ValueError("malformed cursor") from e
+    if ts.tzinfo is not None:                       # DB column is naive UTC
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+    return ts, rid
+
+
+def _activity_where(days, status="all", model=None, key=None, cursor=None):
+    """Build the parameterized WHERE for the activity queries.
+    Returns (sql, params); values only ever appear in params ($n placeholders)."""
+    clauses = ['l."startTime" > now() - make_interval(days => $1)']
+    params = [days]
+    if status == "failure":
+        clauses.append("l.status = 'failure'")
+    elif status == "success":
+        clauses.append("l.status IS DISTINCT FROM 'failure'")
+    if model:
+        if model == "(none)":                        # the by_model placeholder label
+            clauses.append("(l.model IS NULL OR l.model = '')")
+        else:
+            params.append(model)
+            clauses.append(f"l.model = ${len(params)}")
+    if key:
+        params.append(key)
+        clauses.append(f"COALESCE(v.key_alias, LEFT(l.api_key,10)) = ${len(params)}")
+    if cursor:
+        ts, rid = cursor
+        params.append(ts); n_ts = len(params)
+        params.append(rid); n_id = len(params)
+        clauses.append(f'(l."startTime", l.request_id) < (${n_ts}, ${n_id})')
+    return " AND ".join(clauses), params
+
+
+def _shape_activity_row(r):
+    return {"id": r["id"], "time": _iso_utc(r["time"]), "model": r["model"] or "",
+            "provider": r["provider"] or "", "key": r["key"],
+            "tok_in": r["tok_in"] or 0, "tok_out": r["tok_out"] or 0,
+            "spend": float(r["spend"] or 0), "latency_ms": r["latency_ms"] or 0,
+            "status": "failure" if r["status"] == "failure" else "success",
+            "cache_hit": _cache_bool(r["cache_hit"]), "call_type": r.get("call_type") or ""}
+
+
+def _shape_stats(r):
+    pcts = r.get("pcts") or [None, None, None, None]
+    return {"count": r.get("n") or 0, "err_pct": float(r.get("err_pct") or 0),
+            "p50_ms": _ms(pcts[0]), "p90_ms": _ms(pcts[1]),
+            "p95_ms": _ms(pcts[2]), "p99_ms": _ms(pcts[3])}
+
+
+def _extract_error(metadata, max_tb=4000):
+    """Pull metadata.error_information (class/code/message/provider/traceback).
+    Defensive: jsonb arrives as str from asyncpg; any malformed shape → None."""
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            return None
+    if not isinstance(metadata, dict):
+        return None
+    ei = metadata.get("error_information")
+    if not isinstance(ei, dict):
+        return None
+    return {"class": ei.get("error_class") or "", "code": str(ei.get("error_code") or ""),
+            "message": ei.get("error_message") or "", "provider": ei.get("llm_provider") or "",
+            "traceback": (ei.get("traceback") or "")[:max_tb]}
+
+
+def _shape_tx(r):
+    def ms_between(a, b):
+        if a is None or b is None:
+            return None
+        d = (b - a).total_seconds() * 1000
+        return int(round(d)) if d >= 0 else None
+    tags = r.get("tags")
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags)
+        except Exception:
+            tags = []
+    tok_total = r["tok_total"] or 0
+    spend = float(r["spend"] or 0)
+    st, cst, et = r["time"], r.get("completion_start"), r.get("end_time")
+    return {"id": r["id"], "time": _iso_utc(st), "end_time": _iso_utc(et),
+            "call_type": r.get("call_type") or "",
+            "status": "failure" if r["status"] == "failure" else "success",
+            "cache_hit": _cache_bool(r["cache_hit"]),
+            "model_group": r.get("model_group") or "", "model": r["model"] or "",
+            "model_id": r.get("model_id") or "", "provider": r.get("provider") or "",
+            "api_base": r.get("api_base") or "", "key": r["key"],
+            "team_id": r.get("team_id") or "", "end_user": r.get("end_user") or "",
+            "session_id": r.get("session_id") or "",
+            "tags": tags if isinstance(tags, list) else [],
+            "tok_in": r["tok_in"] or 0, "tok_out": r["tok_out"] or 0, "tok_total": tok_total,
+            "spend": spend, "cost_per_1m": (spend / tok_total * 1e6) if tok_total else None,
+            "latency_ms": r["latency_ms"] or 0,
+            "ttft_ms": ms_between(st, cst), "gen_ms": ms_between(cst, et),
+            "error": _extract_error(r.get("metadata")) if r["status"] == "failure" else None}
 
 
 # ---------------------------------------------------------------------------
@@ -184,23 +291,84 @@ async def usage_summary(days: int = 30):
                           [dict(r) for r in timeseries])
 
 
-@router.get("/usage/recent", dependencies=[Depends(login_required)])
-async def usage_recent(limit: int = 50):
+_ACTIVITY_SELECT = (
+    'SELECT l.request_id id, l."startTime" time, l.model, l.custom_llm_provider provider, '
+    'COALESCE(v.key_alias, LEFT(l.api_key,10)) key, l.prompt_tokens tok_in, '
+    'l.completion_tokens tok_out, l.spend, l.request_duration_ms latency_ms, '
+    'l.status, l.cache_hit, l.call_type '
+    'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key ')
+
+_ACTIVITY_STATS = (
+    'SELECT COUNT(*) n, '
+    "100.0*COUNT(*) FILTER (WHERE l.status='failure')/NULLIF(COUNT(*),0) err_pct, "
+    'percentile_cont(ARRAY[0.5,0.9,0.95,0.99]) WITHIN GROUP (ORDER BY l.request_duration_ms) '
+    '  FILTER (WHERE l.request_duration_ms>0) pcts '
+    'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key ')
+
+
+@router.get("/usage/activity", dependencies=[Depends(login_required)])
+async def usage_activity(days: int = 30, status: str = "all", model: str = "",
+                         key: str = "", cursor: str = "", limit: int = 50, stats: int = 0):
+    days = max(1, min(int(days), 365))
     limit = max(1, min(int(limit), 200))
+    if status not in ("all", "success", "failure"):
+        raise HTTPException(status_code=422, detail="status must be all|success|failure")
+    cur = None
+    if cursor:
+        try:
+            cur = _decode_cursor(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="malformed cursor")
     dsn = get_settings().database_url
     if not dsn:
-        return _shape_recent([])
+        return {"rows": [], "next_cursor": None}
+    where, params = _activity_where(days, status, model or None, key or None, cur)
     conn = await asyncpg.connect(dsn)
     try:
+        row_params = params + [limit]
         rows = await conn.fetch(
-            'SELECT l."startTime" time, l.model, l.custom_llm_provider provider, '
-            'COALESCE(v.key_alias, LEFT(l.api_key,10)) key, l.prompt_tokens tok_in, '
-            'l.completion_tokens tok_out, l.request_duration_ms latency_ms, l.status, l.cache_hit '
-            'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key '
-            'ORDER BY l."startTime" DESC LIMIT $1', limit)
+            f'{_ACTIVITY_SELECT} WHERE {where} '
+            f'ORDER BY l."startTime" DESC, l.request_id DESC LIMIT ${len(row_params)}',
+            *row_params)
+        out = {"rows": [_shape_activity_row(dict(r)) for r in rows],
+               "next_cursor": _encode_cursor(rows[-1]["time"], rows[-1]["id"])
+                              if len(rows) == limit else None}
+        if stats:
+            # Invariant: callers pass stats=1 only on the FIRST page (no cursor), so the
+            # strip covers the whole filtered window. If a caller ever sends stats=1 WITH
+            # a cursor, `where` carries the cursor clause and the percentiles would be
+            # computed over the post-cursor subset — request the strip without a cursor.
+            srow = await conn.fetchrow(f'{_ACTIVITY_STATS} WHERE {where}', *params)
+            out["stats"] = _shape_stats(dict(srow) if srow else {})
+        return out
     except Exception:
-        log.exception("usage_recent query failed")
-        out = _shape_recent([]); out["error"] = "query_failed"; return out
+        log.exception("usage_activity query failed (days=%s status=%s)", days, status)
+        return {"rows": [], "next_cursor": None, "error": "query_failed"}
     finally:
         await conn.close()
-    return _shape_recent([dict(r) for r in rows])
+
+
+@router.get("/usage/tx/{request_id}", dependencies=[Depends(login_required)])
+async def usage_tx(request_id: str):
+    dsn = get_settings().database_url
+    if not dsn:
+        raise HTTPException(status_code=404, detail="transaction not found")
+    conn = await asyncpg.connect(dsn)
+    try:
+        r = await conn.fetchrow(
+            'SELECT l.request_id id, l."startTime" time, l."endTime" end_time, '
+            'l."completionStartTime" completion_start, l.call_type, l.status, l.cache_hit, '
+            'l.model_group, l.model, l.model_id, l.custom_llm_provider provider, l.api_base, '
+            'COALESCE(v.key_alias, LEFT(l.api_key,10)) key, l.team_id, l.end_user, l.session_id, '
+            'l.request_tags tags, l.prompt_tokens tok_in, l.completion_tokens tok_out, '
+            'l.total_tokens tok_total, l.spend, l.request_duration_ms latency_ms, l.metadata '
+            'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key '
+            'WHERE l.request_id = $1 LIMIT 1', request_id)
+    except Exception:
+        log.exception("usage_tx query failed")
+        raise HTTPException(status_code=502, detail="query failed")
+    finally:
+        await conn.close()
+    if r is None:
+        raise HTTPException(status_code=404, detail="transaction not found")
+    return _shape_tx(dict(r))
