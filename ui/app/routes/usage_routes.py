@@ -334,6 +334,10 @@ async def usage_activity(days: int = 30, status: str = "all", model: str = "",
                "next_cursor": _encode_cursor(rows[-1]["time"], rows[-1]["id"])
                               if len(rows) == limit else None}
         if stats:
+            # Invariant: callers pass stats=1 only on the FIRST page (no cursor), so the
+            # strip covers the whole filtered window. If a caller ever sends stats=1 WITH
+            # a cursor, `where` carries the cursor clause and the percentiles would be
+            # computed over the post-cursor subset — request the strip without a cursor.
             srow = await conn.fetchrow(f'{_ACTIVITY_STATS} WHERE {where}', *params)
             out["stats"] = _shape_stats(dict(srow) if srow else {})
         return out
