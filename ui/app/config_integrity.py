@@ -6,6 +6,12 @@ from __future__ import annotations
 _FALLBACK_RULE_SETTINGS = ("fallbacks", "context_window_fallbacks", "content_policy_fallbacks")
 
 
+def _missing(ref, valid: set) -> bool:
+    """True iff `ref` is a real (hashable, non-empty) name absent from `valid`.
+    A non-str/unhashable leaf (a dict/list where a name belongs) is malformed → not missing (skipped)."""
+    return isinstance(ref, str) and bool(ref) and ref not in valid
+
+
 def group_names(model_items: list[dict]) -> set[str]:
     """Distinct public model_name across non-deleted model items (effective)."""
     return {(it.get("data") or {}).get("model_name")
@@ -32,28 +38,28 @@ def router_orphans(router_items: list[dict], groups: set[str]) -> list[dict]:
                 if not isinstance(rule, dict):
                     continue
                 for primary, targets in rule.items():
-                    if primary not in groups:
+                    if _missing(primary, groups):
                         out.append(_orphan("router", f"router_settings.{name}", primary,
                                            {"setting": name, "primary": primary, "dangling": primary}))
                         continue                      # rule is doomed; don't also flag its targets
                     if not isinstance(targets, list):
                         continue
                     for t in targets:
-                        if t not in groups:
+                        if _missing(t, groups):
                             out.append(_orphan("router", f"router_settings.{name}", t,
                                                {"setting": name, "primary": primary, "dangling": t}))
         elif name == "default_fallbacks":
             if not isinstance(data, list):
                 continue
             for t in data:
-                if t not in groups:
+                if _missing(t, groups):
                     out.append(_orphan("router", "router_settings.default_fallbacks", t,
                                        {"setting": "default_fallbacks", "dangling": t}))
         elif name == "model_group_alias":
             if not isinstance(data, dict):
                 continue
             for alias, target in data.items():
-                if target not in groups:
+                if _missing(target, groups):
                     out.append(_orphan("router", "router_settings.model_group_alias", target,
                                        {"setting": "model_group_alias", "alias": alias, "dangling": target}))
     return out
@@ -69,11 +75,11 @@ def key_orphans(keys: list[dict], groups: set[str]) -> list[dict]:
         aliases = k.get("aliases") if isinstance(k.get("aliases"), dict) else {}
         alias_names = set(aliases.keys())
         for m in (k.get("models") or []):
-            if m and m not in groups and m not in alias_names:
+            if _missing(m, groups) and m not in alias_names:
                 out.append(_orphan("key", f"key '{label}' → allowed models", m,
                                    {"token": token, "field": "models", "entry": m}))
         for alias_name, target in aliases.items():
-            if target not in groups:
+            if _missing(target, groups):
                 out.append(_orphan("key", f"key '{label}' → alias '{alias_name}'", target,
                                    {"token": token, "field": "aliases", "entry": alias_name, "dangling": target}))
     return out

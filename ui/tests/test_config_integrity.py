@@ -111,3 +111,20 @@ def test_trim_key_models():
 
 def test_trim_key_aliases():
     assert trim_key_field({"gpt-4": "dead", "keep": "a"}, {"field": "aliases", "entry": "gpt-4"}) == {"keep": "a"}
+
+# ── unhashable/malformed leaf values ────────────────────────────────────────
+def test_router_unhashable_leaf_skipped():
+    assert router_orphans([_rs("fallbacks", [{"a": [{"nested": "x"}]}])], G) == []
+    assert router_orphans([_rs("fallbacks", [{"a": [["nested"]]}])], G) == []
+    assert router_orphans([_rs("default_fallbacks", ["a", {"bad": 1}])], G) == []
+    assert router_orphans([_rs("model_group_alias", {"x": {"bad": 1}})], G) == []
+
+def test_key_unhashable_leaf_skipped():
+    assert key_orphans([{"token": "h1", "key_alias": "ci", "models": ["a", {"bad": 1}], "aliases": {}}], G) == []
+    assert key_orphans([{"token": "h1", "key_alias": "ci", "models": [], "aliases": {"n": {"bad": 1}}}], G) == []
+
+def test_orphan_record_full_shape():
+    o = router_orphans([_rs("fallbacks", [{"dead": ["a"]}])], G)[0]
+    assert o["scope"] == "router" and o["location"] == "router_settings.fallbacks" and o["missing"] == ["dead"]
+    k = key_orphans([{"token": "h1", "key_alias": "ci", "models": ["dead"], "aliases": {}}], G)[0]
+    assert k["scope"] == "key" and k["missing"] == ["dead"]
