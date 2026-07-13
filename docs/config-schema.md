@@ -116,6 +116,11 @@ valid.** UI restricts to a dropdown of these exact strings.
 | `context_window_fallbacks` / `content_policy_fallbacks` | list[dict] | conditional fallbacks |
 | `enable_pre_call_checks` | bool | context-window/param checks before routing |
 | `model_group_alias` | dict | alias group → real group(s) |
+
+> **Referential integrity:** every fallback primary/target and every
+> `model_group_alias` target must name a model group that exists. The admin UI's
+> Routing screen flags dangling references and **blocks Apply** until they're
+> resolved.
 | `routing_groups` | list | each: `group_name`, `models[]`, `routing_strategy`, `routing_strategy_args` (per-group strategy) |
 | `redis_host` / `redis_port` / `redis_password` / `redis_url` / `redis_db` | — | router shared state; `redis_password`/`redis_url` **SECRET** |
 | `cache_responses` / `cache_kwargs` / `caching_groups` | — | router-level response cache |

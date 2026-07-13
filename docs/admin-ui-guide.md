@@ -309,6 +309,29 @@ settings take effect on Apply.
 **Save / Reset buttons (per field):** Save stages the current value. Reset
 discards the local edit back to the last staged (or applied) value without saving.
 
+### Referential integrity
+
+The Routing screen checks that every model-group reference in your config points
+at a group that actually exists, and lists any that don't:
+
+- **Global router refs** — `fallbacks` (and `context_window_fallbacks`,
+  `content_policy_fallbacks`, `default_fallbacks`) and `model_group_alias`. A
+  dangling one **blocks Apply** (a 422) until fixed — this is what prevents a
+  renamed/removed group from leaving a fallback that silently routes elsewhere.
+- **Virtual-key refs** — a key's allowed-models or aliases naming a group that no
+  longer exists. New/edited keys with a dead reference are rejected at save.
+  (LiteLLM's special tokens `all-proxy-models`, `all-team-models`,
+  `no-default-models` are always allowed and never flagged.)
+
+Each listed orphan has a **Fix** button that removes just that dangling reference
+(after a preview). Router fixes are **staged** — they need an Apply (proxy
+restart); key fixes apply **immediately**. When everything resolves you'll see
+"✓ No dangling references."
+
+> This checks that references *resolve*. It does not (yet) analyse whether a key
+> can reach a group indirectly via a deployment's provider-stripped base model —
+> that reachability audit is a separate follow-up.
+
 ---
 
 ## Caching
