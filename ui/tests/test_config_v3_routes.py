@@ -455,3 +455,41 @@ def test_fix_key_updates_hot(tmp_path):
     d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
     assert d == {"applied": True, "needs_apply": False}
     assert fake.updated == {"key": "h1", "models": ["gpt-oss-20b-1x"]}   # trimmed, replace semantics
+
+def test_fix_key_dry_run_does_not_update(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "models": ["gpt-oss-20b-1x", "deadgroup"], "aliases": {}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "models", "entry": "deadgroup"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": True}).json()
+    assert d["before"] == ["gpt-oss-20b-1x", "deadgroup"] and d["after"] == ["gpt-oss-20b-1x"]
+    assert fake.updated is None                          # dry-run mutates nothing
+
+def test_fix_router_stages_trimmed_when_rule_survives(tmp_path):
+    store = FakeStoreWithModels()
+    store._applied = [
+        {"kind": "model", "name": "id1", "data": {"model_name": "gpt-oss-20b-1x"}},
+        {"kind": "router_setting", "name": "fallbacks",
+         "data": [{"gpt-oss-20b-1x": ["gpt-oss-20b-1x", "deadgroup"]}]},
+    ]
+    c = _client_integ(tmp_path, store, keys=[])
+    orphan = {"scope": "router", "target": {"setting": "fallbacks", "primary": "gpt-oss-20b-1x", "dangling": "deadgroup"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"staged": True, "needs_apply": True}
+    # rule survives (one target left) → stages the trimmed value, NOT a delete
+    assert store.staged_calls == [("router_setting", "fallbacks", [{"gpt-oss-20b-1x": ["gpt-oss-20b-1x"]}], False)]
+
+def test_fix_key_missing_token_409(tmp_path):
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_keys_client = lambda: FakeKeysFix([])       # no keys → token not found
+    orphan = {"scope": "key", "target": {"token": "nope", "field": "models", "entry": "deadgroup"}}
+    assert c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).status_code == 409
+
+def test_fix_unknown_scope_422(tmp_path):
+    c = _client_integ(tmp_path, FakeStoreWithModels(), keys=[])
+    r = c.post("/api/config/integrity/fix", json={"orphan": {"scope": "bogus", "target": {}}, "dry_run": False})
+    assert r.status_code == 422
