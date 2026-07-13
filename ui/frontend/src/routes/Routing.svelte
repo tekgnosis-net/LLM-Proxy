@@ -176,17 +176,17 @@
 
   <section class="card">
     <h2>Referential integrity
-      {#if orphanCount > 0}<span class="badge-warn">{orphanCount}</span>{/if}</h2>
+      {#if orphanCount > 0}<span class="badge-warn">⚠ {orphanCount} dangling</span>{/if}</h2>
     {#if integErr}<div class="banner err">{integErr}</div>
     {:else if !integ}<p class="hint">Checking…</p>
     {:else if orphanCount === 0}<p class="hint">✓ No dangling references.</p>
     {:else}
       <p class="hint">These config references name a model group that doesn't exist. Removing them prevents unintended fallback routing.</p>
       <ul class="orphans">
-        {#each [...(integ.router_orphans || []), ...(integ.key_orphans || [])] as o}
+        {#each [...(integ.router_orphans || []), ...(integ.key_orphans || [])] as o (`${o.scope}-${o.location}-${o.reference}-${JSON.stringify(o.target)}`)}
           <li>
             <span class="mono">{o.location}</span> → missing <span class="mono red">{o.reference}</span>
-            <button onclick={() => fixOrphan(o)} disabled={integBusy}>Fix</button>
+            <button onclick={() => fixOrphan(o)} disabled={integBusy || store.applying || store.saving}>Fix</button>
           </li>
         {/each}
       </ul>
@@ -352,7 +352,7 @@
   .remove-btn{padding:4px 8px;border:1px solid #ccc;border-radius:8px;background:none;cursor:pointer;color:var(--muted,#6e6e73);font-size:12px;align-self:flex-start;margin-top:18px}
   .model-checkboxes{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0}
   .checkbox-label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text,#3a3a3c);cursor:pointer}
-  .badge-warn{background:#c0271d;color:#fff;border-radius:10px;padding:1px 8px;font-size:12px;margin-left:8px}
+  .badge-warn{background:#fff4e5;color:#9a5b00;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
   .orphans{list-style:none;padding:0;margin:8px 0}
   .orphans li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px}
   .orphans button{margin-left:auto;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}
