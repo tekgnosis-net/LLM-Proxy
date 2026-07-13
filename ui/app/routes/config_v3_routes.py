@@ -11,7 +11,7 @@ from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
-from app.config_integrity import group_names, router_orphans, key_orphans
+from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field
 from app.keys_client import KeysClient
 import yaml as _yaml
 
@@ -227,3 +227,37 @@ async def config_integrity():
     k_orphans = key_orphans(keys, groups)
     return {"in_sync": not r_orphans and not k_orphans,
             "router_orphans": r_orphans, "key_orphans": k_orphans}
+
+@router.post("/config/integrity/fix", dependencies=[Depends(login_required)])
+async def config_integrity_fix(body: dict = Body(...)):
+    orphan = body.get("orphan") or {}
+    dry = bool(body.get("dry_run"))
+    scope = orphan.get("scope")
+    target = orphan.get("target") or {}
+    if scope == "router":
+        store = make_config_store()
+        eff = {(i["kind"], i["name"]): i for i in effective(await store.applied(), await store.staged())}
+        it = eff.get(("router_setting", target.get("setting")))
+        before = (it or {}).get("data")
+        after = trim_router_setting(before, target)
+        if dry:
+            return {"before": before, "after": after,
+                    "effect": "stages a config change (needs Apply + restart)"}
+        if after in (None, [], {}):
+            await store.stage("router_setting", target["setting"], {}, deleted=True)
+        else:
+            await store.stage("router_setting", target["setting"], after)
+        return {"staged": True, "needs_apply": True}
+    if scope == "key":
+        keys = {k.get("token"): k for k in await make_keys_client().list_keys()}
+        k = keys.get(target.get("token"))
+        if k is None:
+            raise HTTPException(status_code=409, detail="key not found (already changed?); re-scan")
+        field = target["field"]
+        before = k.get(field)
+        after = trim_key_field(before, target)
+        if dry:
+            return {"before": before, "after": after, "effect": "applies immediately (hot)"}
+        await make_keys_client().update_key({"key": target["token"], field: after})
+        return {"applied": True, "needs_apply": False}
+    raise HTTPException(status_code=422, detail="orphan.scope must be 'router' or 'key'")

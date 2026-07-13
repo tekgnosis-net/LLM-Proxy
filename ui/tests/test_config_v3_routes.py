@@ -422,3 +422,36 @@ def test_integrity_key_store_failure_is_loud(tmp_path):
 def test_apply_route_returns_422_on_integrity_gate(tmp_path):
     r = _client(tmp_path, FakeStoreWithModels()).post("/api/apply")
     assert r.status_code == 422 and "integrity" in r.json()["detail"]
+
+# Task 4: POST /api/config/integrity/fix
+
+class FakeKeysFix(FakeKeysV3):
+    def __init__(self, keys): super().__init__(keys); self.updated = None
+    async def update_key(self, payload): self.updated = payload; return {"updated": True, **payload}
+
+def test_fix_router_dry_run_previews_without_staging(tmp_path):
+    store = FakeStoreWithModels()
+    c = _client_integ(tmp_path, store, keys=[])
+    orphan = {"scope": "router", "target": {"setting": "fallbacks", "primary": "gpt-oss-20b", "dangling": "gpt-oss-20b"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": True}).json()
+    assert d["before"] == [{"gpt-oss-20b": ["gpt-oss-20b-1x"]}] and d["after"] == []
+    assert "Apply" in d["effect"] and store.staged_calls == []       # nothing mutated on dry-run
+
+def test_fix_router_stages_delete_when_setting_empties(tmp_path):
+    store = FakeStoreWithModels()
+    c = _client_integ(tmp_path, store, keys=[])
+    orphan = {"scope": "router", "target": {"setting": "fallbacks", "primary": "gpt-oss-20b", "dangling": "gpt-oss-20b"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"staged": True, "needs_apply": True}
+    assert store.staged_calls == [("router_setting", "fallbacks", {}, True)]   # emptied → staged delete
+
+def test_fix_key_updates_hot(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "models": ["gpt-oss-20b-1x", "deadgroup"], "aliases": {}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "models", "entry": "deadgroup"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"applied": True, "needs_apply": False}
+    assert fake.updated == {"key": "h1", "models": ["gpt-oss-20b-1x"]}   # trimmed, replace semantics
