@@ -1,3 +1,22 @@
+# [1.30.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.29.0...v1.30.0) (2026-07-13)
+
+
+### Bug Fixes
+
+* exempt LiteLLM special model tokens + harden key validator against malformed payloads ([2213388](https://github.com/tekgnosis-net/LLM-Proxy/commit/22133881757a6ea7aa020e30a8bf1cf5c310c908))
+* integrity checker skips unhashable/malformed leaf values instead of raising ([d20d993](https://github.com/tekgnosis-net/LLM-Proxy/commit/d20d99330b4b4ce3c67f0dddc779ab4f68275ff9))
+* map integrity Apply-gate error to HTTP 422 (not 500) ([8e5d1be](https://github.com/tekgnosis-net/LLM-Proxy/commit/8e5d1befe2387f88ccf8086e58c3a3fae223d4cd))
+* **ui:** integrity badge matches drift-badge pill style; key orphan list; disable Fix during apply ([2dcc899](https://github.com/tekgnosis-net/LLM-Proxy/commit/2dcc899153f20fb026f40469b85cd8344614475a))
+
+
+### Features
+
+* integrity report endpoint + pre-commit Apply-gate for dangling router refs ([ea97073](https://github.com/tekgnosis-net/LLM-Proxy/commit/ea9707319e5219dd68704329326d1915b0a8a047))
+* per-orphan integrity fix endpoint (dry-run preview; router stages, key hot) ([8668a5d](https://github.com/tekgnosis-net/LLM-Proxy/commit/8668a5d3a89fc451f96f3ec3503ed26e51147dd9))
+* pure referential-integrity checker (orphan detection + trim helpers) ([cf1f376](https://github.com/tekgnosis-net/LLM-Proxy/commit/cf1f37606d5b1a646365e9fecab7a7cbf59662a9))
+* reject virtual keys that reference unknown model groups (models/aliases) ([c842c74](https://github.com/tekgnosis-net/LLM-Proxy/commit/c842c7488c3f1e3e7781433302401acbdd3ea67f))
+* **ui:** Routing integrity panel — lists dangling references with per-orphan Fix ([868654b](https://github.com/tekgnosis-net/LLM-Proxy/commit/868654bf2061b2f27577a71e0c6107bcecc84498))
+
 # [1.29.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.28.1...v1.29.0) (2026-07-06)
 
 
