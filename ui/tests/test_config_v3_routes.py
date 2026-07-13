@@ -417,3 +417,8 @@ def test_integrity_key_store_failure_is_loud(tmp_path):
     cr.make_keys_client = lambda: Boom()
     d = c.get("/api/config/integrity").json()
     assert d["error"] == "query_failed"
+    assert d["router_orphans"]   # router-scope findings survive a key-store failure
+
+def test_apply_route_returns_422_on_integrity_gate(tmp_path):
+    r = _client(tmp_path, FakeStoreWithModels()).post("/api/apply")
+    assert r.status_code == 422 and "integrity" in r.json()["detail"]

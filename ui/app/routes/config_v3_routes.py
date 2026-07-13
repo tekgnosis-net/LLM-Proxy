@@ -111,8 +111,9 @@ async def apply():
             hybrid=s.store_model_in_db,
         )
     except ApplyError as e:
-        code = 422 if "invalid" in str(e) else 500
-        raise HTTPException(status_code=code, detail=str(e))
+        msg = str(e)
+        code = 422 if ("invalid" in msg or "integrity" in msg) else 500
+        raise HTTPException(status_code=code, detail=msg)
 
 @router.post("/discard", dependencies=[Depends(login_required)])
 async def discard(kind: str | None = None, name: str | None = None):
