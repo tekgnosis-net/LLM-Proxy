@@ -240,3 +240,22 @@ async def test_hybrid_restart_verify_uses_public_model_name(tmp_path):
     assert res["restart"] == "healthy"
     # The reloader must be asked to verify the PUBLIC name 'gpt', never the store UUID 'uuid-1'
     assert rl.expected == ["gpt"]
+
+
+# --- Task 2: referential-integrity Apply-gate (pre-commit, both modes) ---
+
+class _Store:
+    def __init__(self, items): self._items = items; self.folded = False
+    async def applied(self): return list(self._items)
+    async def staged(self): return []
+    async def fold(self): self.folded = True
+
+@pytest.mark.asyncio
+async def test_apply_gate_blocks_orphaned_fallback(tmp_path):
+    items = [{"kind": "model", "name": "id1", "data": {"model_name": "gpt-oss-20b-1x"}},
+             {"kind": "router_setting", "name": "fallbacks", "data": [{"gpt-oss-20b": ["gpt-oss-20b-1x"]}]}]
+    store = _Store(items)
+    with pytest.raises(ApplyError) as e:
+        await apply_config(str(tmp_path / "c.yaml"), store, reloader=None,
+                           decrypt=lambda b: b, models_client=None, hybrid=False)
+    assert "integrity" in str(e.value).lower() and not store.folded   # nothing committed

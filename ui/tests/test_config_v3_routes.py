@@ -380,3 +380,40 @@ def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert captured.get("hybrid") is True
     assert captured.get("has_client") is True
+
+# Task 2: GET /api/config/integrity
+
+class FakeStoreWithModels(FakeStore):
+    def __init__(self):
+        super().__init__()
+        self._applied = [
+            {"kind": "model", "name": "id1", "data": {"model_name": "gpt-oss-20b-1x"}},
+            {"kind": "router_setting", "name": "fallbacks", "data": [{"gpt-oss-20b": ["gpt-oss-20b-1x"]}]},
+        ]
+        self._staged = []
+
+class FakeKeysV3:
+    def __init__(self, keys): self._keys = keys
+    async def list_keys(self): return self._keys
+
+def _client_integ(tmp_path, store, keys):
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    cr.make_keys_client = lambda: FakeKeysV3(keys)
+    return c
+
+def test_integrity_reports_router_and_key_orphans(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "models": ["deadgroup"], "aliases": {}}]
+    d = _client_integ(tmp_path, FakeStoreWithModels(), keys).get("/api/config/integrity").json()
+    assert d["in_sync"] is False
+    assert any(o["reference"] == "gpt-oss-20b" for o in d["router_orphans"])   # fallback primary dead
+    assert any(o["reference"] == "deadgroup" for o in d["key_orphans"])
+
+def test_integrity_key_store_failure_is_loud(tmp_path):
+    class Boom:
+        async def list_keys(self): raise RuntimeError("proxy down")
+    c = _client(tmp_path, FakeStoreWithModels())
+    import app.routes.config_v3_routes as cr
+    cr.make_keys_client = lambda: Boom()
+    d = c.get("/api/config/integrity").json()
+    assert d["error"] == "query_failed"

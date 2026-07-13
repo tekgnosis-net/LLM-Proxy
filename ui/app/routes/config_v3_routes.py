@@ -11,6 +11,8 @@ from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
+from app.config_integrity import group_names, router_orphans, key_orphans
+from app.keys_client import KeysClient
 import yaml as _yaml
 
 router = APIRouter(prefix="/api")
@@ -31,6 +33,10 @@ def make_reloader() -> Reloader:
 def make_models_client() -> ModelsClient:
     s = get_settings()
     return ModelsClient(s.litellm_base_url, s.litellm_master_key)
+
+def make_keys_client() -> KeysClient:
+    s = get_settings()
+    return KeysClient(s.litellm_base_url, s.litellm_master_key)
 
 def _redact_item(it: dict) -> dict:
     if it["kind"] == "credential":
@@ -205,3 +211,18 @@ async def config_drift():
             content.append({"id": mid, "model_name": desired[mid].get("model_name"), "fields": fields})
     return {"hybrid": True, "in_sync": not missing and not extra and not content,
             "missing_in_litellm": missing, "extra_in_litellm": extra, "content_drifted": content}
+
+@router.get("/config/integrity", dependencies=[Depends(login_required)])
+async def config_integrity():
+    store = make_config_store()
+    eff = effective(await store.applied(), await store.staged())
+    groups = group_names([i for i in eff if i["kind"] == "model"])
+    r_orphans = router_orphans(
+        [i for i in eff if i["kind"] == "router_setting" and i.get("flag") != "deleted"], groups)
+    try:
+        keys = await make_keys_client().list_keys()
+    except Exception as e:
+        return {"error": "query_failed", "detail": str(e), "router_orphans": r_orphans, "key_orphans": []}
+    k_orphans = key_orphans(keys, groups)
+    return {"in_sync": not r_orphans and not k_orphans,
+            "router_orphans": r_orphans, "key_orphans": k_orphans}
