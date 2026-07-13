@@ -128,3 +128,9 @@ def test_orphan_record_full_shape():
     assert o["scope"] == "router" and o["location"] == "router_settings.fallbacks" and o["missing"] == ["dead"]
     k = key_orphans([{"token": "h1", "key_alias": "ci", "models": ["dead"], "aliases": {}}], G)[0]
     assert k["scope"] == "key" and k["missing"] == ["dead"]
+
+# ── LiteLLM special model tokens ────────────────────────────────────────────
+def test_key_special_model_tokens_exempt():
+    for tok in ("all-proxy-models", "all-team-models", "no-default-models"):
+        keys = [{"token": "h1", "key_alias": "ci", "models": ["a", tok], "aliases": {}}]
+        assert key_orphans(keys, G) == [], f"{tok} should be exempt"

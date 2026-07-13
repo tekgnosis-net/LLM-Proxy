@@ -90,3 +90,15 @@ def test_create_key_clean_passes(tmp_path):
     c = _client_v(tmp_path, FakeKeys(), groups=["gpt-oss-20b-1x"])
     r = c.post("/api/keys", json={"key_alias": "x", "models": ["gpt-oss-20b-1x"]})
     assert r.status_code == 200
+
+
+def test_create_key_allows_special_model_tokens(tmp_path):
+    c = _client_v(tmp_path, FakeKeys(), groups=["gpt-oss-20b-1x"])
+    r = c.post("/api/keys", json={"key_alias": "x", "models": ["all-proxy-models"]})
+    assert r.status_code == 200
+
+
+def test_create_key_malformed_models_entry_no_500(tmp_path):
+    c = _client_v(tmp_path, FakeKeys(), groups=["gpt-oss-20b-1x"])
+    r = c.post("/api/keys", json={"key_alias": "x", "models": ["gpt-oss-20b-1x", ["nested"]]})
+    assert r.status_code == 200      # malformed entry skipped, not a 500

@@ -5,6 +5,9 @@ from __future__ import annotations
 
 _FALLBACK_RULE_SETTINGS = ("fallbacks", "context_window_fallbacks", "content_policy_fallbacks")
 
+# LiteLLM special model tokens (grant access without naming a concrete group) — never orphans.
+_LITELLM_SPECIAL_MODELS = frozenset({"all-team-models", "all-proxy-models", "no-default-models"})
+
 
 def _missing(ref, valid: set) -> bool:
     """True iff `ref` is a real (hashable, non-empty) name absent from `valid`.
@@ -75,7 +78,7 @@ def key_orphans(keys: list[dict], groups: set[str]) -> list[dict]:
         aliases = k.get("aliases") if isinstance(k.get("aliases"), dict) else {}
         alias_names = set(aliases.keys())
         for m in (k.get("models") or []):
-            if _missing(m, groups) and m not in alias_names:
+            if _missing(m, groups) and m not in alias_names and m not in _LITELLM_SPECIAL_MODELS:
                 out.append(_orphan("key", f"key '{label}' → allowed models", m,
                                    {"token": token, "field": "models", "entry": m}))
         for alias_name, target in aliases.items():
