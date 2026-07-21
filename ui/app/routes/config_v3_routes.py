@@ -12,6 +12,7 @@ from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
 from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from
+from app.reachability import collision_audit, key_over_reach, SEMANTICS_VERSION
 from app.keys_client import KeysClient
 import yaml as _yaml
 
@@ -261,3 +262,21 @@ async def config_integrity_fix(body: dict = Body(...)):
         await make_keys_client().update_key({"key": target["token"], field: after})
         return {"applied": True, "needs_apply": False}
     raise HTTPException(status_code=422, detail="orphan.scope must be 'router' or 'key'")
+
+@router.get("/config/reachability", dependencies=[Depends(login_required)])
+async def config_reachability():
+    store = make_config_store()
+    eff = effective(await store.applied(), await store.staged())
+    model_items = [i for i in eff if i["kind"] == "model"]
+    router_items = [i for i in eff if i["kind"] == "router_setting" and i.get("flag") != "deleted"]
+    collisions = collision_audit(model_items, router_items)
+    groups = group_names(model_items, mga_names_from(router_items))
+    mga_item = next((i for i in router_items if i["name"] == "model_group_alias"), None)
+    mga = mga_item["data"] if (mga_item and isinstance(mga_item.get("data"), dict)) else {}
+    try:
+        keys = await make_keys_client().list_keys()
+    except Exception as e:
+        return {"error": "query_failed", "detail": str(e), "semantics_version": SEMANTICS_VERSION,
+                "collisions": collisions, "key_over_reach": []}
+    return {"semantics_version": SEMANTICS_VERSION, "collisions": collisions,
+            "key_over_reach": key_over_reach(keys, collisions, groups, mga)}
