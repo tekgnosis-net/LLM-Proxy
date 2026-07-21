@@ -42,17 +42,18 @@ def parse_base(model_str) -> dict | None:
     Non-str/empty/malformed input -> None (skip, never raise)."""
 
 def match_candidates(deployment_model) -> set[str]:
-    """The strings LiteLLM's fallback matcher can see for this deployment's
-    failure: {parsed} | {stripped if any}. (Exact-match tier uses the requested
-    group name, which the ACL already validated — cross-group risk comes only
-    from parsed/stripped matching.)"""
+    """The deployment-derived strings LiteLLM's fallback matcher can see when this
+    deployment fails: {parsed} | {stripped if any}."""
 
 def collision_audit(model_items, router_items) -> list[dict]:
-    """For every fallback rule {primary: targets} (all variants + default_fallbacks
-    treated as targets reachable from ANY failure) and every deployment d in group
-    g: a collision iff primary ∈ match_candidates(d.litellm_params.model) and
-    targets ⊄ {g}. Record: {"group": g, "deployment_id", "base_model" (the raw
-    litellm_params.model), "fallback_setting", "fallback_key": primary,
+    """Per-group failure candidates C(g) = {g} ∪ ⋃ match_candidates(d) over g's
+    deployments — the group's own public name is included because the matcher's
+    EXACT tier fires on it (a normal fallback {g:[T]} grants un-ACL'd reach into T
+    for any key allowed g but not T; the qwen-2x→deepinfra example). For every
+    fallback rule {primary: targets} (all variants; default_fallbacks = targets
+    reachable from ANY failure): collision iff primary ∈ C(g) and targets ⊄ {g}.
+    Record: {"group": g, "deployment_id" (None when matched via the group name
+    itself), "base_model", "fallback_setting", "fallback_key": primary,
     "targets": [...]}. Dedup by (group, deployment_id, fallback_setting, primary)."""
 
 def key_over_reach(keys, collisions, groups, mga) -> list[dict]:
