@@ -96,6 +96,16 @@
   }
   let orphanCount = $derived((integ?.router_orphans?.length || 0) + (integ?.key_orphans?.length || 0))
 
+  // --- reachability panel ---
+  let reach = $state(null)
+  let reachErr = $state('')
+  async function loadReach() {
+    try { reach = await api.reachability(); reachErr = reach?.error ? 'Reachability check failed (key API).' : '' }
+    catch (e) { reachErr = e.message }
+  }
+  onMount(loadReach)
+  let reachCount = $derived((reach?.collisions?.length || 0) + (reach?.key_over_reach?.length || 0))
+
   // --- per-group routing ---
 
   // available model names (deduped) from the model items
@@ -188,6 +198,28 @@
             <span class="mono">{o.location}</span> → missing <span class="mono red">{o.reference}</span>
             <button onclick={() => fixOrphan(o)} disabled={integBusy || store.applying || store.saving}>Fix</button>
           </li>
+        {/each}
+      </ul>
+    {/if}
+  </section>
+
+  <section class="card">
+    <h2>Reachability (advisory)
+      {#if reachCount > 0}<span class="badge-info">{reachCount}</span>{/if}
+      {#if reach?.semantics_version}<span class="caption">semantics: LiteLLM {reach.semantics_version}</span>{/if}</h2>
+    {#if reachErr}<div class="banner err">{reachErr}</div>
+    {:else if !reach}<p class="hint">Checking…</p>
+    {:else if reachCount === 0}<p class="hint">✓ No cross-group fallback paths.</p>
+    {:else}
+      <p class="hint">Fallbacks can route a failed request to a group the caller wasn't granted (LiteLLM applies fallbacks without re-checking per-key access). This is informational — to remove a path, grant the key the target group or re-scope the fallback.</p>
+      <ul class="orphans">
+        {#each reach.key_over_reach as k (k.token)}
+          {#each k.extra as e (e.target + e.via_group)}
+            <li><span class="mono">key {k.key_alias}</span> can also reach <span class="mono amber">{e.target}</span> (via <span class="mono">{e.via_group}</span> → fallback <span class="mono">{e.via_fallback}</span>)</li>
+          {/each}
+        {/each}
+        {#each reach.collisions as c (c.group + '|' + c.fallback_key + '|' + (c.deployment_id||'') + '|' + c.fallback_setting)}
+          <li><span class="mono">{c.group}</span>{#if c.base_model} (deployment <span class="mono">{c.base_model}</span>){/if} → can route to <span class="mono amber">{c.targets.join(', ')}</span> via <span class="mono">{c.fallback_setting}</span> → <span class="mono">{c.fallback_key}</span></li>
         {/each}
       </ul>
     {/if}
@@ -353,6 +385,9 @@
   .model-checkboxes{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0}
   .checkbox-label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text,#3a3a3c);cursor:pointer}
   .badge-warn{background:#fff4e5;color:#9a5b00;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
+  .badge-info{background:#e5effb;color:#0a4a8f;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
+  .caption{font-size:11px;color:#6e6e73;font-weight:400;margin-left:8px}
+  .amber{color:#9a5b00}
   .orphans{list-style:none;padding:0;margin:8px 0}
   .orphans li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px}
   .orphans button{margin-left:auto;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}

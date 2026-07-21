@@ -1,5 +1,5 @@
 from app.config_integrity import (group_names, router_orphans, key_orphans,
-                                   trim_router_setting, trim_key_field)
+                                   trim_router_setting, trim_key_field, mga_names_from)
 
 def _model(name, mname, flag=None):
     it = {"kind": "model", "name": name, "data": {"model_name": mname}}
@@ -134,3 +134,19 @@ def test_key_special_model_tokens_exempt():
     for tok in ("all-proxy-models", "all-team-models", "no-default-models"):
         keys = [{"token": "h1", "key_alias": "ci", "models": ["a", tok], "aliases": {}}]
         assert key_orphans(keys, G) == [], f"{tok} should be exempt"
+
+# ── mga_names_from and group_names folding ──────────────────────────────────
+def test_group_names_folds_mga_names():
+    models = [_model("id1", "gpt-oss-20b-1x")]
+    assert group_names(models, mga_names={"friendly"}) == {"gpt-oss-20b-1x", "friendly"}
+
+def test_mga_names_from_extracts_keys():
+    ri = [_rs("model_group_alias", {"friendly": "gpt-oss-20b-1x", "other": "x"})]
+    assert mga_names_from(ri) == {"friendly", "other"}
+    assert mga_names_from([_rs("model_group_alias", "not-a-dict")]) == set()
+    assert mga_names_from([]) == set()
+
+def test_fallback_referencing_mga_name_not_orphan():
+    # a fallback whose primary is an mga NAME (not a model group) must not be flagged
+    G2 = group_names([_model("id1", "real")], mga_names=mga_names_from([_rs("model_group_alias", {"friendly": "real"})]))
+    assert router_orphans([_rs("fallbacks", [{"friendly": ["real"]}])], G2) == []

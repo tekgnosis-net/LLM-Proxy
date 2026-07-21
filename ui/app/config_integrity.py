@@ -15,12 +15,24 @@ def _missing(ref, valid: set) -> bool:
     return isinstance(ref, str) and bool(ref) and ref not in valid
 
 
-def group_names(model_items: list[dict]) -> set[str]:
-    """Distinct public model_name across non-deleted model items (effective)."""
-    return {(it.get("data") or {}).get("model_name")
-            for it in model_items
-            if it.get("kind") == "model" and it.get("flag") != "deleted"
-            and (it.get("data") or {}).get("model_name")}
+def group_names(model_items: list[dict], mga_names: set | None = None) -> set:
+    """Distinct public model_name across non-deleted model items (effective),
+    optionally folded with model_group_alias names (which are also valid public
+    names a fallback/key may legitimately reference)."""
+    names = {(it.get("data") or {}).get("model_name")
+             for it in model_items
+             if it.get("kind") == "model" and it.get("flag") != "deleted"
+             and (it.get("data") or {}).get("model_name")}
+    return names | (mga_names or set())
+
+
+def mga_names_from(router_items: list[dict]) -> set:
+    """The set of model_group_alias names (its dict keys) across router items."""
+    out = set()
+    for it in router_items:
+        if it.get("name") == "model_group_alias" and isinstance(it.get("data"), dict):
+            out |= set(it["data"].keys())
+    return out
 
 
 def _orphan(scope, location, reference, target):

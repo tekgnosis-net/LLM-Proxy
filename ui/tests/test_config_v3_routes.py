@@ -493,3 +493,42 @@ def test_fix_unknown_scope_422(tmp_path):
     c = _client_integ(tmp_path, FakeStoreWithModels(), keys=[])
     r = c.post("/api/config/integrity/fix", json={"orphan": {"scope": "bogus", "target": {}}, "dry_run": False})
     assert r.status_code == 422
+
+# Task 3: GET /api/config/reachability
+
+class FakeStoreReach(FakeStore):
+    def __init__(self):
+        super().__init__()
+        self._applied = [
+            {"kind": "model", "name": "d1", "data": {"model_name": "hindsight-llm",
+             "model_info": {"id": "d1"}, "litellm_params": {"model": "groq/openai/gpt-oss-20b"}}},
+            {"kind": "router_setting", "name": "fallbacks", "data": [{"gpt-oss-20b": ["gpt-oss-20b-deepinfra"]}]},
+        ]
+        self._staged = []
+
+class FakeKeysReach:
+    def __init__(self, keys): self._keys = keys
+    async def list_keys(self): return self._keys
+
+def test_reachability_reports_collision_and_over_reach(tmp_path):
+    keys = [{"token": "h1", "key_alias": "hindsight", "models": ["hindsight-llm"], "aliases": {}}]
+    c = _client(tmp_path, FakeStoreReach())
+    import app.routes.config_v3_routes as cr
+    cr.make_keys_client = lambda: FakeKeysReach(keys)
+    d = c.get("/api/config/reachability").json()
+    assert d["semantics_version"] == "1.89.2"
+    assert any(x["group"] == "hindsight-llm" for x in d["collisions"])
+    assert d["key_over_reach"][0]["extra"][0]["target"] == "gpt-oss-20b-deepinfra"
+
+def test_reachability_key_store_failure_preserves_collisions(tmp_path):
+    class Boom:
+        async def list_keys(self): raise RuntimeError("down")
+    c = _client(tmp_path, FakeStoreReach())
+    import app.routes.config_v3_routes as cr
+    cr.make_keys_client = lambda: Boom()
+    d = c.get("/api/config/reachability").json()
+    assert d["error"] == "query_failed" and d["collisions"] and d["key_over_reach"] == []
+
+def test_reachability_requires_login(tmp_path):
+    c = _client(tmp_path, FakeStoreReach()); c.cookies.clear()
+    assert c.get("/api/config/reachability").status_code == 401

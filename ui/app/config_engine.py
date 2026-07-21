@@ -4,7 +4,7 @@ import yaml
 
 from app.config_render import effective, render_config
 from app.config_store import validate_config, ConfigError, write_config_atomic
-from app.config_integrity import group_names, router_orphans
+from app.config_integrity import group_names, router_orphans, mga_names_from
 from app.model_reconcile import reconcile_models
 from app.reloader import ReloadError
 
@@ -62,9 +62,10 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
     # Referential-integrity gate (pre-commit, both modes): a fallback / model_group_alias
     # that names a group which does not exist would render a dangling reference. Block
     # before any write/fold so nothing is committed.
-    _groups = group_names([it for it in eff if it["kind"] == "model"])
-    _orphans = router_orphans(
-        [it for it in eff if it["kind"] == "router_setting" and it.get("flag") != "deleted"], _groups)
+    _model_items = [it for it in eff if it["kind"] == "model"]
+    _router_items = [it for it in eff if it["kind"] == "router_setting" and it.get("flag") != "deleted"]
+    _groups = group_names(_model_items, mga_names_from(_router_items))
+    _orphans = router_orphans(_router_items, _groups)
     if _orphans:
         detail = "; ".join(f'{o["location"]} references missing {o["reference"]!r}' for o in _orphans)
         raise ApplyError(f"integrity: {detail}; fix in the Integrity panel")

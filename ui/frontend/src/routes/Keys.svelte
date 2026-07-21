@@ -52,6 +52,13 @@
   }
   onMount(load)
 
+  let overReach = $state([])
+  async function loadReach() {
+    try { const r = await api.reachability(); overReach = r?.key_over_reach || [] } catch { overReach = [] }
+  }
+  onMount(loadReach)
+  let editReach = $derived(editingToken ? (overReach.find(k => k.token === editingToken)?.extra || []) : [])
+
   function num(v) { return v === '' || v == null ? undefined : Number(v) }
 
   function buildKeyFields() {
@@ -160,6 +167,9 @@
           {#each availableModels as m}<option value={m}>{m}</option>{/each}
         </select>
       </label>
+      {#if editReach.length}
+        <p class="reach-note">⚠ Via fallbacks this key can also reach: {editReach.map(e => e.target).join(', ')}. Informational — see Routing → Reachability.</p>
+      {/if}
       <div class="grid">
         <label>Max budget ($) <input type="number" min="0" step="0.01" bind:value={form.max_budget} placeholder="e.g. 50" /></label>
         <label>Budget resets <input bind:value={form.budget_duration} placeholder="e.g. 30d" /></label>
@@ -309,4 +319,5 @@
   .fb-err{font-size:11px;color:#b00020;margin-top:4px}
   .form-heading{margin:0 0 4px;font-size:15px;font-weight:600;color:#1c1c1e}
   .actions{display:flex;gap:6px}
+  .reach-note{font-size:12px;color:#9a5b00;background:#fff4e5;border-radius:8px;padding:6px 10px;margin:4px 0}
 </style>
