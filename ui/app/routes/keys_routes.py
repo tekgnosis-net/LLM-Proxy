@@ -4,7 +4,7 @@ from app.keys_client import KeysClient
 from app.settings import get_settings
 from app.config_db import ConfigStore
 from app.config_render import effective
-from app.config_integrity import group_names, _LITELLM_SPECIAL_MODELS
+from app.config_integrity import group_names, _LITELLM_SPECIAL_MODELS, mga_names_from
 
 router = APIRouter(prefix="/api")
 
@@ -29,7 +29,7 @@ async def _validate_key_refs(payload: dict) -> None:
         return                                        # no config store → skip (non-DB dev)
     store = make_config_store()
     eff = effective(await store.applied(), await store.staged())
-    groups = group_names([i for i in eff if i["kind"] == "model"])
+    groups = group_names([i for i in eff if i["kind"] == "model"], mga_names_from([i for i in eff if i["kind"] == "router_setting"]))
     _al = payload.get("aliases")
     alias_names = set(_al.keys()) if isinstance(_al, dict) else set()
     bad = [m for m in (payload.get("models") or [])

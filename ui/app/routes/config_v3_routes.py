@@ -11,7 +11,7 @@ from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
-from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field
+from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from
 from app.keys_client import KeysClient
 import yaml as _yaml
 
@@ -217,9 +217,9 @@ async def config_drift():
 async def config_integrity():
     store = make_config_store()
     eff = effective(await store.applied(), await store.staged())
-    groups = group_names([i for i in eff if i["kind"] == "model"])
-    r_orphans = router_orphans(
-        [i for i in eff if i["kind"] == "router_setting" and i.get("flag") != "deleted"], groups)
+    router_items = [i for i in eff if i["kind"] == "router_setting" and i.get("flag") != "deleted"]
+    groups = group_names([i for i in eff if i["kind"] == "model"], mga_names_from(router_items))
+    r_orphans = router_orphans(router_items, groups)
     try:
         keys = await make_keys_client().list_keys()
     except Exception as e:
