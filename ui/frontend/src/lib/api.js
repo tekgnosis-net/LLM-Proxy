@@ -41,4 +41,5 @@ export const api = {
   resync: () => req('/api/config/resync', { method: 'POST' }),
   integrity: () => req('/api/config/integrity'),
   integrityFix: (orphan, dry_run) => req('/api/config/integrity/fix', { method: 'POST', body: JSON.stringify({ orphan, dry_run }) }),
+  reachability: () => req('/api/config/reachability'),
 }
