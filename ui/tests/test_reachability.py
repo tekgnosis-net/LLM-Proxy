@@ -34,7 +34,7 @@ def test_parse_malformed_none():
         assert parse_base(bad) is None
 
 def test_semantics_version_and_list():
-    assert SEMANTICS_VERSION == "1.89.2" and "groq" in PROVIDER_LIST and len(PROVIDER_LIST) >= 100
+    assert SEMANTICS_VERSION == "1.89.2" and "groq" in PROVIDER_LIST and len(PROVIDER_LIST) == 141
 
 # ── match_candidates ──
 def test_match_candidates_incident():
@@ -110,9 +110,16 @@ def test_over_reach_special_all_proxy_is_all():
     keys = [{"token": "h1", "key_alias": "k", "models": ["all-proxy-models"], "aliases": {}}]
     assert key_over_reach(keys, cols, groups={"g", "t"}, mga={}) == []
 
-def test_over_reach_resolves_alias_and_mga():
+def test_over_reach_resolves_mga_name():
     cols = [_collision("real-group", ["t"])]
     # key allows alias name 'myalias' -> resolves to 'real-group' via mga
     keys = [{"token": "h1", "key_alias": "k", "models": ["myalias"], "aliases": {}}]
     o = key_over_reach(keys, cols, groups={"real-group", "t", "myalias"}, mga={"myalias": "real-group"})
+    assert len(o) == 1 and o[0]["extra"][0]["target"] == "t"
+
+def test_over_reach_resolves_per_key_alias():
+    # key allows alias NAME 'myalias' resolved via the key's OWN aliases (not mga)
+    cols = [_collision("real-group", ["t"])]
+    keys = [{"token": "h1", "key_alias": "k", "models": ["myalias"], "aliases": {"myalias": "real-group"}}]
+    o = key_over_reach(keys, cols, groups={"real-group", "t", "myalias"}, mga={})
     assert len(o) == 1 and o[0]["extra"][0]["target"] == "t"
