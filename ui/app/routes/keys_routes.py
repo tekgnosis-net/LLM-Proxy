@@ -29,7 +29,8 @@ async def _validate_key_refs(payload: dict) -> None:
         return                                        # no config store → skip (non-DB dev)
     store = make_config_store()
     eff = effective(await store.applied(), await store.staged())
-    groups = group_names([i for i in eff if i["kind"] == "model"], mga_names_from([i for i in eff if i["kind"] == "router_setting"]))
+    groups = group_names([i for i in eff if i["kind"] == "model"],
+                         mga_names_from([i for i in eff if i["kind"] == "router_setting" and i.get("flag") != "deleted"]))
     _al = payload.get("aliases")
     alias_names = set(_al.keys()) if isinstance(_al, dict) else set()
     bad = [m for m in (payload.get("models") or [])

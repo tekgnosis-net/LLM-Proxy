@@ -218,7 +218,7 @@
             <li><span class="mono">key {k.key_alias}</span> can also reach <span class="mono amber">{e.target}</span> (via <span class="mono">{e.via_group}</span> → fallback <span class="mono">{e.via_fallback}</span>)</li>
           {/each}
         {/each}
-        {#each reach.collisions as c (c.group + c.fallback_key + (c.deployment_id||'') + c.fallback_setting)}
+        {#each reach.collisions as c (c.group + '|' + c.fallback_key + '|' + (c.deployment_id||'') + '|' + c.fallback_setting)}
           <li><span class="mono">{c.group}</span>{#if c.base_model} (deployment <span class="mono">{c.base_model}</span>){/if} → can route to <span class="mono amber">{c.targets.join(', ')}</span> via <span class="mono">{c.fallback_setting}</span> → <span class="mono">{c.fallback_key}</span></li>
         {/each}
       </ul>
