@@ -1,3 +1,19 @@
+# [1.31.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.30.0...v1.31.0) (2026-07-21)
+
+
+### Bug Fixes
+
+* fold model_group_alias names into G so referencing them isn't a false orphan ([162ef4d](https://github.com/tekgnosis-net/LLM-Proxy/commit/162ef4d60c1d6de56dfef9c2c9f509daaffe9400))
+* mga fold honors deleted flag in key validator (3-consumer consistency) + separator-safe collision keys ([071ba7d](https://github.com/tekgnosis-net/LLM-Proxy/commit/071ba7d1b78c333738e25d9321df13e8a18646c0))
+* **ui:** reachability collision rows keyed by fallback setting + show the setting name ([23a072a](https://github.com/tekgnosis-net/LLM-Proxy/commit/23a072ab16a5261704b6b7311e26f2988daccbce))
+
+
+### Features
+
+* GET /api/config/reachability — advisory collision + per-key over-reach report ([e5b3e57](https://github.com/tekgnosis-net/LLM-Proxy/commit/e5b3e57e711c9bc7791d02e43568c57e7b85be21))
+* reachability engine — parse/strip mirror + collision audit + per-key over-reach ([877b339](https://github.com/tekgnosis-net/LLM-Proxy/commit/877b339bb28c7789c05241f2c92cac2c27ed5358))
+* **ui:** advisory reachability panel + per-key can-also-reach note ([31ec4ef](https://github.com/tekgnosis-net/LLM-Proxy/commit/31ec4efcd9ee49e44ae3eb1c1a0cc6fe5ddddee8))
+
 # [1.30.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.29.0...v1.30.0) (2026-07-13)
 
 
