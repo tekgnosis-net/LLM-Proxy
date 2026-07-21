@@ -332,6 +332,26 @@ restart); key fixes apply **immediately**. When everything resolves you'll see
 > can reach a group indirectly via a deployment's provider-stripped base model —
 > that reachability audit is a separate follow-up.
 
+### Reachability (advisory)
+
+Because LiteLLM applies router fallbacks **without re-checking a key's allowed
+models**, and its fallback matcher keys on a deployment's provider-stripped base
+model, a key can end up served by a model group it was never granted. This
+subsection lists every such path:
+
+- **Collisions** — a failure in group *G* (via a deployment whose stripped base
+  model, or *G*'s own name, matches a fallback primary) can route to targets
+  outside *G*.
+- **Per-key over-reach** — "key *K* can also reach *X* (via *G* → fallback *F*)".
+
+This is **advisory only** — it never blocks Apply or key saves, because a
+fallback-reachable target is often intentional. To close a path you don't want,
+either grant the key the target group or re-scope/remove the fallback. Results
+are computed for a specific LiteLLM version (shown as "semantics: LiteLLM
+x.y.z"); **after upgrading LiteLLM, re-run the cross-validation harness** (the
+integration step that diffs the vendored provider list against the live
+container's `get_llm_provider`) to confirm the parser still matches.
+
 ---
 
 ## Caching
