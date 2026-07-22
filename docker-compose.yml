@@ -104,7 +104,7 @@ services:
     # (see GHCR / GitHub releases), or use `:latest` to auto-update on
     # `docker compose pull`. For local UI development, replace this with
     # `build: ./ui` and run `docker compose up -d --build`.
-    image: ghcr.io/tekgnosis-net/llm-proxy-ui:1.31.1
+    image: ghcr.io/tekgnosis-net/llm-proxy-ui:1.32.0
     container_name: litellm-ui
     restart: unless-stopped
     environment:
