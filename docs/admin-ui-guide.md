@@ -523,6 +523,20 @@ Not to be confused with **key alias** (the human label for the key itself, in th
 Alias field) or the global `model_group_alias` (a proxy-wide alias in
 `router_settings`).
 
+### Allowed passthrough routes
+
+Pass-through endpoints declared with `auth: true` (see Config → passthrough) are
+**deny-by-default** for virtual keys — a key gets `403 … Configure
+allowed_passthrough_routes` until you grant the route here. Add each route the
+key may call (e.g. `/v1/audio/voices`). Matching is **prefix-based**, so
+`/v1/audio/voices` also authorizes `/v1/audio/voices/combine`.
+
+> On open-source LiteLLM this is stored under the key's **metadata**
+> (`metadata.allowed_passthrough_routes`) — the top-level `allowed_passthrough_routes`
+> field is an Enterprise-only feature. The admin UI handles this for you, and
+> preserves any other metadata on the key. The master key (admin) bypasses this
+> check entirely.
+
 ### Key list columns
 
 | Column | Shows |
