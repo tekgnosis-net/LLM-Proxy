@@ -1,3 +1,16 @@
+# [1.32.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.31.1...v1.32.0) (2026-07-22)
+
+
+### Bug Fixes
+
+* **ui:** style the passthrough field-name label (was unstyled — Svelte scopes per-component) ([33d01cc](https://github.com/tekgnosis-net/LLM-Proxy/commit/33d01cc803a244327bc04ecafb8cb7c5abd95409))
+
+
+### Features
+
+* passthrough.js — rows<->list helper for per-key allowed passthrough routes ([fc7f2ef](https://github.com/tekgnosis-net/LLM-Proxy/commit/fc7f2efb76bcbb51998552a7e6c69a8505f747a1))
+* **ui:** per-key Allowed passthrough routes picker (writes metadata, preserves existing keys) ([c3e4965](https://github.com/tekgnosis-net/LLM-Proxy/commit/c3e49650714fc7632a5940355d0af73fc27049f5))
+
 ## [1.31.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.31.0...v1.31.1) (2026-07-22)
 
 
