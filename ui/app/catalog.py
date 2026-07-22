@@ -12,6 +12,11 @@ _ENDPOINT_MODE = {
     "rerank": "rerank", "image_generation": "image_generation",
     "audio_transcription": "audio_transcription", "audio_speech": "audio_speech",
     "moderations": "moderations", "moderation": "moderations", "responses": "responses",
+    # litellm's provider_endpoints_support.json spells these differently (plural /
+    # text_-prefixed); without them audio_transcription, image_generation and
+    # completion could never be derived for ANY provider.
+    "audio_transcriptions": "audio_transcription", "image_generations": "image_generation",
+    "text_completion": "completion",
 }
 
 
