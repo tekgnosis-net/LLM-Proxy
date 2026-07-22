@@ -347,6 +347,7 @@
   .actions{display:flex;gap:6px}
   .reach-note{font-size:12px;color:#9a5b00;background:#fff4e5;border-radius:8px;padding:6px 10px;margin:4px 0}
   .passthrough{margin:8px 0}
+  .passthrough .field-name{display:block;font-size:13px;color:#3a3a3c;margin-bottom:4px}
   .pt-row{display:flex;gap:6px;align-items:center;margin:4px 0}
   .pt-row input{flex:1;min-width:0}
   .pt-x{border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer;padding:4px 9px}
