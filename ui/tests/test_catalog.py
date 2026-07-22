@@ -48,3 +48,25 @@ def test_endpoints_to_modes_accepts_json_string():
 
 def test_endpoints_to_modes_empty():
     assert endpoints_to_modes(None) == [] and endpoints_to_modes({}) == []
+
+
+def test_endpoints_to_modes_real_matrix_plural_keys():
+    """Regression: litellm's provider_endpoints_support.json uses PLURAL keys
+    (audio_transcriptions, image_generations) and text_completion — the mapper
+    silently dropped these three modes for EVERY provider (found via the openai
+    row on the live host)."""
+    openai_row = {"chat_completions": True, "text_completion": True, "embeddings": True,
+                  "moderations": True, "audio_speech": True, "audio_transcriptions": True,
+                  "image_generations": True, "responses": True, "rerank": False}
+    modes = endpoints_to_modes(openai_row)
+    assert "audio_transcription" in modes
+    assert "image_generation" in modes
+    assert "completion" in modes
+    assert "audio_speech" in modes and "chat" in modes and "rerank" not in modes
+
+
+def test_endpoints_to_modes_singular_keys_still_map():
+    # older/singular spellings keep working (both schema generations accepted)
+    assert endpoints_to_modes({"audio_transcription": True}) == ["audio_transcription"]
+    assert endpoints_to_modes({"image_generation": True}) == ["image_generation"]
+    assert endpoints_to_modes({"completion": True}) == ["completion"]

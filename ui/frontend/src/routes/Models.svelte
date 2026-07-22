@@ -87,6 +87,13 @@
 
   function currentProvider() { return providers.find(p => p.provider === providerSlug) || { provider: providerSlug } }
   function providerModes() {
+    // Local/OpenAI-compatible providers point at the operator's own server via
+    // api_base — the catalog's capability matrix can't know what that server
+    // supports (it even marks hosted_vllm audio as unsupported while litellm
+    // ships a hosted_vllm transcription handler). Offer every mode there;
+    // over-offering only risks a failed health check, under-offering hard-blocks
+    // legitimate deployments (ASR/TTS were unselectable).
+    if (CUSTOM_PROVIDERS.has(providerSlug)) return ALL_MODES
     const m = currentProvider().modes
     return (Array.isArray(m) && m.length) ? m : ALL_MODES
   }
