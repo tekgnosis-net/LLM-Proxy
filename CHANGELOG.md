@@ -1,3 +1,10 @@
+## [1.31.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.31.0...v1.31.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* audio/image/completion modes were unselectable — map litellm's plural endpoint keys; custom providers offer all modes ([9edbe58](https://github.com/tekgnosis-net/LLM-Proxy/commit/9edbe587590684dacbb508f06ab8341b12254503))
+
 # [1.31.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.30.0...v1.31.0) (2026-07-21)
 
 
