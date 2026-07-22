@@ -4,6 +4,7 @@
   import { copyText } from '../lib/browser.js'
   import { rulesToFallbacks, fallbacksToRules } from '../lib/fallbacks.js'
   import { rulesToAliases, aliasesToRules, withAliasNames, stripAliasNames } from '../lib/aliases.js'
+  import { passthroughRowsToList, listToPassthroughRows } from '../lib/passthrough.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
@@ -20,7 +21,7 @@
   // Picker options come from the key's Allowed models (or all models if unrestricted),
   // so a key can only ever fall back to models it is permitted to call.
   let fbOptions = $derived((form.models && form.models.length) ? form.models : availableModels)
-  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = [] }
+  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = []; passthroughRows = []; existingMetadata = {} }
   function addFbRule() { fbRules = [...fbRules, { primary: '', backups: [] }] }
   function rmFbRule(i) { fbRules = fbRules.filter((_, j) => j !== i) }
   function switchFbToJson() { form.router_fallbacks = JSON.stringify(rulesToFallbacks(fbRules), null, 2); fbErr = ''; fbMode = 'json' }
@@ -36,6 +37,10 @@
   let aliasRows = $state([])   // [{ name, target }]
   function addAlias() { aliasRows = [...aliasRows, { name: '', target: '' }] }
   function rmAlias(i) { aliasRows = aliasRows.filter((_, j) => j !== i) }
+  let passthroughRows = $state([])       // string[] — allowed passthrough routes
+  let existingMetadata = $state({})      // preserved so /key/update (which REPLACES metadata) keeps other keys
+  function addRoute() { passthroughRows = [...passthroughRows, ''] }
+  function rmRoute(i) { passthroughRows = passthroughRows.filter((_, j) => j !== i) }
 
   async function load() {
     loading = true; err = ''
@@ -94,6 +99,14 @@
     // LiteLLM checks the raw model name against allowed models BEFORE resolving a
     // per-key alias (#25281), so a restricted key must also list the alias names.
     payload.models = withAliasNames(form.models, Object.keys(aliases))
+    // Allowed passthrough routes live under metadata (the top-level param is
+    // Enterprise-gated; the OSS enforcer reads metadata.allowed_passthrough_routes).
+    // /key/update REPLACES metadata, so merge into the key's existing metadata.
+    const routes = passthroughRowsToList(passthroughRows)
+    const meta = { ...existingMetadata }
+    if (routes.length) meta.allowed_passthrough_routes = routes
+    else delete meta.allowed_passthrough_routes            // clearing removes the sub-key
+    if (Object.keys(meta).length) payload.metadata = meta  // omit metadata:{} on a bare new key
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     return payload
   }
@@ -116,6 +129,8 @@
     else { fbMode = 'picker'; fbRules = rules }
     fbErr = ''
     aliasRows = aliasesToRules(k.aliases)
+    existingMetadata = { ...(k.metadata || {}) }
+    passthroughRows = listToPassthroughRows(k.metadata?.allowed_passthrough_routes)
     editingToken = k.token; showCreate = true
     showRouterSettings = !!k.router_settings || aliasRows.length > 0
   }
@@ -167,6 +182,17 @@
           {#each availableModels as m}<option value={m}>{m}</option>{/each}
         </select>
       </label>
+      <div class="passthrough">
+        <span class="field-name">Allowed passthrough routes</span>
+        {#each passthroughRows as _, i}
+          <div class="pt-row">
+            <input bind:value={passthroughRows[i]} placeholder="/v1/audio/voices" aria-label="passthrough route" />
+            <button type="button" class="pt-x" onclick={() => rmRoute(i)} aria-label="remove route">✕</button>
+          </div>
+        {/each}
+        <button type="button" class="pt-add" onclick={addRoute}>+ Add route</button>
+        <span class="hint">Routes this key may reach on the proxy's pass-through endpoints (e.g. <code>/v1/audio/voices</code>). Prefix-matched — <code>/v1/audio/voices</code> also allows <code>/v1/audio/voices/combine</code>.</span>
+      </div>
       {#if editReach.length}
         <p class="reach-note">⚠ Via fallbacks this key can also reach: {editReach.map(e => e.target).join(', ')}. Informational — see Routing → Reachability.</p>
       {/if}
@@ -320,4 +346,10 @@
   .form-heading{margin:0 0 4px;font-size:15px;font-weight:600;color:#1c1c1e}
   .actions{display:flex;gap:6px}
   .reach-note{font-size:12px;color:#9a5b00;background:#fff4e5;border-radius:8px;padding:6px 10px;margin:4px 0}
+  .passthrough{margin:8px 0}
+  .passthrough .field-name{display:block;font-size:13px;color:#3a3a3c;margin-bottom:4px}
+  .pt-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+  .pt-row input{flex:1;min-width:0}
+  .pt-x{border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer;padding:4px 9px}
+  .pt-add{margin-top:4px;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}
 </style>
