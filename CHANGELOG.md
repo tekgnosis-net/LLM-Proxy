@@ -1,3 +1,10 @@
+## [1.32.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.32.0...v1.32.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **ui:** show date+time in the Activity feed Time column ([9b959c8](https://github.com/tekgnosis-net/LLM-Proxy/commit/9b959c8eca334536cd224f0a3834fe70eef6d450))
+
 # [1.32.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.31.1...v1.32.0) (2026-07-22)
 
 
