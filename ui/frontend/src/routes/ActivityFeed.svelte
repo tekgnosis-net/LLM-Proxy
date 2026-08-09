@@ -1,7 +1,7 @@
 <script>
   import { api } from '../lib/api.js'
   import { copyText } from '../lib/browser.js'
-  import { money, fmtMs } from '../lib/format.js'
+  import { money, fmtMs, fmtDateTime } from '../lib/format.js'
 
   let { days, byModel = [], byKey = [], refreshTick = 0 } = $props()
 
@@ -146,7 +146,7 @@
           {#each rows as r (r.id)}
             <tr class="row" class:failed={r.status === 'failure'} class:open={openId === r.id}
                 onclick={() => toggle(r.id)}>
-              <td class="nowrap">{new Date(r.time).toLocaleTimeString()}</td>
+              <td class="nowrap">{fmtDateTime(r.time)}</td>
               <td class="trunc" title={r.model}>{r.model || '—'}</td>
               <td>{r.provider || '—'}</td>
               <td>{r.key}</td>
