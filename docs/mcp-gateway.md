@@ -27,7 +27,7 @@ re-verify field names/behavior against your pinned image on upgrade.
 
 | Field | Notes |
 |---|---|
-| **Server name** | `[A-Za-z0-9_-]+`, must be unique. Becomes the tool prefix (`firecrawl-scrape`) and the per-server endpoint path (`/firecrawl/mcp`). |
+| **Server name** | Letters, digits and `_` only — **no hyphens** (LiteLLM reserves `-` as the tool-namespace separator; enforced by the form since 1.34.1). Must be unique. Becomes the tool prefix (`firecrawl-scrape`) and the per-server endpoint path (`/firecrawl/mcp`). |
 | **Description** | Optional, free text. |
 | **Transport** | `Streamable HTTP` (`http`) or `SSE` (`sse`). v1 supports only these two — **stdio is out of scope** (see Known limitations). |
 | **URL** | Required, `http://` or `https://`. **Stored and displayed in plain text** — see the URL-embedded-secret caveat below. |
@@ -247,6 +247,77 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### Claude configuration (JSON)
+
+The virtual key always travels as the `Authorization: Bearer` header — in
+Claude's JSON configs that means a `headers` object (native HTTP transport)
+or a `--header` argument (the `mcp-remote` bridge). Replace
+`<proxy-host>:<port>` with your proxy (e.g. `10.0.20.75:8000`) and
+`sk-your-virtual-key` with a key that has the server(s) granted on the
+**Virtual Keys** page (or use servers marked "all keys"). Grants take up to
+~60s to propagate.
+
+**Claude Code** — project `.mcp.json` (or user scope via `claude mcp add`):
+
+```json
+{
+  "mcpServers": {
+    "llm-proxy": {
+      "type": "http",
+      "url": "http://<proxy-host>:<port>/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-your-virtual-key"
+      }
+    }
+  }
+}
+```
+
+Equivalent CLI one-liner:
+
+```bash
+claude mcp add --transport http llm-proxy http://<proxy-host>:<port>/mcp \
+  --header "Authorization: Bearer sk-your-virtual-key"
+```
+
+Variants:
+
+- **Single server only** — point `url` at the per-server endpoint instead:
+  `"url": "http://<proxy-host>:<port>/hindsight/mcp"`.
+- **Scope the shared endpoint** — keep `/mcp` and add a second header:
+  `"x-mcp-servers": "hindsight,g_search_mcp"`.
+
+**Claude Desktop** (`claude_desktop_config.json`) — the stable desktop config
+speaks stdio, so use the standard `mcp-remote` bridge. Note the
+`Authorization:${AUTH_HEADER}` form (no space inside the argument): some
+`mcp-remote` versions mishandle spaces in `--header` values, and the env-var
+indirection is the documented workaround — it also keeps the key out of the
+args line:
+
+```json
+{
+  "mcpServers": {
+    "llm-proxy": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "http://<proxy-host>:<port>/mcp",
+        "--header", "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer sk-your-virtual-key"
+      }
+    }
+  }
+}
+```
+
+After connecting, tools appear under their prefixed names
+(`hindsight-<tool>`, `g_search_mcp-<tool>`, …). If the tool list comes back
+empty: check the key's grants on the Virtual Keys page, wait out the ~60s
+auth-cache window, and confirm the server's health dot on the MCP Servers
+page.
 
 ### Known limitations (v1)
 
