@@ -5,6 +5,7 @@
   import { rulesToFallbacks, fallbacksToRules } from '../lib/fallbacks.js'
   import { rulesToAliases, aliasesToRules, withAliasNames, stripAliasNames } from '../lib/aliases.js'
   import { passthroughRowsToList, listToPassthroughRows } from '../lib/passthrough.js'
+  import { MCP_TEAM_ID } from '../lib/mcp.js'
   let keys = $state([]); let err = $state(''); let loading = $state(false)
   let showCreate = $state(false); let busy = $state(false)
   let newKey = $state(null)   // the one-time plaintext key after create
@@ -21,7 +22,7 @@
   // Picker options come from the key's Allowed models (or all models if unrestricted),
   // so a key can only ever fall back to models it is permitted to call.
   let fbOptions = $derived((form.models && form.models.length) ? form.models : availableModels)
-  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = []; passthroughRows = []; existingMetadata = {} }
+  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = []; passthroughRows = []; existingMetadata = {}; mcpGrants = []; mcpInitial = '[]'; editingTeamId = null }
   function addFbRule() { fbRules = [...fbRules, { primary: '', backups: [] }] }
   function rmFbRule(i) { fbRules = fbRules.filter((_, j) => j !== i) }
   function switchFbToJson() { form.router_fallbacks = JSON.stringify(rulesToFallbacks(fbRules), null, 2); fbErr = ''; fbMode = 'json' }
@@ -41,6 +42,13 @@
   let existingMetadata = $state({})      // preserved so /key/update (which REPLACES metadata) keeps other keys
   function addRoute() { passthroughRows = [...passthroughRows, ''] }
   function rmRoute(i) { passthroughRows = passthroughRows.filter((_, j) => j !== i) }
+  let mcpOptions = $state([])            // [{id, name}] from APPLIED mcp_server items only
+  let mcpGrants = $state([])             // selected server ids
+  let mcpInitial = $state('[]')          // JSON of the sorted initial selection (change detection)
+  let editingTeamId = $state(null)       // the key's current team (grant choreography)
+  function toggleGrant(id) {
+    mcpGrants = mcpGrants.includes(id) ? mcpGrants.filter(g => g !== id) : [...mcpGrants, id]
+  }
 
   async function load() {
     loading = true; err = ''
@@ -53,6 +61,10 @@
           .map(i => i.data?.model_name)
           .filter(Boolean)
       )].sort()
+      mcpOptions = (state.items || [])
+        .filter(i => i.kind === 'mcp_server' && i.flag !== 'deleted' && i.flag !== 'new')
+        .map(i => ({ id: i.name, name: i.data?.server_name || i.name, allowAll: !!i.data?.allow_all_keys }))
+        .sort((a, b) => a.name.localeCompare(b.name))
     } catch (e) { err = e.message } finally { loading = false }
   }
   onMount(load)
@@ -107,6 +119,21 @@
     if (routes.length) meta.allowed_passthrough_routes = routes
     else delete meta.allowed_passthrough_routes            // clearing removes the sub-key
     if (Object.keys(meta).length) payload.metadata = meta  // omit metadata:{} on a bare new key
+    // MCP grants: send object_permission only when the selection changed, so
+    // unrelated key edits never churn the permission row.
+    // Team choreography (live-proven, Task 1 + follow-up probes): grants on
+    // restricted servers need membership in the ui-mcp team; a team key with an
+    // EMPTY grant list FAILS OPEN to the whole team scope, so revoking all
+    // grants must also detach the key from the team (team_id: null).
+    const grants = [...mcpGrants].sort()
+    if (JSON.stringify(grants) !== mcpInitial) {
+      payload.object_permission = { mcp_servers: grants }
+      if (grants.length && (!editingTeamId || editingTeamId === MCP_TEAM_ID)) {
+        payload.team_id = MCP_TEAM_ID
+      } else if (!grants.length && editingTeamId === MCP_TEAM_ID) {
+        payload.team_id = null
+      }
+    }
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     return payload
   }
@@ -131,6 +158,9 @@
     aliasRows = aliasesToRules(k.aliases)
     existingMetadata = { ...(k.metadata || {}) }
     passthroughRows = listToPassthroughRows(k.metadata?.allowed_passthrough_routes)
+    mcpGrants = [...((k.object_permission?.mcp_servers) || [])]
+    mcpInitial = JSON.stringify([...mcpGrants].sort())
+    editingTeamId = k.team_id || null
     editingToken = k.token; showCreate = true
     showRouterSettings = !!k.router_settings || aliasRows.length > 0
   }
@@ -193,6 +223,22 @@
         <button type="button" class="pt-add" onclick={addRoute}>+ Add route</button>
         <span class="hint">Routes this key may reach on the proxy's pass-through endpoints (e.g. <code>/v1/audio/voices</code>). Prefix-matched — <code>/v1/audio/voices</code> also allows <code>/v1/audio/voices/combine</code>.</span>
       </div>
+      {#if mcpOptions.length}
+        <div class="passthrough">
+          <span class="field-name">MCP servers</span>
+          {#if editingTeamId && editingTeamId !== MCP_TEAM_ID}
+            <span class="hint">⚠ This key belongs to team <code>{editingTeamId}</code> — MCP grants must be within that team's scope; the proxy rejects anything else.</span>
+          {/if}
+          {#each mcpOptions as s}
+            <label class="mcp-opt">
+              <input type="checkbox" checked={mcpGrants.includes(s.id)} onchange={() => toggleGrant(s.id)}
+                     disabled={s.allowAll} />
+              {s.name}{#if s.allowAll}<span class="hint"> (all keys allowed)</span>{/if}
+            </label>
+          {/each}
+          <span class="hint">MCP servers this key may reach through the gateway (<code>/mcp</code>). Nothing selected = no MCP access, except servers marked "all keys". Changes take up to ~60s to propagate (auth cache). Newly added servers appear here after Apply.</span>
+        </div>
+      {/if}
       {#if editReach.length}
         <p class="reach-note">⚠ Via fallbacks this key can also reach: {editReach.map(e => e.target).join(', ')}. Informational — see Routing → Reachability.</p>
       {/if}
@@ -352,4 +398,5 @@
   .pt-row input{flex:1;min-width:0}
   .pt-x{border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer;padding:4px 9px}
   .pt-add{margin-top:4px;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}
+  .mcp-opt{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:2px 0}
 </style>

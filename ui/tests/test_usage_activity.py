@@ -150,3 +150,32 @@ async def test_activity_empty_dsn_guard(monkeypatch):
     monkeypatch.setattr(ur, "get_settings", lambda: types.SimpleNamespace(database_url=""))
     out = await ur.usage_activity(days=7)
     assert out == {"rows": [], "next_cursor": None}
+
+# ── type filtering (MCP vs LLM) ─────────────────────────────────────────────
+def test_activity_where_type_filters():
+    sql_mcp, _ = ur._activity_where(7, type_="mcp")
+    assert "l.call_type IN ('call_mcp_tool','list_mcp_tools')" in sql_mcp
+    sql_llm, _ = ur._activity_where(7, type_="llm")
+    assert "l.call_type IS NULL OR l.call_type NOT IN" in sql_llm
+    sql_all, _ = ur._activity_where(7)
+    assert "call_mcp_tool" not in sql_all
+
+
+def test_shape_activity_row_mcp_fields():
+    r = ur._shape_activity_row({"id": "r1", "time": None, "model": "", "provider": "", "key": "k",
+                                "tok_in": 0, "tok_out": 0, "spend": 0, "latency_ms": 1,
+                                "status": "success", "cache_hit": None, "call_type": "call_mcp_tool",
+                                "mcp_server": "deepwiki", "mcp_tool": "read_wiki_structure"})
+    assert r["mcp_server"] == "deepwiki" and r["mcp_tool"] == "read_wiki_structure"
+
+
+def test_extract_mcp_from_metadata():
+    meta = json.dumps({"mcp_tool_call_metadata": {
+        "mcp_server_name": "deepwiki", "name": "read_wiki_structure",
+        "arguments": {"repoName": "x"}, "result": {"ok": True}}})
+    m = ur._extract_mcp(meta)
+    assert m == {"server": "deepwiki", "tool": "read_wiki_structure",
+                 "arguments": {"repoName": "x"}, "result": {"ok": True}}
+    assert ur._extract_mcp(None) is None
+    assert ur._extract_mcp("not json") is None
+    assert ur._extract_mcp(json.dumps({})) is None

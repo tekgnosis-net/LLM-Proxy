@@ -44,3 +44,18 @@ def test_split_model_gets_uuid_name_and_keeps_model_name():
     uuid.UUID(m["name"])                      # name is a valid uuid (raises if not)
     assert m["data"]["model_name"] == "gpt-4o"
     assert m["data"]["litellm_params"] == {"model": "openai/gpt-4o"}
+
+
+def test_split_config_imports_mcp_servers():
+    from app.config_import import split_config
+    cfg = {"model_list": [], "mcp_servers": {
+        "deepwiki": {"url": "https://mcp.deepwiki.com/mcp", "transport": "http"},
+        "fc": {"url": "http://10.0.20.9:3002/mcp", "auth_type": "bearer_token", "auth_value": "tok"},
+    }}
+    items, passthrough = split_config(cfg, encrypt=lambda s: "ENC:" + s)
+    mcp = {i["data"]["server_name"]: i for i in items if i["kind"] == "mcp_server"}
+    assert set(mcp) == {"deepwiki", "fc"}
+    assert mcp["deepwiki"]["data"]["transport"] == "http"
+    assert mcp["fc"]["data"]["auth_value_encrypted"] == "ENC:tok"
+    assert "auth_value" not in mcp["fc"]["data"]
+    assert "mcp_servers" not in passthrough

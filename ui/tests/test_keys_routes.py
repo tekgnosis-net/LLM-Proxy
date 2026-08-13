@@ -102,3 +102,40 @@ def test_create_key_malformed_models_entry_no_500(tmp_path):
     c = _client_v(tmp_path, FakeKeys(), groups=["gpt-oss-20b-1x"])
     r = c.post("/api/keys", json={"key_alias": "x", "models": ["gpt-oss-20b-1x", ["nested"]]})
     assert r.status_code == 200      # malformed entry skipped, not a 500
+
+
+class FakeConfigStoreMcp(FakeConfigStore):
+    def __init__(self, groups, mcp):
+        super().__init__(groups)
+        self._items += [{"kind": "mcp_server", "name": name, "data": {"server_name": sn}}
+                        for name, sn in mcp]
+
+
+def _client_mcp(tmp_path, fake, groups, mcp):
+    os.environ["DATABASE_URL"] = "fake://test"  # enable validation
+    c = _client(tmp_path, fake, clear_db_url=False)
+    import app.routes.keys_routes as kr
+    kr.make_config_store = lambda: FakeConfigStoreMcp(groups, mcp)
+    return c
+
+
+def test_create_key_rejects_unknown_mcp_grant(tmp_path):
+    c = _client_mcp(tmp_path, FakeKeys(), groups=["g1"], mcp=[("u1", "deepwiki")])
+    r = c.post("/api/keys", json={"key_alias": "x", "object_permission": {"mcp_servers": ["nope"]}})
+    assert r.status_code == 422
+    assert "unknown MCP server" in r.json()["detail"] and "nope" in r.json()["detail"]
+
+
+def test_create_key_accepts_mcp_grant_by_uuid_or_name(tmp_path):
+    c = _client_mcp(tmp_path, FakeKeys(), groups=["g1"], mcp=[("u1", "deepwiki")])
+    r = c.post("/api/keys", json={"key_alias": "x",
+                                  "object_permission": {"mcp_servers": ["u1", "deepwiki"]}})
+    assert r.status_code == 200
+    # FakeKeys echoes the payload — grants forwarded verbatim, untouched
+    assert r.json()["object_permission"] == {"mcp_servers": ["u1", "deepwiki"]}
+
+
+def test_update_key_rejects_unknown_mcp_grant(tmp_path):
+    c = _client_mcp(tmp_path, FakeKeys(), groups=["g1"], mcp=[("u1", "deepwiki")])
+    r = c.post("/api/keys/update", json={"key": "h1", "object_permission": {"mcp_servers": ["dead"]}})
+    assert r.status_code == 422 and "dead" in r.json()["detail"]

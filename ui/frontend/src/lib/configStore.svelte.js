@@ -33,12 +33,15 @@ export function createConfigStore() {
       const r = await api.apply()
       if (r.hybrid) {
         const m = r.models || {}
-        const failed = m.failed || []
+        const mc = r.mcp
         let msg = `Applied live — ${m.added || 0} added, ${m.updated || 0} updated, ${m.deleted || 0} deleted`
+        if (mc) msg += `; MCP — ${mc.added || 0} added, ${mc.updated || 0} updated, ${mc.deleted || 0} deleted`
         if (r.restart === 'healthy') msg += '; settings change restarted the proxy (healthy)'
         else if (r.restart === 'unhealthy') msg += `; settings restart UNHEALTHY: ${r.detail || ''}`
-        if (failed.length) {
-          error = `${msg}. ${failed.length} model op(s) failed: ${failed.map(f => `${f.id} (${f.op})`).join(', ')}`
+        const allFailed = [...(m.failed || []).map(f => `${f.id} (${f.op})`),
+                           ...((mc && mc.failed) || []).map(f => `MCP ${f.id} (${f.op})`)]
+        if (allFailed.length) {
+          error = `${msg}. ${allFailed.length} op(s) failed: ${allFailed.join(', ')}`
           notice = ''
         } else {
           notice = msg
