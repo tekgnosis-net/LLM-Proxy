@@ -1,10 +1,14 @@
 import logging
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from app.auth import login_required
 from app.settings import get_settings
 from app.mcp_client import McpClient
 from app.routes.usage_routes import _iso_utc
+from app.mcp_probe import probe_tools, ProbeError
+from app.config_render import effective
+from app.config_db import ConfigStore
+from app.credentials_store import fernet_from_secret
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("uvicorn.error")
@@ -13,6 +17,15 @@ log = logging.getLogger("uvicorn.error")
 def make_mcp_client() -> McpClient:
     s = get_settings()
     return McpClient(s.litellm_base_url, s.litellm_master_key)
+
+
+def make_preview_store() -> ConfigStore:
+    return ConfigStore(get_settings().database_url)
+
+
+def _preview_fernet():
+    s = get_settings()
+    return fernet_from_secret(s.credentials_key or s.session_secret)
 
 
 @router.get("/mcp/health", dependencies=[Depends(login_required)])
@@ -77,3 +90,41 @@ async def mcp_usage(days: int = 30):
         await conn.close()
     return {"rows": [{"server": r["server"], "calls": r["calls"], "spend": float(r["spend"] or 0),
                       "failures": r["failures"], "last_call": _iso_utc(r["last_call"])} for r in rows]}
+
+
+@router.post("/mcp/tools/preview", dependencies=[Depends(login_required)])
+async def mcp_tools_preview(body: dict = Body(...)):
+    """List an MCP server's tools by probing it DIRECTLY (works before the server
+    is saved/applied — LiteLLM can only list tools for registered servers).
+    Blank auth_value + server_id reuses the stored ciphertext (blank-means-keep parity)."""
+    url = (body.get("url") or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=422, detail="url required (http:// or https://)")
+    transport = body.get("transport") or "http"
+    if transport != "http":
+        raise HTTPException(status_code=422, detail="HTTP transport only")
+    auth_type = body.get("auth_type") or None
+    auth_value = body.get("auth_value") or ""
+    if auth_type and not auth_value:
+        server_id = body.get("server_id")
+        dsn = get_settings().database_url
+        if not (server_id and dsn):
+            raise HTTPException(status_code=422, detail="auth_value required")
+        store = make_preview_store()
+        eff = effective(await store.applied(), await store.staged())
+        existing = next((i for i in eff if i["kind"] == "mcp_server" and i["name"] == server_id
+                         and i.get("flag") != "deleted"), None)
+        ve = (existing.get("data") or {}).get("auth_value_encrypted") if existing else None
+        if not ve:
+            raise HTTPException(status_code=422, detail="auth_value required (no stored secret to reuse)")
+        auth_value = _preview_fernet().decrypt(ve.encode()).decode()
+    try:
+        tools = await probe_tools(url, auth_type=auth_type, auth_value=auth_value,
+                                  static_headers=body.get("static_headers") or {},
+                                  transport=transport)
+    except ProbeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        # never echo exception text: it can carry the URL (which can embed keys)
+        raise HTTPException(status_code=502, detail=f"probe failed: {e.__class__.__name__}")
+    return {"tools": tools}
