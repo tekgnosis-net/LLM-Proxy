@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import JSONResponse
 from app.auth import login_required
@@ -43,6 +44,11 @@ def _redact_item(it: dict) -> dict:
     if it["kind"] == "credential":
         d = it["data"] or {}
         return {**it, "data": {"provider": d.get("provider"), "api_key": "***"}}
+    if it["kind"] == "mcp_server":
+        d = dict(it["data"] or {})
+        if d.get("auth_value_encrypted"):
+            d["auth_value_encrypted"] = "***"
+        return {**it, "data": d}
     return it
 
 @router.get("/config/export", dependencies=[Depends(login_required)])
@@ -81,12 +87,85 @@ async def _credential_data(name: str, data: dict, store) -> dict:
             raise HTTPException(status_code=422, detail="credential api_key required (no existing key to keep)")
     return {"provider": provider, "value_encrypted": ve}
 
+_MCP_TRANSPORTS = {"http", "sse"}
+_MCP_AUTH_TYPES = {"api_key", "bearer_token", "basic"}
+_MCP_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+def _mcp_cost_info(data: dict) -> dict:
+    ci = ((data.get("mcp_info") or {}).get("mcp_server_cost_info") or {})
+    out = {}
+    dc = ci.get("default_cost_per_query")
+    if dc is not None:
+        if not isinstance(dc, (int, float)) or isinstance(dc, bool) or dc < 0:
+            raise HTTPException(status_code=422, detail="default_cost_per_query must be a number >= 0")
+        out["default_cost_per_query"] = float(dc)
+    tools = ci.get("tool_name_to_cost_per_query") or {}
+    if tools:
+        clean = {}
+        for t, v in tools.items():
+            if not isinstance(t, str) or not t.strip() or not isinstance(v, (int, float)) \
+                    or isinstance(v, bool) or v < 0:
+                raise HTTPException(status_code=422, detail="tool costs must map tool name -> number >= 0")
+            clean[t.strip()] = float(v)
+        out["tool_name_to_cost_per_query"] = clean
+    return {"mcp_server_cost_info": out} if out else {}
+
+async def _mcp_server_data(name: str, data: dict, store) -> dict:
+    """Normalize + validate an mcp_server item. A provided auth_value is Fernet-encrypted;
+    BLANK auth_value with auth_type set reuses the existing ciphertext (edit without
+    re-typing). config.yaml never sees these items — hot apply only."""
+    data = dict(data or {})
+    server_name = (data.get("server_name") or "").strip()
+    if not _MCP_NAME_RE.match(server_name):
+        raise HTTPException(status_code=422, detail="server_name required: letters, digits, _ or - only")
+    url = (data.get("url") or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=422, detail="url required (http:// or https://)")
+    transport = data.get("transport")
+    if transport not in _MCP_TRANSPORTS:
+        raise HTTPException(status_code=422, detail="transport must be http or sse")
+    auth_type = (data.get("auth_type") or None)
+    if auth_type is not None and auth_type not in _MCP_AUTH_TYPES:
+        raise HTTPException(status_code=422, detail="auth_type must be api_key, bearer_token, basic or empty")
+    eff = effective(await store.applied(), await store.staged())
+    for it in eff:
+        if (it["kind"] == "mcp_server" and it["name"] != name and it.get("flag") != "deleted"
+                and (it.get("data") or {}).get("server_name") == server_name):
+            raise HTTPException(status_code=422, detail=f"server_name {server_name!r} already in use")
+    out = {
+        "server_name": server_name,
+        "description": (data.get("description") or "").strip(),
+        "transport": transport,
+        "url": url,
+        "auth_type": auth_type,
+        "static_headers": {str(k).strip(): str(v) for k, v in (data.get("static_headers") or {}).items()
+                           if str(k).strip()},
+        "extra_headers": [str(h).strip() for h in (data.get("extra_headers") or []) if str(h).strip()],
+        "allowed_tools": [str(t).strip() for t in (data.get("allowed_tools") or []) if str(t).strip()],
+        "allow_all_keys": bool(data.get("allow_all_keys")),
+        "mcp_info": _mcp_cost_info(data),
+    }
+    if auth_type:
+        auth_value = data.get("auth_value")
+        if auth_value:
+            out["auth_value_encrypted"] = _fernet().encrypt(auth_value.encode()).decode()
+        else:
+            existing = next((i for i in eff if i["kind"] == "mcp_server" and i["name"] == name
+                             and i.get("flag") != "deleted"), None)
+            ve = (existing.get("data") or {}).get("auth_value_encrypted") if existing else None
+            if not ve:
+                raise HTTPException(status_code=422, detail="auth_value required (no existing secret to keep)")
+            out["auth_value_encrypted"] = ve
+    return out
+
 @router.put("/config/item", dependencies=[Depends(login_required)])
 async def stage_item(body: dict = Body(...)):
     kind, name, data = body.get("kind"), body.get("name"), body.get("data")
     if not kind or not name: raise HTTPException(status_code=422, detail="kind and name required")
     if kind == "credential":
         data = await _credential_data(name, data, make_config_store())
+    if kind == "mcp_server":
+        data = await _mcp_server_data(name, data, make_config_store())
     try:
         await make_config_store().stage(kind, name, data)
         return await pending_status(make_config_store())

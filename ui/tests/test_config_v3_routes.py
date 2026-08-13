@@ -532,3 +532,69 @@ def test_reachability_key_store_failure_preserves_collisions(tmp_path):
 def test_reachability_requires_login(tmp_path):
     c = _client(tmp_path, FakeStoreReach()); c.cookies.clear()
     assert c.get("/api/config/reachability").status_code == 401
+
+# Task 4: mcp_server items — stage/validate/redact
+
+def _mcp_body(**over):
+    d = {"server_name": "deepwiki", "description": "", "transport": "http",
+         "url": "https://mcp.deepwiki.com/mcp", "auth_type": "", "auth_value": "",
+         "static_headers": {}, "extra_headers": [], "allowed_tools": [],
+         "allow_all_keys": False, "mcp_info": {}}
+    d.update(over)
+    return {"kind": "mcp_server", "name": "11111111-1111-1111-1111-111111111111", "data": d}
+
+def test_stage_mcp_server_normalizes_and_encrypts(tmp_path):
+    s = FakeStore(); c = _client(tmp_path, s)
+    r = c.put("/api/config/item", json=_mcp_body(auth_type="bearer_token", auth_value="tok-1"))
+    assert r.status_code == 200
+    kind, name, data, deleted = s.staged_calls[-1]
+    assert kind == "mcp_server" and deleted is False
+    assert data["server_name"] == "deepwiki" and data["transport"] == "http"
+    assert data["auth_value_encrypted"] == "ENC:tok-1" and "auth_value" not in data
+    assert data["auth_type"] == "bearer_token" and data["allow_all_keys"] is False
+
+def test_stage_mcp_server_rejects_bad_name_url_transport(tmp_path):
+    c = _client(tmp_path, FakeStore())
+    assert c.put("/api/config/item", json=_mcp_body(server_name="has space")).status_code == 422
+    assert c.put("/api/config/item", json=_mcp_body(url="ftp://x")).status_code == 422
+    assert c.put("/api/config/item", json=_mcp_body(transport="stdio")).status_code == 422
+    assert c.put("/api/config/item", json=_mcp_body(auth_type="oauth2")).status_code == 422
+
+def test_stage_mcp_server_auth_requires_value_when_no_existing(tmp_path):
+    c = _client(tmp_path, FakeStore())
+    assert c.put("/api/config/item", json=_mcp_body(auth_type="api_key", auth_value="")).status_code == 422
+
+def test_stage_mcp_server_blank_auth_keeps_existing_ciphertext(tmp_path):
+    s = FakeStore()
+    s._applied.append({"kind": "mcp_server", "name": "11111111-1111-1111-1111-111111111111",
+                       "data": {"server_name": "deepwiki", "transport": "http",
+                                "url": "https://mcp.deepwiki.com/mcp",
+                                "auth_type": "bearer_token", "auth_value_encrypted": "ENC:old"}})
+    c = _client(tmp_path, s)
+    r = c.put("/api/config/item", json=_mcp_body(auth_type="bearer_token", auth_value=""))
+    assert r.status_code == 200
+    assert s.staged_calls[-1][2]["auth_value_encrypted"] == "ENC:old"
+
+def test_stage_mcp_server_rejects_duplicate_server_name(tmp_path):
+    s = FakeStore()
+    s._applied.append({"kind": "mcp_server", "name": "other-uuid",
+                       "data": {"server_name": "deepwiki", "transport": "http", "url": "http://x/mcp"}})
+    c = _client(tmp_path, s)
+    assert c.put("/api/config/item", json=_mcp_body()).status_code == 422
+
+def test_state_redacts_mcp_secret(tmp_path):
+    s = FakeStore()
+    s._applied.append({"kind": "mcp_server", "name": "u1",
+                       "data": {"server_name": "fc", "transport": "http", "url": "http://x/mcp",
+                                "auth_type": "api_key", "auth_value_encrypted": "ENC:secret"}})
+    d = _client(tmp_path, s).get("/api/config/state").json()
+    it = next(i for i in d["items"] if i["kind"] == "mcp_server")
+    assert it["data"]["auth_value_encrypted"] == "***"
+    assert it["data"]["url"] == "http://x/mcp"
+
+def test_stage_mcp_server_validates_costs(tmp_path):
+    c = _client(tmp_path, FakeStore())
+    bad = _mcp_body(mcp_info={"mcp_server_cost_info": {"default_cost_per_query": -1}})
+    assert c.put("/api/config/item", json=bad).status_code == 422
+    bad2 = _mcp_body(mcp_info={"mcp_server_cost_info": {"tool_name_to_cost_per_query": {"t": "x"}}})
+    assert c.put("/api/config/item", json=bad2).status_code == 422
