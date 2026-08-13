@@ -95,7 +95,7 @@ async def _credential_data(name: str, data: dict, store) -> dict:
 
 _MCP_TRANSPORTS = {"http", "sse"}
 _MCP_AUTH_TYPES = {"api_key", "bearer_token", "basic"}
-_MCP_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_MCP_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 def _mcp_cost_info(data: dict) -> dict:
     ci = ((data.get("mcp_info") or {}).get("mcp_server_cost_info") or {})
@@ -123,7 +123,7 @@ async def _mcp_server_data(name: str, data: dict, store) -> dict:
     data = dict(data or {})
     server_name = (data.get("server_name") or "").strip()
     if not _MCP_NAME_RE.match(server_name):
-        raise HTTPException(status_code=422, detail="server_name required: letters, digits, _ or - only")
+        raise HTTPException(status_code=422, detail="server_name required: letters, digits or _ only (LiteLLM rejects '-' — it's the tool-name separator)")
     url = (data.get("url") or "").strip()
     if not (url.startswith("http://") or url.startswith("https://")):
         raise HTTPException(status_code=422, detail="url required (http:// or https://)")

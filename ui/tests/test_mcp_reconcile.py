@@ -30,6 +30,7 @@ def test_build_desired_decrypt_failure_reported():
     def boom(_): raise ValueError("bad token")
     desired, failed = build_desired([_item("u1", auth_type="api_key", auth_value_encrypted="x")], boom)
     assert desired == {} and failed[0]["op"] == "decrypt"
+    assert failed[0]["name"] == "s-u1"
 
 
 def test_diff_mcp_add_update_delete():

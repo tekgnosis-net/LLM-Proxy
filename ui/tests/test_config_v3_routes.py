@@ -609,6 +609,7 @@ def test_stage_mcp_server_normalizes_and_encrypts(tmp_path):
 def test_stage_mcp_server_rejects_bad_name_url_transport(tmp_path):
     c = _client(tmp_path, FakeStore())
     assert c.put("/api/config/item", json=_mcp_body(server_name="has space")).status_code == 422
+    assert c.put("/api/config/item", json=_mcp_body(server_name="g-search-mcp")).status_code == 422
     assert c.put("/api/config/item", json=_mcp_body(url="ftp://x")).status_code == 422
     assert c.put("/api/config/item", json=_mcp_body(transport="stdio")).status_code == 422
     assert c.put("/api/config/item", json=_mcp_body(auth_type="oauth2")).status_code == 422
