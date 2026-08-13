@@ -598,3 +598,59 @@ def test_stage_mcp_server_validates_costs(tmp_path):
     assert c.put("/api/config/item", json=bad).status_code == 422
     bad2 = _mcp_body(mcp_info={"mcp_server_cost_info": {"tool_name_to_cost_per_query": {"t": "x"}}})
     assert c.put("/api/config/item", json=bad2).status_code == 422
+
+# Task 6: GET /api/config/drift + POST /api/config/resync cover MCP servers
+
+class _McpFakeClient:
+    def __init__(self, live):
+        self._live = live
+        self.updated, self.added, self.deleted = [], [], []
+    async def list_servers(self): return list(self._live)
+    async def add_server(self, p): self.added.append(p["server_id"])
+    async def update_server(self, p): self.updated.append(p["server_id"])
+    async def delete_server(self, sid): self.deleted.append(sid)
+    async def update_team(self, p): pass
+    async def new_team(self, p): pass
+
+def _mcp_applied_store():
+    s = FakeStore()
+    s._applied = [{"kind": "mcp_server", "name": "u1",
+                   "data": {"server_name": "deepwiki", "transport": "http",
+                            "url": "https://mcp.deepwiki.com/mcp"}}]
+    s._staged = []
+    return s
+
+def test_drift_reports_mcp_sections(tmp_path, monkeypatch):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings; get_settings.cache_clear()
+    s = _mcp_applied_store(); c = _client(tmp_path, s)
+    import app.routes.config_v3_routes as cr
+    class _NoModels:
+        async def list_models(self): return []
+    cr.make_models_client = lambda: _NoModels()
+    live = [{"server_id": "u1", "server_name": "deepwiki", "transport": "http",
+             "url": "http://WRONG/mcp"},
+            {"server_id": "ghost", "server_name": "ghost"}]
+    cr.make_mcp_client = lambda: _McpFakeClient(live)
+    d = c.get("/api/config/drift").json()
+    m = d["mcp"]
+    assert m["missing_in_litellm"] == []
+    assert [e["id"] for e in m["extra_in_litellm"]] == ["ghost"]
+    assert m["content_drifted"][0]["id"] == "u1" and "url" in m["content_drifted"][0]["fields"]
+    get_settings.cache_clear()
+
+def test_resync_converges_mcp(tmp_path, monkeypatch):
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    from app.settings import get_settings; get_settings.cache_clear()
+    s = _mcp_applied_store(); c = _client(tmp_path, s)
+    import app.routes.config_v3_routes as cr
+    class _NoModels:
+        async def list_models(self): return []
+    cr.make_models_client = lambda: _NoModels()
+    mc = _McpFakeClient([{"server_id": "u1", "server_name": "deepwiki", "transport": "http",
+                          "url": "http://WRONG/mcp"}, {"server_id": "ghost"}])
+    cr.make_mcp_client = lambda: mc
+    r = c.post("/api/config/resync").json()
+    assert r["mcp"]["updated"] == 1 and r["mcp"]["deleted"] == 1
+    assert mc.updated == ["u1"] and mc.deleted == ["ghost"]
+    get_settings.cache_clear()

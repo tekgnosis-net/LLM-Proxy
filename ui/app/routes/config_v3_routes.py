@@ -12,6 +12,7 @@ from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
+from app.mcp_reconcile import build_desired as build_mcp_desired, mcp_content_diff, reconcile_mcp
 from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from
 from app.reachability import collision_audit, key_over_reach, SEMANTICS_VERSION
 from app.keys_client import KeysClient
@@ -269,9 +270,23 @@ async def config_resync():
     resolve_key = _make_resolve_key(applied, lambda b: f.decrypt(b.encode()).decode())
     client = make_models_client()
     live = await client.list_models()
-    return await reconcile_models(model_items, live, client,
-                                  changed_item_names=set(), creds_changed=set(),
-                                  resolve_key=resolve_key, converge_content=True)
+    model_report = await reconcile_models(model_items, live, client,
+                                          changed_item_names=set(), creds_changed=set(),
+                                          resolve_key=resolve_key, converge_content=True)
+    dec = lambda b: f.decrypt(b.encode()).decode()
+    mcp_items = [it for it in applied if it["kind"] == "mcp_server"]
+    mcp_client = make_mcp_client()
+    try:
+        mcp_live = await mcp_client.list_servers()
+        desired_mcp, _ = build_mcp_desired(mcp_items, None)
+        live_by_id = {s.get("server_id"): s for s in mcp_live if s.get("server_id")}
+        drifted = {sid for sid in (set(desired_mcp) & set(live_by_id))
+                   if mcp_content_diff(desired_mcp[sid], live_by_id[sid])}
+        mcp_report = await reconcile_mcp(mcp_items, mcp_live, mcp_client, drifted, dec)
+    except Exception as e:
+        mcp_report = {"added": 0, "updated": 0, "deleted": 0,
+                      "failed": [{"id": "*", "op": "list", "error": str(e)}]}
+    return {**model_report, "mcp": mcp_report}
 
 @router.get("/config/drift", dependencies=[Depends(login_required)])
 async def config_drift():
@@ -279,7 +294,8 @@ async def config_drift():
     if not s.store_model_in_db:
         return {"hybrid": False, "in_sync": True, "missing_in_litellm": [], "extra_in_litellm": []}
     store = make_config_store()
-    model_items = [it for it in await store.applied() if it["kind"] == "model"]
+    applied_items = await store.applied()
+    model_items = [it for it in applied_items if it["kind"] == "model"]
     desired, _, _ = build_desired(model_items, resolve_key=None)   # presence only — no key needed
     try:
         live = await make_models_client().list_models()
@@ -296,8 +312,29 @@ async def config_drift():
                               (live_by_id[mid].get("model_info") or {}))
         if fields:
             content.append({"id": mid, "model_name": desired[mid].get("model_name"), "fields": fields})
+    mcp_items = [it for it in applied_items if it["kind"] == "mcp_server"]
+    try:
+        mcp_live = await make_mcp_client().list_servers()
+    except Exception as e:
+        mcp_out = {"error": "query_failed", "detail": str(e)}
+    else:
+        desired_mcp, _ = build_mcp_desired(mcp_items, None)
+        live_by_id_mcp = {s.get("server_id"): s for s in mcp_live if s.get("server_id")}
+        mcp_out = {
+            "missing_in_litellm": [{"id": i, "server_name": desired_mcp[i].get("server_name")}
+                                   for i in sorted(set(desired_mcp) - set(live_by_id_mcp))],
+            "extra_in_litellm": [{"id": i, "server_name": (live_by_id_mcp[i] or {}).get("server_name")}
+                                 for i in sorted(set(live_by_id_mcp) - set(desired_mcp))],
+            "content_drifted": [],
+        }
+        for sid in sorted(set(desired_mcp) & set(live_by_id_mcp)):
+            fields = mcp_content_diff(desired_mcp[sid], live_by_id_mcp[sid])
+            if fields:
+                mcp_out["content_drifted"].append(
+                    {"id": sid, "server_name": desired_mcp[sid].get("server_name"), "fields": fields})
     return {"hybrid": True, "in_sync": not missing and not extra and not content,
-            "missing_in_litellm": missing, "extra_in_litellm": extra, "content_drifted": content}
+            "missing_in_litellm": missing, "extra_in_litellm": extra, "content_drifted": content,
+            "mcp": mcp_out}
 
 @router.get("/config/integrity", dependencies=[Depends(login_required)])
 async def config_integrity():
