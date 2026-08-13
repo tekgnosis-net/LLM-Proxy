@@ -13,7 +13,7 @@ from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
 from app.mcp_reconcile import build_desired as build_mcp_desired, mcp_content_diff, reconcile_mcp
-from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from
+from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from, key_mcp_orphans, mcp_server_names
 from app.reachability import collision_audit, key_over_reach, SEMANTICS_VERSION
 from app.keys_client import KeysClient
 from app.mcp_client import McpClient
@@ -346,10 +346,12 @@ async def config_integrity():
     try:
         keys = await make_keys_client().list_keys()
     except Exception as e:
-        return {"error": "query_failed", "detail": str(e), "router_orphans": r_orphans, "key_orphans": []}
+        return {"error": "query_failed", "detail": str(e), "router_orphans": r_orphans, "key_orphans": [], "key_mcp_orphans": []}
     k_orphans = key_orphans(keys, groups)
-    return {"in_sync": not r_orphans and not k_orphans,
-            "router_orphans": r_orphans, "key_orphans": k_orphans}
+    mcp_valid = mcp_server_names([i for i in eff if i["kind"] == "mcp_server"])
+    k_mcp = key_mcp_orphans(keys, mcp_valid)
+    return {"in_sync": not r_orphans and not k_orphans and not k_mcp,
+            "router_orphans": r_orphans, "key_orphans": k_orphans, "key_mcp_orphans": k_mcp}
 
 @router.post("/config/integrity/fix", dependencies=[Depends(login_required)])
 async def config_integrity_fix(body: dict = Body(...)):
@@ -377,6 +379,15 @@ async def config_integrity_fix(body: dict = Body(...)):
         if k is None:
             raise HTTPException(status_code=409, detail="key not found (already changed?); re-scan")
         field = target["field"]
+        if field == "mcp_servers":
+            op = k.get("object_permission") if isinstance(k.get("object_permission"), dict) else {}
+            before = op.get("mcp_servers")
+            after = trim_key_field(before, target)
+            if dry:
+                return {"before": before, "after": after, "effect": "applies immediately (hot)"}
+            await make_keys_client().update_key({"key": target["token"],
+                                                 "object_permission": {"mcp_servers": after}})
+            return {"applied": True, "needs_apply": False}
         before = k.get(field)
         after = trim_key_field(before, target)
         if dry:

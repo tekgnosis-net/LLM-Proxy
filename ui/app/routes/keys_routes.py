@@ -4,7 +4,7 @@ from app.keys_client import KeysClient
 from app.settings import get_settings
 from app.config_db import ConfigStore
 from app.config_render import effective
-from app.config_integrity import group_names, _LITELLM_SPECIAL_MODELS, mga_names_from
+from app.config_integrity import group_names, _LITELLM_SPECIAL_MODELS, mga_names_from, mcp_server_names
 
 router = APIRouter(prefix="/api")
 
@@ -41,6 +41,14 @@ async def _validate_key_refs(payload: dict) -> None:
     if bad:
         raise HTTPException(status_code=422,
                             detail=f"key references unknown model group(s): {', '.join(sorted(set(bad)))}")
+    op = payload.get("object_permission")
+    if isinstance(op, dict):
+        valid = mcp_server_names([i for i in eff if i["kind"] == "mcp_server"])
+        bad_mcp = [s for s in (op.get("mcp_servers") or [])
+                   if isinstance(s, str) and s and s not in valid]
+        if bad_mcp:
+            raise HTTPException(status_code=422,
+                                detail=f"key references unknown MCP server(s): {', '.join(sorted(set(bad_mcp)))}")
 
 
 @router.get("/keys", dependencies=[Depends(login_required)])

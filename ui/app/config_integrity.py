@@ -123,8 +123,35 @@ def trim_router_setting(value, target: dict):
     return value
 
 
+def mcp_server_names(items: list[dict]) -> set:
+    """Valid MCP references a key may hold: the item uuid (server_id) and server_name."""
+    out = set()
+    for it in items or []:
+        if it.get("kind") != "mcp_server" or it.get("flag") == "deleted":
+            continue
+        out.add(it.get("name"))
+        sn = (it.get("data") or {}).get("server_name")
+        if sn:
+            out.add(sn)
+    return out
+
+
+def key_mcp_orphans(keys: list[dict], valid: set) -> list[dict]:
+    """Keys whose object_permission.mcp_servers name servers absent from the config."""
+    out: list[dict] = []
+    for k in keys or []:
+        token = k.get("token")
+        label = k.get("key_alias") or (token or "")[:10]
+        op = k.get("object_permission") if isinstance(k.get("object_permission"), dict) else {}
+        for sid in (op.get("mcp_servers") or []):
+            if _missing(sid, valid):
+                out.append(_orphan("key", f"key '{label}' → MCP servers", sid,
+                                   {"token": token, "field": "mcp_servers", "entry": sid}))
+    return out
+
+
 def trim_key_field(value, target: dict):
-    """Return the key's models list / aliases dict with the dead entry removed."""
-    if target["field"] == "models":
+    """Return the key's models list / aliases dict / mcp grant list minus the dead entry."""
+    if target["field"] in ("models", "mcp_servers"):
         return [m for m in (value or []) if m != target["entry"]]
     return {a: t for a, t in (value or {}).items() if a != target["entry"]}

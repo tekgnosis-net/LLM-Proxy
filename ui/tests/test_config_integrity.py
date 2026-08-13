@@ -150,3 +150,24 @@ def test_fallback_referencing_mga_name_not_orphan():
     # a fallback whose primary is an mga NAME (not a model group) must not be flagged
     G2 = group_names([_model("id1", "real")], mga_names=mga_names_from([_rs("model_group_alias", {"friendly": "real"})]))
     assert router_orphans([_rs("fallbacks", [{"friendly": ["real"]}])], G2) == []
+
+
+def test_mcp_server_names_includes_uuid_and_name():
+    from app.config_integrity import mcp_server_names
+    items = [{"kind": "mcp_server", "name": "u1", "data": {"server_name": "deepwiki"}},
+             {"kind": "mcp_server", "name": "u2", "data": {"server_name": "gone"}, "flag": "deleted"},
+             {"kind": "model", "name": "m1", "data": {}}]
+    assert mcp_server_names(items) == {"u1", "deepwiki"}
+
+
+def test_key_mcp_orphans():
+    from app.config_integrity import key_mcp_orphans
+    keys = [{"token": "t1", "key_alias": "a", "object_permission": {"mcp_servers": ["u1", "dead"]}},
+            {"token": "t2", "key_alias": "b"}]
+    out = key_mcp_orphans(keys, {"u1"})
+    assert len(out) == 1 and out[0]["reference"] == "dead" and out[0]["target"]["field"] == "mcp_servers"
+
+
+def test_trim_key_field_mcp_servers():
+    from app.config_integrity import trim_key_field
+    assert trim_key_field(["u1", "dead"], {"field": "mcp_servers", "entry": "dead"}) == ["u1"]
