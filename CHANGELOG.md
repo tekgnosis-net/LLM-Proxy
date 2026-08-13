@@ -1,3 +1,10 @@
+## [1.34.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.0...v1.34.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **ui:** reject hyphenated MCP server names; name failures in apply/resync banners; per-server drift marking ([7ea30d1](https://github.com/tekgnosis-net/LLM-Proxy/commit/7ea30d19d377c1484a15c23617db3353de6f5ca2))
+
 # [1.34.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.33.0...v1.34.0) (2026-08-13)
 
 
