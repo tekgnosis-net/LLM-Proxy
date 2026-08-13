@@ -42,4 +42,7 @@ export const api = {
   integrity: () => req('/api/config/integrity'),
   integrityFix: (orphan, dry_run) => req('/api/config/integrity/fix', { method: 'POST', body: JSON.stringify({ orphan, dry_run }) }),
   reachability: () => req('/api/config/reachability'),
+  mcpHealth: (probe = 0, serverIds = '') => req(`/api/mcp/health?probe=${probe ? 1 : 0}${serverIds ? `&server_ids=${encodeURIComponent(serverIds)}` : ''}`),
+  mcpTools: (serverId) => req(`/api/mcp/tools?server_id=${encodeURIComponent(serverId)}`),
+  mcpUsage: (days = 30) => req(`/api/mcp/usage?days=${days}`),
 }
