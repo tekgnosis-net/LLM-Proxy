@@ -10,6 +10,7 @@
   import ProviderKeys from './routes/ProviderKeys.svelte'
   import Usage from './routes/Usage.svelte'
   import Caching from './routes/Caching.svelte'
+  import McpServers from './routes/McpServers.svelte'
   import Housekeeping from './routes/Housekeeping.svelte'
   import Settings from './routes/Settings.svelte'
   import Logs from './routes/Logs.svelte'
@@ -50,6 +51,7 @@
       <button class="nav" class:active={screen==='models'} onclick={() => screen='models'}>◳ Models</button>
       <button class="nav" class:active={screen==='routing'} onclick={() => screen='routing'}>⇄ Routing</button>
       <button class="nav" class:active={screen==='caching'} onclick={() => screen='caching'}>⚡ Caching</button>
+      <button class="nav" class:active={screen==='mcp'} onclick={() => screen='mcp'}>🧰 MCP Servers</button>
       <button class="nav" class:active={screen==='config'} onclick={() => screen='config'}>◈ config.yaml</button>
       <div class="navgroup">Access</div>
       <button class="nav" class:active={screen==='keys'} onclick={() => screen='keys'}>🔑 Virtual Keys</button>
@@ -77,6 +79,7 @@
       {:else if screen==='models'}<Models {store} />
       {:else if screen==='routing'}<Routing {store} />
       {:else if screen==='caching'}<Caching {store} />
+      {:else if screen==='mcp'}<McpServers {store} />
       {:else if screen==='keys'}<Keys />
       {:else if screen==='providerkeys'}<ProviderKeys {store} />
       {:else if screen==='usage'}<Usage />
