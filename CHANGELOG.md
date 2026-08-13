@@ -1,3 +1,19 @@
+# [1.34.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.33.0...v1.34.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* **ui:** probe gateway-parity — redirect error, basic-auth base64, static-header precedence ([5b0a018](https://github.com/tekgnosis-net/LLM-Proxy/commit/5b0a018adbe370c346cbc7d5af3a81cc5af97313))
+* **ui:** tools/preview hardening — origin-pin stored secrets, decrypt 422, probe-owned transport error ([764254b](https://github.com/tekgnosis-net/LLM-Proxy/commit/764254b7144e82edfec2f5fd3f67e1dd7d5564f2))
+
+
+### Features
+
+* **ui:** /api/mcp/tools/preview (pre-save tool discovery) ([415713c](https://github.com/tekgnosis-net/LLM-Proxy/commit/415713c92bf23e047755f283990c947748cada83))
+* **ui:** direct MCP tool probe (streamable HTTP, no SDK) ([c7ca9e6](https://github.com/tekgnosis-net/LLM-Proxy/commit/c7ca9e6de874c4b3505780e8b38999264f8fe15f))
+* **ui:** fetched Allowed-tools picker on the MCP server form ([dbb4385](https://github.com/tekgnosis-net/LLM-Proxy/commit/dbb438512fbdd6d3a53691f0c41243868871c1ef))
+* **ui:** mergeToolChoices helper + preview api entry ([4356004](https://github.com/tekgnosis-net/LLM-Proxy/commit/435600445dc01888682b815ec89b54281b2b4049))
+
 # [1.33.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.32.1...v1.33.0) (2026-08-13)
 
 
