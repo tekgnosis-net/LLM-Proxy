@@ -1,3 +1,25 @@
+# [1.33.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.32.1...v1.33.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* **ui:** integrity-fix detaches ui-mcp key on last MCP grant; protect undecryptable servers from delete ([4c513ce](https://github.com/tekgnosis-net/LLM-Proxy/commit/4c513ce110e7e0228cc025818744cbfbcf77dda9))
+
+
+### Features
+
+* **ui:** /api/mcp health, tools and usage endpoints ([905663d](https://github.com/tekgnosis-net/LLM-Proxy/commit/905663d46395f3c2c484feb77c9f7050450857a7))
+* **ui:** drift + resync cover MCP servers ([2510548](https://github.com/tekgnosis-net/LLM-Proxy/commit/25105484db44d94e721d5f8ad1fa6eb60b223891))
+* **ui:** hot-apply mcp_server items via MCP reconciler ([01e36fe](https://github.com/tekgnosis-net/LLM-Proxy/commit/01e36fef6e667cca856b051fbd527f9ee66e6654))
+* **ui:** MCP import, integrity and key-grant validation ([948bcbf](https://github.com/tekgnosis-net/LLM-Proxy/commit/948bcbff10c9d8d7a07986fd778e0378bfdceabf))
+* **ui:** MCP reconciler with ui-mcp team sync ([69a4563](https://github.com/tekgnosis-net/LLM-Proxy/commit/69a4563f08e1199dcc73135dc03446d67404dd50))
+* **ui:** MCP Servers page (staged CRUD, health, tools, usage) ([68515b9](https://github.com/tekgnosis-net/LLM-Proxy/commit/68515b9ec2869fb381291206d69f44ca94f938e5))
+* **ui:** MCP tool calls in the Activity feed (rows, filter, detail) ([0694376](https://github.com/tekgnosis-net/LLM-Proxy/commit/06943761caaf85fcc8606c09a49528675bc29b49))
+* **ui:** mcp.js form helpers + api endpoints ([ae3b7e0](https://github.com/tekgnosis-net/LLM-Proxy/commit/ae3b7e011228bfd0a03cc0c3c9c98ba3da7a4b7d))
+* **ui:** McpClient for LiteLLM MCP admin endpoints ([c973763](https://github.com/tekgnosis-net/LLM-Proxy/commit/c973763272fccb254ab9370e72ea157fa124a80d))
+* **ui:** per-key MCP server grants picker ([2012b90](https://github.com/tekgnosis-net/LLM-Proxy/commit/2012b902f3a09ffb5fa324c0cf23f748807eaeee))
+* **ui:** stage/validate/redact mcp_server config items ([e25032f](https://github.com/tekgnosis-net/LLM-Proxy/commit/e25032f2fce698e11606359a138216605c2bb079))
+
 ## [1.32.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.32.0...v1.32.1) (2026-08-09)
 
 
