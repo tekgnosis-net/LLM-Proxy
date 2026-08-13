@@ -111,3 +111,39 @@ def test_content_diff_ignores_mcp_info_decoration():
     live = {"server_id": "a", "server_name": "s-a", "transport": "http", "url": "http://h/a/mcp",
             "mcp_info": {"server_name": "s-a", "description": None}, "allow_all_keys": False}
     assert mcp_content_diff(desired["a"], live) == []
+
+
+# Final-review fix I1: decrypt failure must not delete the live server
+
+@pytest.mark.asyncio
+async def test_reconcile_decrypt_failed_but_live_is_protected_from_delete():
+    def boom(v):
+        if v == "BOOM": raise ValueError("bad token")
+        return DEC(v)
+    items = [_item("a"), _item("bad", auth_type="api_key", auth_value_encrypted="BOOM")]
+    live = [{"server_id": "a"}, {"server_id": "bad"}]
+    c = FakeClient()
+    rep = await reconcile_mcp(items, live, c, changed_item_names=set(), decrypt=boom)
+    assert "bad" not in c.deleted
+    assert any(f["id"] == "bad" and f["op"] == "decrypt" for f in rep["failed"])
+    assert "bad" in c.team_updates[-1]["object_permission"]["mcp_servers"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_decrypt_failed_and_not_live_is_not_protected():
+    def boom(v):
+        if v == "BOOM": raise ValueError("bad token")
+        return DEC(v)
+    items = [_item("a"), _item("bad", auth_type="api_key", auth_value_encrypted="BOOM")]
+    live = [{"server_id": "a"}]
+    c = FakeClient()
+    rep = await reconcile_mcp(items, live, c, changed_item_names=set(), decrypt=boom)
+    assert "bad" not in c.added and "bad" not in c.deleted
+    assert "bad" not in c.team_updates[-1]["object_permission"]["mcp_servers"]
+
+
+def test_diff_mcp_protected_ids_kept_off_to_delete():
+    desired, _ = build_desired([_item("a")], DEC)
+    live = [{"server_id": "a"}, {"server_id": "b"}, {"server_id": "c"}]
+    plan = diff_mcp(desired, live, changed_ids=set(), protected_ids={"b"})
+    assert plan["to_delete"] == ["c"]

@@ -102,14 +102,17 @@ def build_desired(items, decrypt: Optional[Callable[[str], str]]):
     return desired, failed
 
 
-def diff_mcp(desired: dict[str, dict], live: list[dict], changed_ids: set[str]) -> dict[str, Any]:
-    """Declarative add/delete by server_id (self-healing); update only ids known changed."""
+def diff_mcp(desired: dict[str, dict], live: list[dict], changed_ids: set[str],
+             protected_ids: frozenset = frozenset()) -> dict[str, Any]:
+    """Declarative add/delete by server_id (self-healing); update only ids known changed.
+    protected_ids are excluded from to_delete — used to shield decrypt-failed items whose
+    live counterpart must not be wiped out just because the local vault couldn't decrypt."""
     live_ids = {s.get("server_id") for s in live if s.get("server_id")}
     desired_ids = set(desired)
     return {
         "to_add": [desired[i] for i in sorted(desired_ids - live_ids)],
         "to_update": [desired[i] for i in sorted(changed_ids & desired_ids & live_ids)],
-        "to_delete": sorted(live_ids - desired_ids),
+        "to_delete": sorted(live_ids - desired_ids - set(protected_ids)),
     }
 
 
@@ -117,7 +120,10 @@ async def reconcile_mcp(desired_items, live, client,
                         changed_item_names: set[str],
                         decrypt: Optional[Callable[[str], str]]) -> dict[str, Any]:
     desired, failed = build_desired(desired_items, decrypt)
-    plan = diff_mcp(desired, live, changed_item_names & set(desired))
+    failed_ids = {f["id"] for f in failed}
+    live_ids = {s.get("server_id") for s in live if s.get("server_id")}
+    protected = failed_ids & live_ids
+    plan = diff_mcp(desired, live, changed_item_names & set(desired), protected_ids=protected)
     added = updated = deleted = 0
     for entry in plan["to_add"]:
         try:
@@ -142,7 +148,7 @@ async def reconcile_mcp(desired_items, live, client,
             failed.append({"id": sid, "op": "delete", "error": str(e)})
     out = {"added": added, "updated": updated, "deleted": deleted, "failed": failed}
     try:
-        out["team"] = await sync_mcp_team(client, set(desired))
+        out["team"] = await sync_mcp_team(client, set(desired) | protected)
     except Exception as e:
         out["team"] = "error"
         failed.append({"id": MCP_TEAM_ID, "op": "team_sync", "error": str(e)})

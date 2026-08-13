@@ -12,7 +12,7 @@ from app.reloader import Reloader
 from app.models_client import ModelsClient
 from app.model_reconcile import build_desired, diff_models, reconcile_models
 from app.model_content import content_diff
-from app.mcp_reconcile import build_desired as build_mcp_desired, mcp_content_diff, reconcile_mcp
+from app.mcp_reconcile import build_desired as build_mcp_desired, mcp_content_diff, reconcile_mcp, MCP_TEAM_ID
 from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from, key_mcp_orphans, mcp_server_names
 from app.reachability import collision_audit, key_over_reach, SEMANTICS_VERSION
 from app.keys_client import KeysClient
@@ -383,10 +383,19 @@ async def config_integrity_fix(body: dict = Body(...)):
             op = k.get("object_permission") if isinstance(k.get("object_permission"), dict) else {}
             before = op.get("mcp_servers")
             after = trim_key_field(before, target)
+            # Empty grants on a ui-mcp team key FAIL OPEN to the whole team scope
+            # (live-proven) — trimming the last grant must also detach the key.
+            # Foreign-team keys are left alone (documented v1 limitation).
+            detach = (not after) and k.get("team_id") == MCP_TEAM_ID
             if dry:
-                return {"before": before, "after": after, "effect": "applies immediately (hot)"}
-            await make_keys_client().update_key({"key": target["token"],
-                                                 "object_permission": {"mcp_servers": after}})
+                effect = "applies immediately (hot)"
+                if detach:
+                    effect += "; last grant — also detaches the key from the ui-mcp team"
+                return {"before": before, "after": after, "effect": effect}
+            payload = {"key": target["token"], "object_permission": {"mcp_servers": after}}
+            if detach:
+                payload["team_id"] = None
+            await make_keys_client().update_key(payload)
             return {"applied": True, "needs_apply": False}
         before = k.get(field)
         after = trim_key_field(before, target)

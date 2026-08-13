@@ -494,6 +494,59 @@ def test_fix_unknown_scope_422(tmp_path):
     r = c.post("/api/config/integrity/fix", json={"orphan": {"scope": "bogus", "target": {}}, "dry_run": False})
     assert r.status_code == 422
 
+# Final-review fix B1: integrity-fix must detach a ui-mcp key on its last MCP grant
+# (empty object_permission.mcp_servers on a ui-mcp team key fails OPEN to full team scope)
+
+def test_fix_mcp_last_grant_on_ui_mcp_team_detaches_key(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "team_id": "ui-mcp",
+             "object_permission": {"mcp_servers": ["deadmcp"]}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "mcp_servers", "entry": "deadmcp"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"applied": True, "needs_apply": False}
+    assert fake.updated == {"key": "h1", "object_permission": {"mcp_servers": []}, "team_id": None}
+
+def test_fix_mcp_trims_one_of_two_grants_no_detach(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "team_id": "ui-mcp",
+             "object_permission": {"mcp_servers": ["deadmcp", "livemcp"]}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "mcp_servers", "entry": "deadmcp"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"applied": True, "needs_apply": False}
+    assert fake.updated == {"key": "h1", "object_permission": {"mcp_servers": ["livemcp"]}}
+    assert "team_id" not in fake.updated
+
+def test_fix_mcp_last_grant_on_foreign_team_no_detach(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "team_id": "other-team",
+             "object_permission": {"mcp_servers": ["deadmcp"]}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "mcp_servers", "entry": "deadmcp"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": False}).json()
+    assert d == {"applied": True, "needs_apply": False}
+    assert fake.updated == {"key": "h1", "object_permission": {"mcp_servers": []}}
+    assert "team_id" not in fake.updated
+
+def test_fix_mcp_dry_run_last_grant_mentions_detach_and_does_not_update(tmp_path):
+    keys = [{"token": "h1", "key_alias": "ci", "team_id": "ui-mcp",
+             "object_permission": {"mcp_servers": ["deadmcp"]}}]
+    store = FakeStoreWithModels()
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    fake = FakeKeysFix(keys); cr.make_keys_client = lambda: fake
+    orphan = {"scope": "key", "target": {"token": "h1", "field": "mcp_servers", "entry": "deadmcp"}}
+    d = c.post("/api/config/integrity/fix", json={"orphan": orphan, "dry_run": True}).json()
+    assert "detach" in d["effect"]
+    assert fake.updated is None
+
 # Task 3: GET /api/config/reachability
 
 class FakeStoreReach(FakeStore):
