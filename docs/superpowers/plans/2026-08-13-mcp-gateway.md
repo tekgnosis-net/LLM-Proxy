@@ -331,19 +331,25 @@ Claude-Session: https://claude.ai/code/session_011o3rL25n2rCTBGrXP5uPYE"
 
 ---
 
-### Task 3: `mcp_reconcile.py`
+### Task 3: `mcp_reconcile.py` + team sync
 
 **Files:**
 - Create: `ui/app/mcp_reconcile.py`
-- Test: `ui/tests/test_mcp_reconcile.py`
+- Modify: `ui/app/mcp_client.py` (add `new_team`/`update_team`)
+- Test: `ui/tests/test_mcp_reconcile.py`, extend `ui/tests/test_mcp_client.py`
+
+**ACL model (decided after Task 1, live-proven):** per-key grants for non-`allow_all_keys` servers require team membership on OSS. The UI manages ONE team, `ui-mcp`, whose MCP scope always equals ALL master server ids (synced on every reconcile); granted keys join it with their own subset (Task 11). Live-proven facts: `/key/update` can set `team_id` + subset grant in one call; `team_id: null` detaches; **a team key with an EMPTY `mcp_servers` list FAILS OPEN to the full team scope** — revoke must detach, never leave `[]` inside the team.
 
 **Interfaces:**
 - Consumes: items shaped `{kind:"mcp_server", name:<uuid>, data:{...spec §4 fields...}}`; `McpClient` (Task 2); `_is_already_exists` from `app.model_reconcile`.
-- Produces (used by Tasks 5, 6):
+- Produces (used by Tasks 5, 6, 11):
+  - `MCP_TEAM_ID = "ui-mcp"` constant
   - `build_desired(items, decrypt) -> (dict[str, dict], list[dict])` — `{server_id: wire_payload}`, failures. `decrypt=None` → presence/content-only payloads (no credentials).
   - `diff_mcp(desired, live, changed_ids) -> {"to_add": [...], "to_update": [...], "to_delete": [...]}`
-  - `reconcile_mcp(desired_items, live, client, changed_item_names, decrypt) -> {"added", "updated", "deleted", "failed"}`
+  - `sync_mcp_team(client, desired_ids) -> "synced"|"created"|"skipped"` (raises on hard failure)
+  - `reconcile_mcp(desired_items, live, client, changed_item_names, decrypt) -> {"added", "updated", "deleted", "failed", "team"}`
   - `MCP_MANAGED_FIELDS` tuple and `mcp_content_diff(desired_payload, live_server) -> list[str]`
+  - `McpClient.new_team(payload)` / `McpClient.update_team(payload)` (POST `/team/new`, `/team/update`)
 
 - [ ] **Step 1: Write failing tests** — `ui/tests/test_mcp_reconcile.py`:
 
@@ -392,15 +398,22 @@ def test_diff_mcp_add_update_delete():
 
 
 class FakeClient:
-    def __init__(self, fail_add=None):
+    def __init__(self, fail_add=None, team_update_fails=False):
         self.added, self.updated, self.deleted = [], [], []
+        self.team_updates, self.team_creates = [], []
         self._fail_add = fail_add or set()
+        self._team_update_fails = team_update_fails
     async def add_server(self, p):
         if p["server_id"] in self._fail_add:
             raise RuntimeError("already exists")
         self.added.append(p["server_id"])
     async def update_server(self, p): self.updated.append(p["server_id"])
     async def delete_server(self, sid): self.deleted.append(sid)
+    async def update_team(self, p):
+        if self._team_update_fails:
+            raise RuntimeError("team not found")
+        self.team_updates.append(p)
+    async def new_team(self, p): self.team_creates.append(p)
 
 
 @pytest.mark.asyncio
@@ -410,7 +423,24 @@ async def test_reconcile_mcp_converges():
     c = FakeClient()
     rep = await reconcile_mcp(items, live, c, changed_item_names={"b"}, decrypt=DEC)
     assert c.added == ["a"] and c.updated == ["b"] and c.deleted == ["gone"]
-    assert rep == {"added": 1, "updated": 1, "deleted": 1, "failed": []}
+    assert rep == {"added": 1, "updated": 1, "deleted": 1, "failed": [], "team": "synced"}
+    assert c.team_updates[-1] == {"team_id": "ui-mcp",
+                                  "object_permission": {"mcp_servers": ["a", "b"]}}
+
+
+@pytest.mark.asyncio
+async def test_reconcile_creates_team_when_update_fails():
+    c = FakeClient(team_update_fails=True)
+    rep = await reconcile_mcp([_item("a")], [], c, changed_item_names=set(), decrypt=DEC)
+    assert rep["team"] == "created"
+    assert c.team_creates[-1]["team_id"] == "ui-mcp"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_skips_team_when_no_servers_and_no_team():
+    c = FakeClient(team_update_fails=True)
+    rep = await reconcile_mcp([], [], c, changed_item_names=set(), decrypt=DEC)
+    assert rep["team"] == "skipped" and c.team_creates == []
 
 
 @pytest.mark.asyncio
@@ -428,6 +458,15 @@ def test_content_diff_normalizes_empty():
     assert mcp_content_diff(desired["a"], live) == []
     live2 = dict(live, url="http://other/mcp")
     assert mcp_content_diff(desired["a"], live2) == ["url"]
+
+
+def test_content_diff_ignores_mcp_info_decoration():
+    # LiteLLM auto-fills mcp_info.server_name/description on the live side
+    # (Task 1 report (a)) — only mcp_server_cost_info is ours to compare.
+    desired, _ = build_desired([_item("a")], None)
+    live = {"server_id": "a", "server_name": "s-a", "transport": "http", "url": "http://h/a/mcp",
+            "mcp_info": {"server_name": "s-a", "description": None}, "allow_all_keys": False}
+    assert mcp_content_diff(desired["a"], live) == []
 ```
 
 - [ ] **Step 2: Run to verify failure** — `pytest tests/test_mcp_reconcile.py -q` → FAIL (module missing).
@@ -448,6 +487,33 @@ MCP_MANAGED_FIELDS = ("server_name", "description", "transport", "url", "auth_ty
                       "static_headers", "extra_headers", "allowed_tools",
                       "allow_all_keys", "mcp_info")
 
+# Per-key grants for non-allow_all_keys servers require team membership on OSS
+# (validate_key_mcp_servers_against_team — Task 1 report (f)). The UI manages ONE
+# team whose MCP scope always equals every master-managed server id; granted keys
+# join it with their own subset. CAUTION (live-proven): a team key with an EMPTY
+# mcp_servers list inherits the FULL team scope — revoking must detach the key
+# from the team (team_id: null), never leave it in the team with [].
+MCP_TEAM_ID = "ui-mcp"
+
+
+async def sync_mcp_team(client, desired_ids: set) -> str:
+    """Converge the ui-mcp team's MCP scope to the master server set.
+    Update-first (idempotent, no read); create on miss; 'skipped' when there is
+    no scope to write and no team to update."""
+    payload = {"team_id": MCP_TEAM_ID,
+               "object_permission": {"mcp_servers": sorted(desired_ids)}}
+    try:
+        await client.update_team(payload)
+        return "synced"
+    except Exception:
+        if not desired_ids:
+            return "skipped"
+        try:
+            await client.new_team({**payload, "team_alias": "UI-managed MCP grants"})
+            return "created"
+        except Exception as e:
+            raise RuntimeError(f"mcp team sync failed: {e}") from e
+
 
 def _norm_deep(v):
     """None == '' == [] == {} for drift comparison; recurses into containers."""
@@ -465,9 +531,20 @@ def _norm_deep(v):
 
 
 def mcp_content_diff(desired: dict, live: dict) -> list[str]:
-    """Managed-field comparison; credentials never compared (redacted in live)."""
-    return [f for f in MCP_MANAGED_FIELDS
-            if _norm_deep(desired.get(f)) != _norm_deep(live.get(f))]
+    """Managed-field comparison; credentials never compared (redacted in live).
+    mcp_info compares by its mcp_server_cost_info sub-key only — LiteLLM decorates
+    mcp_info with server_name/description server-side (Task 1 report (a)), which
+    would otherwise false-drift every server."""
+    out = []
+    for f in MCP_MANAGED_FIELDS:
+        if f == "mcp_info":
+            d = _norm_deep((desired.get("mcp_info") or {}).get("mcp_server_cost_info"))
+            live_ci = _norm_deep((live.get("mcp_info") or {}).get("mcp_server_cost_info"))
+            if d != live_ci:
+                out.append(f)
+        elif _norm_deep(desired.get(f)) != _norm_deep(live.get(f)):
+            out.append(f)
+    return out
 
 
 def build_desired(items, decrypt: Optional[Callable[[str], str]]):
@@ -539,7 +616,43 @@ async def reconcile_mcp(desired_items, live, client,
             await client.delete_server(sid); deleted += 1
         except Exception as e:
             failed.append({"id": sid, "op": "delete", "error": str(e)})
-    return {"added": added, "updated": updated, "deleted": deleted, "failed": failed}
+    out = {"added": added, "updated": updated, "deleted": deleted, "failed": failed}
+    try:
+        out["team"] = await sync_mcp_team(client, set(desired))
+    except Exception as e:
+        out["team"] = "error"
+        failed.append({"id": MCP_TEAM_ID, "op": "team_sync", "error": str(e)})
+    return out
+```
+
+Also add to `ui/app/mcp_client.py` (after `list_tools`) and append a test to `ui/tests/test_mcp_client.py`:
+
+```python
+    async def new_team(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async with self._client() as c:
+            r = await c.post(f"{self._base}/team/new", json=payload)
+            r.raise_for_status()
+            return r.json()
+
+    async def update_team(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async with self._client() as c:
+            r = await c.post(f"{self._base}/team/update", json=payload)
+            r.raise_for_status()
+            return r.json()
+```
+
+```python
+@pytest.mark.asyncio
+async def test_team_endpoints():
+    seen = {}
+    def handler(req):
+        seen["path"], seen["body"] = req.url.path, json.loads(req.content)
+        return httpx.Response(200, json={"ok": True})
+    c = _client(handler)
+    await c.new_team({"team_id": "ui-mcp"})
+    assert seen["path"] == "/team/new"
+    await c.update_team({"team_id": "ui-mcp", "object_permission": {"mcp_servers": ["a"]}})
+    assert seen["path"] == "/team/update" and seen["body"]["object_permission"]["mcp_servers"] == ["a"]
 ```
 
 Note: removing auth from an existing server sends `auth_type: null` but LiteLLM may inherit stored credentials on PUT (verified fact §2 of the spec). Accepted edge: the documented admin workaround is delete + re-add via the UI (two staged rows, one Apply). Do NOT try to solve this in code.
@@ -1424,6 +1537,10 @@ async def mcp_usage(days: int = 30):
 // MCP server form helpers: convert between UI rows and the stored item shape.
 // Pure functions — node-testable without Svelte.
 
+// The backend reconciler maintains this team (scope = all master servers);
+// keys with grants join it. Must match app/mcp_reconcile.py::MCP_TEAM_ID.
+export const MCP_TEAM_ID = 'ui-mcp'
+
 export function headerRowsToDict(rows) {
   const out = {}
   for (const r of rows || []) {
@@ -1661,8 +1778,11 @@ and a render branch after `caching`:
     probing = { ...probing, [item.name]: true }
     try {
       const h = await api.mcpHealth(1, item.name)
-      const err = h.probe_error
-      probeRes = { ...probeRes, [item.name]: err ? { ok: false, msg: err } : { ok: true, msg: 'Reachable' } }
+      // probe is a bare array of {server_id, status} (Task 1 report (c))
+      const entry = Array.isArray(h.probe) ? h.probe.find(p => p.server_id === item.name) : null
+      const ok = !h.probe_error && entry?.status === 'healthy'
+      probeRes = { ...probeRes, [item.name]: ok ? { ok: true, msg: 'Healthy' }
+                 : { ok: false, msg: h.probe_error || entry?.status || 'no probe result' } }
       await loadHealth()
     } catch (e) {
       probeRes = { ...probeRes, [item.name]: { ok: false, msg: e.message } }
@@ -1678,8 +1798,13 @@ and a render branch after `caching`:
       toolsState = { ...toolsState, [item.name]: { loading: true } }
       try {
         const r = await api.mcpTools(item.name)
-        const tools = Array.isArray(r) ? r : (r.tools ?? r.data ?? [])
-        toolsState = { ...toolsState, [item.name]: { tools } }
+        // access-denied arrives as HTTP 200 with an error field in the body (Task 1 report (h)7)
+        if (r && !Array.isArray(r) && r.error) {
+          toolsState = { ...toolsState, [item.name]: { error: r.message || r.error } }
+        } else {
+          const tools = Array.isArray(r) ? r : (r.tools ?? r.data ?? [])
+          toolsState = { ...toolsState, [item.name]: { tools } }
+        }
       } catch (e) {
         toolsState = { ...toolsState, [item.name]: { error: e.message } }
       }
@@ -1904,10 +2029,12 @@ and a render branch after `caching`:
     <h3 style="margin:0 0 8px">Connecting clients</h3>
     <p class="hint" style="font-size:13px">
       Point MCP clients at <code>http://&lt;proxy-host&gt;:8000/mcp</code> (streamable HTTP) with header
-      <code>x-litellm-api-key: &lt;virtual key&gt;</code>. Scope to specific servers with
+      <code>Authorization: Bearer &lt;virtual key&gt;</code> — the protocol endpoint rejects
+      x-litellm-api-key on this build (Task 1 report (g)). Scope with
       <code>x-mcp-servers: name1,name2</code>, or use a per-server endpoint
-      <code>/&lt;server_name&gt;/mcp</code>. Tools are namespaced <code>&lt;server_name&gt;-&lt;tool&gt;</code>.
-      Grant keys access on the <strong>Virtual Keys</strong> page.
+      <code>/&lt;server_name&gt;/mcp</code>. Tools are namespaced <code>&lt;server_name&gt;-&lt;tool&gt;</code>
+      on the protocol endpoint. Grant keys access on the <strong>Virtual Keys</strong> page —
+      grants and revokes take up to ~60s to propagate (auth cache TTL).
     </p>
   </div>
 </div>
@@ -2006,40 +2133,60 @@ and in `editKey(k)` populate the grants from `await api.get('/api/keys/info?toke
 After the `passthroughRows` block (line ~43) add:
 
 ```js
-  let mcpOptions = $state([])        // [{id, name}] from applied+staged mcp_server items
+  let mcpOptions = $state([])        // [{id, name}] from APPLIED mcp_server items only
   let mcpGrants = $state([])         // selected server ids
   let mcpInitial = $state('[]')      // JSON of the sorted initial selection (change detection)
+  let editingTeamId = $state(null)   // the key's current team (grant choreography)
   function toggleGrant(id) {
     mcpGrants = mcpGrants.includes(id) ? mcpGrants.filter(g => g !== id) : [...mcpGrants, id]
   }
 ```
 
-In `load()`, extend the configState usage (same `state` object already fetched):
+Also `import { MCP_TEAM_ID } from '../lib/mcp.js'` at the top.
+
+In `load()`, extend the configState usage (same `state` object already fetched). Staged-`new`
+servers are excluded — the ui-mcp team's scope only contains APPLIED servers, so granting an
+unapplied server would 403:
 
 ```js
       mcpOptions = (state.items || [])
-        .filter(i => i.kind === 'mcp_server' && i.flag !== 'deleted')
+        .filter(i => i.kind === 'mcp_server' && i.flag !== 'deleted' && i.flag !== 'new')
         .map(i => ({ id: i.name, name: i.data?.server_name || i.name, allowAll: !!i.data?.allow_all_keys }))
         .sort((a, b) => a.name.localeCompare(b.name))
 ```
 
-In `resetFb()` append: `mcpGrants = []; mcpInitial = '[]'`.
+In `resetFb()` append: `mcpGrants = []; mcpInitial = '[]'; editingTeamId = null`.
 
 In `editKey(k)` (near the `passthroughRows` line) add:
 
 ```js
     mcpGrants = [...((k.object_permission?.mcp_servers) || [])]
     mcpInitial = JSON.stringify([...mcpGrants].sort())
+    editingTeamId = k.team_id || null
 ```
 
 In `buildKeyFields()` before the final `Object.keys(payload)` cleanup:
 
 ```js
     // MCP grants: send object_permission only when the selection changed, so
-    // unrelated key edits never churn the permission row. Empty list = revoke all.
+    // unrelated key edits never churn the permission row.
+    // Team choreography (live-proven, Task 1 + follow-up probes): grants on
+    // restricted servers need membership in the ui-mcp team; a team key with an
+    // EMPTY grant list FAILS OPEN to the whole team scope, so revoking all
+    // grants must also detach the key from the team (team_id: null).
     const grants = [...mcpGrants].sort()
-    if (JSON.stringify(grants) !== mcpInitial) payload.object_permission = { mcp_servers: grants }
+    if (JSON.stringify(grants) !== mcpInitial) {
+      payload.object_permission = { mcp_servers: grants }
+      if (grants.length && (!editingTeamId || editingTeamId === MCP_TEAM_ID)) {
+        payload.team_id = MCP_TEAM_ID
+      } else if (!grants.length && editingTeamId === MCP_TEAM_ID) {
+        payload.team_id = null
+      }
+    }
 ```
+
+Note `payload.team_id = null` must survive the `undefined`-cleanup line (it removes only
+`undefined` values, and `null` is the explicit detach signal — verify it does).
 
 - [ ] **Step 2: Markup** — after the passthrough `<div class="passthrough">…</div>` block add:
 
@@ -2047,6 +2194,9 @@ In `buildKeyFields()` before the final `Object.keys(payload)` cleanup:
       {#if mcpOptions.length}
         <div class="passthrough">
           <span class="field-name">MCP servers</span>
+          {#if editingTeamId && editingTeamId !== MCP_TEAM_ID}
+            <span class="hint">⚠ This key belongs to team <code>{editingTeamId}</code> — MCP grants must be within that team's scope; the proxy rejects anything else.</span>
+          {/if}
           {#each mcpOptions as s}
             <label class="mcp-opt">
               <input type="checkbox" checked={mcpGrants.includes(s.id)} onchange={() => toggleGrant(s.id)}
@@ -2054,7 +2204,7 @@ In `buildKeyFields()` before the final `Object.keys(payload)` cleanup:
               {s.name}{#if s.allowAll}<span class="hint"> (all keys allowed)</span>{/if}
             </label>
           {/each}
-          <span class="hint">MCP servers this key may reach through the gateway (<code>/mcp</code>). Nothing selected = no MCP access, except servers marked "all keys".</span>
+          <span class="hint">MCP servers this key may reach through the gateway (<code>/mcp</code>). Nothing selected = no MCP access, except servers marked "all keys". Changes take up to ~60s to propagate (auth cache). Newly added servers appear here after Apply.</span>
         </div>
       {/if}
 ```
@@ -2065,7 +2215,7 @@ and to the `<style>` block:
   .mcp-opt{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:2px 0}
 ```
 
-- [ ] **Step 3: Build + manual verify** — `npm run build`; on the dev stack: edit a key → tick a server → Save → re-open → tick persists (proves `object_permission` round-trips). Save an unrelated edit → confirm the request payload has NO `object_permission` (devtools network tab).
+- [ ] **Step 3: Build + manual verify** — `npm run build`; on the dev stack: edit a key → tick a server → Save → re-open → tick persists (proves `object_permission` round-trips) AND `curl /key/info?key=` shows `team_id: "ui-mcp"`. Untick ALL grants → Save → `/key/info` shows `team_id: null` and `mcp_servers: []` (the fail-open guard). Save an unrelated edit → confirm the request payload has NO `object_permission` and NO `team_id` (devtools network tab).
 - [ ] **Step 4: Commit** — `feat(ui): per-key MCP server grants picker` + trailer.
 
 ---
@@ -2276,16 +2426,38 @@ docker compose build llm-proxy-ui && docker compose up -d
 - [ ] **Step 2: Full loop against deepwiki** (admin password: local stack `Smoke-Admin-2026`):
   1. MCP Servers page → Add: name `deepwiki`, transport HTTP, url `https://mcp.deepwiki.com/mcp`, no auth → Save → flag pill `new` → Apply. Expected notice: `Applied live — … ; MCP — 1 added, 0 updated, 0 deleted`. Record litellm container `StartedAt` before/after (`docker inspect --format '{{.State.StartedAt}}' $(docker compose ps -q litellm)`) — MUST be unchanged (hot apply).
   2. Health: badge turns green after Test; Tools button lists deepwiki tools.
-  3. Keys page → create key `mcp-e2e` with the deepwiki grant ticked → copy key.
-  4. Tool call through the gateway with that key (curl `POST /mcp-rest/tools/call` as in Task 1 Step 7).
+  3. Keys page → create key `mcp-e2e` with the deepwiki grant ticked → copy key. Verify
+     `/key/info?key=` shows `team_id: "ui-mcp"` and the grant, and that the apply report showed
+     `team: synced|created` (the reconciler created the ui-mcp team on the first MCP apply).
+  4. Wait ~75s after the grant (auth-cache TTL, Task 1 report (f)), then call a tool through the REAL
+     protocol endpoint — `/mcp-rest/tools/call` writes NO SpendLogs row (Task 1 report (g)). Proven
+     method (python MCP SDK inside the litellm container; adapt imports if the SDK layout differs):
+
+     ```bash
+     docker compose exec -T litellm python -c "
+     import asyncio
+     from mcp import ClientSession
+     from mcp.client.streamable_http import streamablehttp_client
+     async def main():
+         async with streamablehttp_client('http://localhost:4000/deepwiki/mcp',
+                                          headers={'Authorization': 'Bearer sk-KEY-HERE'}) as (r, w, _):
+             async with ClientSession(r, w) as s:
+                 await s.initialize()
+                 tools = await s.list_tools()
+                 print([t.name for t in tools.tools])
+                 out = await s.call_tool('deepwiki-read_wiki_structure', {'repoName': 'BerriAI/litellm'})
+                 print(str(out)[:200])
+     asyncio.run(main())
+     "
+     ```
   5. Usage & Spend → Activity: the call appears with the `MCP` badge (`deepwiki · read_wiki_structure`); History → type filter MCP shows it; row detail shows Arguments/Result. MCP page Usage card shows 1 call.
   6. Drift: badge `In sync ✓`. Then delete the server directly in LiteLLM (`curl -X DELETE $BASE/v1/mcp/server/<uuid> -H master`) → reload page → drift warns → Resync → in sync again.
-  7. Revoke: untick the grant on the key → Save → tool call now denied.
+  7. Revoke: untick the grant on the key → Save → `/key/info` shows `team_id: null` + `mcp_servers: []` → wait ~75s (auth-cache TTL) → tool call now denied.
   8. Edit-with-secret check: edit server, set auth bearer `dummy`, Save+Apply, re-edit — placeholder shows `(unchanged — leave blank to keep)`; leave blank, change description, Save+Apply → apply succeeds (blank-means-keep).
   9. Cleanup: delete the e2e key; keep or delete the deepwiki server at your discretion.
   Record any false content-drift here and fix per Task 6's caveat before proceeding.
 
-- [ ] **Step 3: Write `docs/mcp-gateway.md`** — admin guide (add/edit servers, hot apply, grants, drift/resync, health/usage) + client onboarding (endpoints `/mcp`, `/{server_name}/mcp`, `/sse`; headers `x-litellm-api-key`, `x-mcp-servers`; tool namespacing; the spec §11 caveats: URL-embedded keys, static headers plaintext, auth-removal = delete + re-add). Cross-link from `docs/config-schema.md` with a one-paragraph `mcp_server` kind description (fields table from the spec §4).
+- [ ] **Step 3: Write `docs/mcp-gateway.md`** — admin guide (add/edit servers, hot apply, grants, drift/resync, health/usage) + client onboarding (endpoints `/mcp`, `/{server_name}/mcp`, `/sse`; headers `x-litellm-api-key`, `x-mcp-servers`; tool namespacing; the spec §11 caveats plus Task 1 findings: URL-embedded keys, static headers plaintext, auth-removal = delete + re-add, `Authorization: Bearer` required on `/mcp` (x-litellm-api-key rejected there), ~60s grant/revoke propagation, `/mcp-rest/tools/call` writes no spend log (upstream bug — real MCP clients via `/mcp` ARE logged), tool names bare on `/mcp-rest/tools/list` but prefixed on the protocol endpoint). Cross-link from `docs/config-schema.md` with a one-paragraph `mcp_server` kind description (fields table from the spec §4).
 
 - [ ] **Step 4: Full verification**
 
