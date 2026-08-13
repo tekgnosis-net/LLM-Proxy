@@ -61,3 +61,20 @@ export function validateMcpForm(f) {
   if (f.auth_type && !(f.auth_value || '').trim() && !f.hasStoredSecret) return 'Auth value is required for the selected auth type.'
   return null
 }
+
+export function mergeToolChoices(fetched, existing) {
+  // Convergent merge: fetched tools become checkboxes (checked = already allowed);
+  // existing entries NOT in the fetched list survive as editable rows (extras) so
+  // a typed/renamed/offline tool is never silently dropped by a re-fetch.
+  const names = new Set((existing || []).map(s => (typeof s === 'string' ? s : '').trim()).filter(Boolean))
+  const choices = []
+  const seen = new Set()
+  for (const t of fetched || []) {
+    const name = (t?.name || '').trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    choices.push({ name, description: t?.description || '', checked: names.has(name) })
+  }
+  const extras = [...names].filter(n => !seen.has(n))
+  return { choices, extras }
+}
