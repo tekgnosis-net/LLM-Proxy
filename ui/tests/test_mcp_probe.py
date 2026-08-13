@@ -1,16 +1,20 @@
+import base64
 import json, httpx, pytest
 from app.mcp_probe import ProbeError, build_probe_headers, parse_rpc_response, probe_tools
 
 
 def test_build_probe_headers_auth_matrix():
     assert build_probe_headers("bearer_token", "tok", {})["Authorization"] == "Bearer tok"
-    assert build_probe_headers("basic", "dXNlcg==", {})["Authorization"] == "Basic dXNlcg=="
+    assert build_probe_headers("basic", "user:pass", {})["Authorization"] == \
+        "Basic " + base64.b64encode(b"user:pass").decode()
     assert build_probe_headers("api_key", "k1", {})["X-API-Key"] == "k1"
     h = build_probe_headers(None, None, {"X-Extra": "1"})
     assert h["X-Extra"] == "1" and "Authorization" not in h
     assert h["Accept"] == "application/json, text/event-stream"
     # blank value with auth_type set → no auth header (route resolves stored secret first)
     assert "Authorization" not in build_probe_headers("bearer_token", "", {})
+    # static_headers overlay LAST — static wins on conflict (gateway ordering)
+    assert build_probe_headers("bearer_token", "tok", {"Authorization": "Custom x"})["Authorization"] == "Custom x"
 
 
 def test_parse_rpc_response_sse_and_json():
@@ -88,6 +92,19 @@ async def test_probe_401_maps_to_probe_error():
     with pytest.raises(ProbeError) as ei:
         await probe_tools("http://x/mcp", http_transport=t)
     assert "401" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_probe_redirect_maps_to_probe_error():
+    def handler(req):
+        body = json.loads(req.content) if req.content else {}
+        if body.get("method") == "initialize":
+            return httpx.Response(307, headers={"location": "http://evil/mcp"})
+        return httpx.Response(404)
+    with pytest.raises(ProbeError) as ei:
+        await probe_tools("http://x/mcp", http_transport=httpx.MockTransport(handler))
+    assert "redirected" in str(ei.value)
+    assert "evil" not in str(ei.value)
 
 
 @pytest.mark.asyncio

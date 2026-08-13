@@ -25,7 +25,10 @@ directly using the connection details currently entered in the form.
 2. **Auth header mapping** (from LiteLLM's own client, `experimental_mcp_client/client.py:351-376` —
    the probe must send exactly what the gateway would):
    - `bearer_token` → `Authorization: Bearer <value>`
-   - `basic` → `Authorization: Basic <value>` (value used **verbatim**, LiteLLM does not base64)
+   - `basic` → `Authorization: Basic base64(<value>)` — the gateway base64-encodes the stored
+     "username:password" value (`update_auth_value` → `to_basic_auth`, verified in the deployed
+     image); the probe matches. On header conflicts, `static_headers` win over the auth header
+     (gateway ordering).
    - `api_key` → `X-API-Key: <value>`
 3. The v3.27 blank-means-keep convention: an edit form with a stored secret sends a blank
    `auth_value`; the ciphertext lives in the item's `auth_value_encrypted` (Fernet vault).

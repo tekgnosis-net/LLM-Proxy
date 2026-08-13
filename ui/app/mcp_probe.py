@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 import json
 from typing import Any, Optional
 import httpx
@@ -18,19 +19,22 @@ class ProbeError(RuntimeError):
 
 
 def build_probe_headers(auth_type, auth_value, static_headers) -> dict:
-    """Exact LiteLLM auth mapping (experimental_mcp_client/client.py:351-376):
-    bearer_token → Authorization: Bearer; basic → Authorization: Basic <verbatim,
-    NOT base64'd here>; api_key → X-API-Key."""
+    """Match the gateway's header construction (deployed litellm image,
+    experimental_mcp_client/client.py): bearer_token → Authorization: Bearer;
+    basic → Authorization: Basic base64(value) — the gateway base64-encodes the
+    stored "username:password" via to_basic_auth(); api_key → X-API-Key.
+    static_headers overlay LAST (static wins on conflict, as in the gateway)."""
     headers = dict(_RPC_HEADERS)
-    for k, v in (static_headers or {}).items():
-        headers[str(k)] = str(v)
     if auth_type and auth_value:
         if auth_type == "bearer_token":
             headers["Authorization"] = f"Bearer {auth_value}"
         elif auth_type == "basic":
-            headers["Authorization"] = f"Basic {auth_value}"
+            b64 = base64.b64encode(auth_value.encode("utf-8")).decode()
+            headers["Authorization"] = f"Basic {b64}"
         elif auth_type == "api_key":
             headers["X-API-Key"] = auth_value
+    for k, v in (static_headers or {}).items():
+        headers[str(k)] = str(v)
     return headers
 
 
@@ -57,6 +61,10 @@ def parse_rpc_response(r: httpx.Response) -> Optional[dict]:
 def _raise_for_status(r: httpx.Response) -> None:
     if r.status_code in (401, 403):
         raise ProbeError(f"server returned {r.status_code} — check the auth type/value")
+    if 300 <= r.status_code < 400:
+        # don't echo the Location header — it's upstream-controlled
+        raise ProbeError(f"server redirected (HTTP {r.status_code}) — use the exact URL "
+                         "it points to (often a trailing slash)")
     if r.status_code >= 400:
         raise ProbeError(f"server returned HTTP {r.status_code}")
 

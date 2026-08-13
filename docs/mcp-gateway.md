@@ -51,14 +51,17 @@ A successful fetch turns any previously-typed names that match a live tool
 into checkboxes (with the server's own descriptions as hint text); names you
 typed that *aren't* on the server (a typo, a tool that's since been removed,
 or one you're staging ahead of the server supporting it) are left alone as
-plain editable rows underneath the checkboxes — nothing you've typed is ever
-silently dropped by a fetch. On **Edit**, leaving **Auth value** blank and
-clicking Fetch reuses the server's already-stored secret to probe it — but
-only for the **same host** the secret was saved against (origin-pinned: same
-scheme + hostname + port). Point the URL field at a different host while
-Auth value is still blank and the fetch is rejected with a "host differs"
-error instead of silently sending your other server's credential somewhere
-else — re-enter the auth value to probe a different host.
+plain editable rows underneath the checkboxes — a fetch doesn't discard a
+name just because it isn't (yet) on the server; note that blank rows are
+dropped and names are trimmed. On **Edit**, leaving **Auth value** blank and
+clicking Fetch reuses the secret already stored for the host in the
+currently saved (staged or applied) server entry — changing the URL host
+requires re-entering the secret (origin-pinned: same scheme + hostname +
+port). Point the URL field at a different host while Auth value is still
+blank and the fetch is rejected with a "host differs" error instead of
+silently sending your other server's credential somewhere else. A
+redirecting server (often a missing trailing slash) is reported as an
+error — use the exact URL.
 
 Save stages the item (flag pill `new`/`changed`); nothing reaches LiteLLM
 until you click **Apply**.
