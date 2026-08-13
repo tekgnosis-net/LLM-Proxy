@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from app.auth import login_required
@@ -26,6 +27,11 @@ def make_preview_store() -> ConfigStore:
 def _preview_fernet():
     s = get_settings()
     return fernet_from_secret(s.credentials_key or s.session_secret)
+
+
+def _origin(u: str) -> tuple:
+    p = urlparse(u)
+    return (p.scheme, p.hostname, p.port)
 
 
 @router.get("/mcp/health", dependencies=[Depends(login_required)])
@@ -101,8 +107,6 @@ async def mcp_tools_preview(body: dict = Body(...)):
     if not (url.startswith("http://") or url.startswith("https://")):
         raise HTTPException(status_code=422, detail="url required (http:// or https://)")
     transport = body.get("transport") or "http"
-    if transport != "http":
-        raise HTTPException(status_code=422, detail="HTTP transport only")
     auth_type = body.get("auth_type") or None
     auth_value = body.get("auth_value") or ""
     if auth_type and not auth_value:
@@ -117,7 +121,18 @@ async def mcp_tools_preview(body: dict = Body(...)):
         ve = (existing.get("data") or {}).get("auth_value_encrypted") if existing else None
         if not ve:
             raise HTTPException(status_code=422, detail="auth_value required (no stored secret to reuse)")
-        auth_value = _preview_fernet().decrypt(ve.encode()).decode()
+        # Confused-deputy guard: a stored secret is only ever sent to the origin it
+        # was saved for — probing a different host requires re-entering the secret.
+        stored_url = (existing.get("data") or {}).get("url") or ""
+        if _origin(url) != _origin(stored_url):
+            raise HTTPException(status_code=422,
+                                detail="url host differs from the stored server's — re-enter the auth value to probe a different host")
+        try:
+            auth_value = _preview_fernet().decrypt(ve.encode()).decode()
+        except Exception:
+            # never surface crypto errors (or ciphertext) — key rotation/corruption lands here
+            raise HTTPException(status_code=422,
+                                detail="stored secret could not be decrypted — re-enter the auth value")
     try:
         tools = await probe_tools(url, auth_type=auth_type, auth_value=auth_value,
                                   static_headers=body.get("static_headers") or {},

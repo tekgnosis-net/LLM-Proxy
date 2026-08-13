@@ -73,6 +73,8 @@ async def probe_tools(url, auth_type, auth_value, static_headers,
 - Calls `probe_tools`; returns `{"tools": [{"name","description"}]}`; `ProbeError` → 422 with
   the message; unexpected errors → 502.
 - The plaintext secret never appears in the response, logs, or error messages.
+- Stored-secret reuse is origin-pinned (scheme+host+port must match the stored server's url);
+  decrypt failures surface as a friendly 422, never a raw 500.
 
 ## 5. Frontend
 
@@ -115,6 +117,9 @@ api.js addition: `mcpToolsPreview: (body) => req('/api/mcp/tools/preview', {meth
 - **SSRF surface**: the endpoint fetches an admin-supplied URL — same trust level as saving the
   server itself (which makes LiteLLM fetch it); login-gated; no response bodies echoed beyond
   parsed tool names/descriptions.
+- **Confused-deputy guard**: the preview endpoint never sends a stored secret to an origin other
+  than the one it was saved for (flagged by automated security review; the admin can still probe
+  any host by entering a secret explicitly).
 - Probe honors a 10s timeout; slow servers surface the timeout message rather than hanging the form.
 - Descriptions are display-only; only names are stored in `allowed_tools`.
 - Release: `feat:` → **1.34.0**; UI-only deploy to `.75` (hot feature, litellm untouched).

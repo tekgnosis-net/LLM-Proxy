@@ -68,7 +68,7 @@ def test_preview_validates_url_and_transport(tmp_path):
     c = _client(tmp_path, FakeMcp())
     assert c.post("/api/mcp/tools/preview", json={"url": "ftp://x"}).status_code == 422
     r = c.post("/api/mcp/tools/preview", json={"url": "http://x/mcp", "transport": "sse"})
-    assert r.status_code == 422 and "HTTP transport" in r.json()["detail"]
+    assert r.status_code == 422 and "Apply the server first" in r.json()["detail"]
 
 
 def test_preview_calls_probe_and_returns_tools(tmp_path, monkeypatch):
@@ -109,6 +109,7 @@ def test_preview_blank_auth_uses_stored_secret(tmp_path, monkeypatch):
         async def applied(self):
             return [{"kind": "mcp_server", "name": "u1",
                      "data": {"server_name": "s", "auth_type": "bearer_token",
+                              "url": "http://x/mcp",
                               "auth_value_encrypted": "ENC:tok-stored"}}]
         async def staged(self): return []
     monkeypatch.setattr(mr, "make_preview_store", lambda: FakeStore())
@@ -125,6 +126,65 @@ def test_preview_blank_auth_uses_stored_secret(tmp_path, monkeypatch):
     r = c.post("/api/mcp/tools/preview", json={
         "url": "http://x/mcp", "auth_type": "bearer_token", "auth_value": "", "server_id": "u1"})
     assert r.status_code == 200 and seen["auth_value"] == "tok-stored"
+    os.environ.pop("DATABASE_URL", None)
+
+
+def test_preview_stored_secret_origin_mismatch(tmp_path, monkeypatch):
+    c = _client(tmp_path, FakeMcp())
+    os.environ["DATABASE_URL"] = "fake://test"
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    import app.routes.mcp_routes as mr
+
+    class FakeStore:
+        async def applied(self):
+            return [{"kind": "mcp_server", "name": "u1",
+                     "data": {"server_name": "s", "auth_type": "bearer_token",
+                              "url": "http://other-host/mcp",
+                              "auth_value_encrypted": "ENC:tok-stored"}}]
+        async def staged(self): return []
+    monkeypatch.setattr(mr, "make_preview_store", lambda: FakeStore())
+
+    class FakeFernet:
+        def decrypt(self, b): return b[4:]
+    monkeypatch.setattr(mr, "_preview_fernet", lambda: FakeFernet())
+
+    calls = []
+    async def fake_probe(url, **kw):
+        calls.append(url)
+        return []
+    monkeypatch.setattr(mr, "probe_tools", fake_probe)
+    r = c.post("/api/mcp/tools/preview", json={
+        "url": "http://x/mcp", "auth_type": "bearer_token", "auth_value": "", "server_id": "u1"})
+    assert r.status_code == 422 and "host differs" in r.json()["detail"]
+    assert calls == []
+    os.environ.pop("DATABASE_URL", None)
+
+
+def test_preview_stored_secret_decrypt_failure_422(tmp_path, monkeypatch):
+    c = _client(tmp_path, FakeMcp())
+    os.environ["DATABASE_URL"] = "fake://test"
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    import app.routes.mcp_routes as mr
+
+    class FakeStore:
+        async def applied(self):
+            return [{"kind": "mcp_server", "name": "u1",
+                     "data": {"server_name": "s", "auth_type": "bearer_token",
+                              "url": "http://x/mcp",
+                              "auth_value_encrypted": "ENC:tok-stored"}}]
+        async def staged(self): return []
+    monkeypatch.setattr(mr, "make_preview_store", lambda: FakeStore())
+
+    class FakeFernet:
+        def decrypt(self, b): raise ValueError("boom")
+    monkeypatch.setattr(mr, "_preview_fernet", lambda: FakeFernet())
+
+    r = c.post("/api/mcp/tools/preview", json={
+        "url": "http://x/mcp", "auth_type": "bearer_token", "auth_value": "", "server_id": "u1"})
+    assert r.status_code == 422 and "could not be decrypted" in r.json()["detail"]
+    assert "boom" not in r.text and "tok-stored" not in r.text
     os.environ.pop("DATABASE_URL", None)
 
 
