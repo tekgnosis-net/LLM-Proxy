@@ -4,7 +4,7 @@
   import { uuidv4 } from '../lib/browser.js'
   import { money, fmtDateTime } from '../lib/format.js'
   import { headerRowsToDict, dictToHeaderRows, costRowsToDict, dictToCostRows,
-           listRowsToArray, arrayToListRows, buildMcpInfo, validateMcpForm } from '../lib/mcp.js'
+           listRowsToArray, arrayToListRows, buildMcpInfo, validateMcpForm, mergeToolChoices } from '../lib/mcp.js'
   let { store } = $props()
 
   let showAdd = $state(false)
@@ -17,6 +17,9 @@
   let extraRows = $state([])    // forwarded header names, string[]
   let toolRows = $state([])     // allowed tools, string[]
   let costRows = $state([])     // per-tool costs [{tool,cost}]
+  let toolChoices = $state([])     // [{name, description, checked}] after a Fetch tools
+  let toolFetchBusy = $state(false)
+  let toolFetchErr = $state('')
 
   let mcpItems = $derived(store.itemsOfKind('mcp_server'))
 
@@ -73,6 +76,7 @@
     form = { server_name: '', description: '', transport: 'http', url: '', auth_type: '',
              auth_value: '', allow_all_keys: false, default_cost: '', hasStoredSecret: false }
     headerRows = []; extraRows = []; toolRows = []; costRows = []
+    toolChoices = []; toolFetchErr = ''
     editingId = null; showAdd = false; formErr = ''
   }
 
@@ -89,6 +93,7 @@
     extraRows = arrayToListRows(d.extra_headers)
     toolRows = arrayToListRows(d.allowed_tools)
     costRows = dictToCostRows(ci.tool_name_to_cost_per_query)
+    toolChoices = []; toolFetchErr = ''
     editingId = item.name; showAdd = true; formErr = ''
   }
 
@@ -106,7 +111,10 @@
       auth_value: form.auth_value,          // blank on edit = keep stored secret (server-side)
       static_headers: headerRowsToDict(headerRows),
       extra_headers: listRowsToArray(extraRows),
-      allowed_tools: listRowsToArray(toolRows),
+      allowed_tools: [...new Set([
+        ...toolChoices.filter(c => c.checked).map(c => c.name),
+        ...listRowsToArray(toolRows),
+      ])],
       allow_all_keys: form.allow_all_keys,
       mcp_info: buildMcpInfo(form.default_cost, costRows),
     })
@@ -158,6 +166,30 @@
   function rmTool(i) { toolRows = toolRows.filter((_, j) => j !== i) }
   function addCost() { costRows = [...costRows, { tool: '', cost: '' }] }
   function rmCost(i) { costRows = costRows.filter((_, j) => j !== i) }
+
+  async function fetchTools() {
+    toolFetchBusy = true; toolFetchErr = ''
+    try {
+      const r = await api.mcpToolsPreview({
+        url: form.url.trim(),
+        transport: form.transport,
+        auth_type: form.auth_type || null,
+        auth_value: form.auth_value,           // blank on edit = stored secret (server-side)
+        static_headers: headerRowsToDict(headerRows),
+        server_id: editingId,
+      })
+      const merged = mergeToolChoices(r.tools ?? [], [
+        ...toolChoices.filter(c => c.checked).map(c => c.name),
+        ...listRowsToArray(toolRows),
+      ])
+      toolChoices = merged.choices
+      toolRows = merged.extras
+    } catch (e) { toolFetchErr = e.message }
+    finally { toolFetchBusy = false }
+  }
+  function toggleToolChoice(name) {
+    toolChoices = toolChoices.map(c => c.name === name ? { ...c, checked: !c.checked } : c)
+  }
 
   function healthInfo(item) {
     if (item.flag === 'new') return { color: '#c7c7cc', title: 'Not applied yet' }
@@ -245,7 +277,19 @@
         <button type="button" class="addrow" onclick={addExtra}>+ Add forwarded header</button>
       </div>
       <div class="rows">
-        <span class="field-name">Allowed tools <span class="hint">(blank = all tools exposed)</span></span>
+        <span class="field-name">Allowed tools <span class="hint">(blank = all tools exposed)</span>
+          <button type="button" class="addrow" onclick={fetchTools}
+                  disabled={toolFetchBusy || !form.url.trim()}>
+            {toolFetchBusy ? 'Fetching…' : '⟳ Fetch tools'}
+          </button>
+        </span>
+        {#if toolFetchErr}<span class="fetch-err">{toolFetchErr}</span>{/if}
+        {#each toolChoices as c (c.name)}
+          <label class="tool-choice">
+            <input type="checkbox" checked={c.checked} onchange={() => toggleToolChoice(c.name)} />
+            <code>{c.name}</code>{#if c.description}<span class="hint"> — {c.description}</span>{/if}
+          </label>
+        {/each}
         {#each toolRows as _, i}
           <div class="kv-row">
             <input placeholder="tool name" bind:value={toolRows[i]} />
@@ -426,4 +470,6 @@
   .trunc{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nowrap{white-space:nowrap}
   .red{color:#c0271d}
+  .tool-choice{display:flex;align-items:baseline;gap:8px;font-size:13px;margin:2px 0}
+  .fetch-err{font-size:11px;color:#b00020}
 </style>

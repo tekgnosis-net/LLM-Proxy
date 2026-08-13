@@ -45,4 +45,5 @@ export const api = {
   mcpHealth: (probe = 0, serverIds = '') => req(`/api/mcp/health?probe=${probe ? 1 : 0}${serverIds ? `&server_ids=${encodeURIComponent(serverIds)}` : ''}`),
   mcpTools: (serverId) => req(`/api/mcp/tools?server_id=${encodeURIComponent(serverId)}`),
   mcpUsage: (days = 30) => req(`/api/mcp/usage?days=${days}`),
+  mcpToolsPreview: (body) => req('/api/mcp/tools/preview', { method: 'POST', body: JSON.stringify(body) }),
 }
