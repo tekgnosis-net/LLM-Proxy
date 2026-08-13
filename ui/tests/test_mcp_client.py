@@ -78,3 +78,16 @@ async def test_error_raises():
         return httpx.Response(500, text="boom")
     with pytest.raises(httpx.HTTPError):
         await _client(handler).list_servers()
+
+
+@pytest.mark.asyncio
+async def test_team_endpoints():
+    seen = {}
+    def handler(req):
+        seen["path"], seen["body"] = req.url.path, json.loads(req.content)
+        return httpx.Response(200, json={"ok": True})
+    c = _client(handler)
+    await c.new_team({"team_id": "ui-mcp"})
+    assert seen["path"] == "/team/new"
+    await c.update_team({"team_id": "ui-mcp", "object_permission": {"mcp_servers": ["a"]}})
+    assert seen["path"] == "/team/update" and seen["body"]["object_permission"]["mcp_servers"] == ["a"]

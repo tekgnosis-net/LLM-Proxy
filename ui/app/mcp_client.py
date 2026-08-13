@@ -57,3 +57,15 @@ class McpClient:
             r = await c.get(f"{self._base}/mcp-rest/tools/list", params={"server_id": server_id})
             r.raise_for_status()
             return r.json()
+
+    async def new_team(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async with self._client() as c:
+            r = await c.post(f"{self._base}/team/new", json=payload)
+            r.raise_for_status()
+            return r.json()
+
+    async def update_team(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async with self._client() as c:
+            r = await c.post(f"{self._base}/team/update", json=payload)
+            r.raise_for_status()
+            return r.json()
