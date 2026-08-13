@@ -38,6 +38,28 @@ re-verify field names/behavior against your pinned image on upgrade.
 | **Allow all virtual keys** | When ticked, every key may call this server without an explicit grant (see Access control below). |
 | **Default cost per tool call ($)** / **Per-tool cost overrides** | Optional spend-tracking cost model, attributed to `call_type='call_mcp_tool'` rows in the Activity feed and the MCP Usage card. |
 
+#### Fetch tools (picker)
+
+Next to **Allowed tools** is a **⟳ Fetch tools** button. It probes the URL/auth
+currently sitting in the form directly — no `mcp` SDK, no server round-trip
+through LiteLLM — so it works **before the server is saved or applied**, and
+before any key can be granted access. **HTTP transport only**: an `SSE`
+server can't be previewed this way (the direct probe needs a plain
+request/response, which SSE doesn't give you) — Apply the server first and
+use the row's **Tools** browser instead, or just type the tool names by hand.
+A successful fetch turns any previously-typed names that match a live tool
+into checkboxes (with the server's own descriptions as hint text); names you
+typed that *aren't* on the server (a typo, a tool that's since been removed,
+or one you're staging ahead of the server supporting it) are left alone as
+plain editable rows underneath the checkboxes — nothing you've typed is ever
+silently dropped by a fetch. On **Edit**, leaving **Auth value** blank and
+clicking Fetch reuses the server's already-stored secret to probe it — but
+only for the **same host** the secret was saved against (origin-pinned: same
+scheme + hostname + port). Point the URL field at a different host while
+Auth value is still blank and the fetch is rejected with a "host differs"
+error instead of silently sending your other server's credential somewhere
+else — re-enter the auth value to probe a different host.
+
 Save stages the item (flag pill `new`/`changed`); nothing reaches LiteLLM
 until you click **Apply**.
 
