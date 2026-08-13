@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 import asyncpg
 from app.auth import login_required
 from app.spend_client import SpendClient
@@ -92,6 +92,9 @@ def _cache_bool(v):
 
 # ── activity feed: cursor + WHERE + shapers ─────────────────────────────────
 
+_MCP_CALL_TYPES_SQL = "('call_mcp_tool','list_mcp_tools')"
+
+
 def _encode_cursor(ts, rid):
     return f"{_iso_utc(ts)}|{rid}"
 
@@ -111,7 +114,7 @@ def _decode_cursor(s):
     return ts, rid
 
 
-def _activity_where(days, status="all", model=None, key=None, cursor=None):
+def _activity_where(days, status="all", model=None, key=None, cursor=None, type_="all"):
     """Build the parameterized WHERE for the activity queries.
     Returns (sql, params); values only ever appear in params ($n placeholders)."""
     clauses = ['l."startTime" > now() - make_interval(days => $1)']
@@ -129,6 +132,10 @@ def _activity_where(days, status="all", model=None, key=None, cursor=None):
     if key:
         params.append(key)
         clauses.append(f"COALESCE(v.key_alias, LEFT(l.api_key,10)) = ${len(params)}")
+    if type_ == "mcp":
+        clauses.append(f"l.call_type IN {_MCP_CALL_TYPES_SQL}")
+    elif type_ == "llm":
+        clauses.append(f"(l.call_type IS NULL OR l.call_type NOT IN {_MCP_CALL_TYPES_SQL})")
     if cursor:
         ts, rid = cursor
         params.append(ts); n_ts = len(params)
@@ -143,7 +150,8 @@ def _shape_activity_row(r):
             "tok_in": r["tok_in"] or 0, "tok_out": r["tok_out"] or 0,
             "spend": float(r["spend"] or 0), "latency_ms": r["latency_ms"] or 0,
             "status": "failure" if r["status"] == "failure" else "success",
-            "cache_hit": _cache_bool(r["cache_hit"]), "call_type": r.get("call_type") or ""}
+            "cache_hit": _cache_bool(r["cache_hit"]), "call_type": r.get("call_type") or "",
+            "mcp_server": r.get("mcp_server") or "", "mcp_tool": r.get("mcp_tool") or ""}
 
 
 def _shape_stats(r):
@@ -169,6 +177,23 @@ def _extract_error(metadata, max_tb=4000):
     return {"class": ei.get("error_class") or "", "code": str(ei.get("error_code") or ""),
             "message": ei.get("error_message") or "", "provider": ei.get("llm_provider") or "",
             "traceback": (ei.get("traceback") or "")[:max_tb]}
+
+
+def _extract_mcp(metadata):
+    """metadata.mcp_tool_call_metadata → {server, tool, arguments, result} | None.
+    Defensive: jsonb arrives as str from asyncpg; malformed shapes → None."""
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            return None
+    if not isinstance(metadata, dict):
+        return None
+    m = metadata.get("mcp_tool_call_metadata")
+    if not isinstance(m, dict):
+        return None
+    return {"server": m.get("mcp_server_name") or "", "tool": m.get("name") or "",
+            "arguments": m.get("arguments"), "result": m.get("result")}
 
 
 def _shape_tx(r):
@@ -200,6 +225,7 @@ def _shape_tx(r):
             "spend": spend, "cost_per_1m": (spend / tok_total * 1e6) if tok_total else None,
             "latency_ms": r["latency_ms"] or 0,
             "ttft_ms": ms_between(st, cst), "gen_ms": ms_between(cst, et),
+            "mcp": _extract_mcp(r.get("metadata")),
             "error": _extract_error(r.get("metadata")) if r["status"] == "failure" else None}
 
 
@@ -295,7 +321,9 @@ _ACTIVITY_SELECT = (
     'SELECT l.request_id id, l."startTime" time, l.model, l.custom_llm_provider provider, '
     'COALESCE(v.key_alias, LEFT(l.api_key,10)) key, l.prompt_tokens tok_in, '
     'l.completion_tokens tok_out, l.spend, l.request_duration_ms latency_ms, '
-    'l.status, l.cache_hit, l.call_type '
+    'l.status, l.cache_hit, l.call_type, '
+    "l.metadata::jsonb #>> '{mcp_tool_call_metadata,mcp_server_name}' mcp_server, "
+    "l.metadata::jsonb #>> '{mcp_tool_call_metadata,name}' mcp_tool "
     'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key ')
 
 _ACTIVITY_STATS = (
@@ -308,11 +336,17 @@ _ACTIVITY_STATS = (
 
 @router.get("/usage/activity", dependencies=[Depends(login_required)])
 async def usage_activity(days: int = 30, status: str = "all", model: str = "",
-                         key: str = "", cursor: str = "", limit: int = 50, stats: int = 0):
+                         key: str = "", cursor: str = "", limit: int = 50, stats: int = 0,
+                         type_: str = Query("all", alias="type")):
     days = max(1, min(int(days), 365))
     limit = max(1, min(int(limit), 200))
+    # Handle both direct test calls (where type_ is a Query object) and HTTP calls (where it's a string)
+    if not isinstance(type_, str):
+        type_ = getattr(type_, "default", "all")
     if status not in ("all", "success", "failure"):
         raise HTTPException(status_code=422, detail="status must be all|success|failure")
+    if type_ not in ("all", "llm", "mcp"):
+        raise HTTPException(status_code=422, detail="type must be all|llm|mcp")
     cur = None
     if cursor:
         try:
@@ -322,7 +356,7 @@ async def usage_activity(days: int = 30, status: str = "all", model: str = "",
     dsn = get_settings().database_url
     if not dsn:
         return {"rows": [], "next_cursor": None}
-    where, params = _activity_where(days, status, model or None, key or None, cur)
+    where, params = _activity_where(days, status, model or None, key or None, cur, type_)
     conn = await asyncpg.connect(dsn)
     try:
         row_params = params + [limit]

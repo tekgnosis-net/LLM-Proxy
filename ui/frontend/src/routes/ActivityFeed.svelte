@@ -13,6 +13,7 @@
   let fStatus = $state('all')
   let fModel = $state('')
   let fKey = $state('')
+  let fType = $state('all')
 
   let rows = $state([])
   let stats = $state(null)
@@ -31,7 +32,7 @@
     busy = true; feedErr = ''
     try {
       const p = { days, limit: 50 }
-      if (mode === 'history') Object.assign(p, { status: fStatus, model: fModel, key: fKey, stats: 1 })
+      if (mode === 'history') Object.assign(p, { status: fStatus, model: fModel, key: fKey, type: fType, stats: 1 })
       const d = await api.get(`/api/usage/activity?${qs(p)}`)
       if (d.error) { feedErr = "Couldn't load activity — the query failed (check the UI logs). This is not the same as no activity."; rows = []; stats = null; nextCursor = null; return }
       rows = d.rows ?? []
@@ -47,7 +48,7 @@
     if (!nextCursor || busy) return
     busy = true; feedErr = ''
     try {
-      const p = { days, limit: 50, status: fStatus, model: fModel, key: fKey, cursor: nextCursor }
+      const p = { days, limit: 50, status: fStatus, model: fModel, key: fKey, type: fType, cursor: nextCursor }
       const d = await api.get(`/api/usage/activity?${qs(p)}`)
       if (d.error) { feedErr = "Couldn't load more — the query failed."; return }
       rows = [...rows, ...(d.rows ?? [])]
@@ -57,7 +58,7 @@
   }
 
   // mode / window / filter change → full reload (collapses detail)
-  $effect(() => { mode; days; fStatus; fModel; fKey; loadFirst(true) })
+  $effect(() => { mode; days; fStatus; fModel; fKey; fType; loadFirst(true) })
   // auto-refresh signal from the host: silently refresh Recent only (History never rug-pulls)
   let _prevTick = 0
   $effect(() => {
@@ -108,6 +109,11 @@
           <button class="seg-btn" class:active={fStatus === v} onclick={() => fStatus = v}>{label}</button>
         {/each}
       </div>
+      <div class="seg small">
+        {#each [['all','All types'],['llm','LLM'],['mcp','MCP']] as [v, label]}
+          <button class="seg-btn" class:active={fType === v} onclick={() => fType = v}>{label}</button>
+        {/each}
+      </div>
       <select bind:value={fModel} aria-label="filter model">
         <option value="">All models</option>
         {#each byModel as m}<option value={m}>{m}</option>{/each}
@@ -147,7 +153,11 @@
             <tr class="row" class:failed={r.status === 'failure'} class:open={openId === r.id}
                 onclick={() => toggle(r.id)}>
               <td class="nowrap">{fmtDateTime(r.time)}</td>
-              <td class="trunc" title={r.model}>{r.model || '—'}</td>
+              <td class="trunc" title={r.mcp_server ? `${r.mcp_server} · ${r.mcp_tool}` : r.model}>
+                {#if r.call_type === 'call_mcp_tool' || r.call_type === 'list_mcp_tools'}
+                  <span class="mcp-tag">MCP</span> {r.mcp_server || '?'}{r.mcp_tool ? ` · ${r.mcp_tool}` : ''}
+                {:else}{r.model || '—'}{/if}
+              </td>
               <td>{r.provider || '—'}</td>
               <td>{r.key}</td>
               <td>{(r.tok_in ?? 0).toLocaleString()}</td>
@@ -172,6 +182,10 @@
                     <span class="dl">Call</span><span class="dv">{t.call_type || '—'}</span>
                     <span class="dl">Route</span>
                     <span class="dv">{t.model_group || '—'} → {t.model || '—'}{t.provider ? ` (${t.provider})` : ''}</span>
+                    {#if t.mcp}
+                      <span class="dl">MCP</span>
+                      <span class="dv">{t.mcp.server || '—'}{t.mcp.tool ? ` · ${t.mcp.tool}` : ''}</span>
+                    {/if}
                     {#if t.api_base}<span class="dl">API base</span><span class="dv mono">{t.api_base}</span>{/if}
                     <span class="dl">Tokens</span><span class="dv">{(t.tok_in ?? 0).toLocaleString()} in / {(t.tok_out ?? 0).toLocaleString()} out / {(t.tok_total ?? 0).toLocaleString()} total</span>
                     <span class="dl">Spend</span>
@@ -182,6 +196,12 @@
                     {#if t.end_user}<span class="dl">End user</span><span class="dv">{t.end_user}</span>{/if}
                     {#if (t.tags ?? []).length}<span class="dl">Tags</span><span class="dv">{t.tags.join(', ')}</span>{/if}
                   </div>
+                  {#if t.mcp && (t.mcp.arguments || t.mcp.result)}
+                    <div class="mcpbox">
+                      {#if t.mcp.arguments}<details open><summary>Arguments</summary><pre>{JSON.stringify(t.mcp.arguments, null, 2)}</pre></details>{/if}
+                      {#if t.mcp.result}<details><summary>Result</summary><pre>{JSON.stringify(t.mcp.result, null, 2)}</pre></details>{/if}
+                    </div>
+                  {/if}
                   {#if t.error}
                     <div class="errbox">
                       <div class="errhead">{t.error.class || 'Error'}{t.error.code ? ` (${t.error.code})` : ''}{t.error.provider ? ` — ${t.error.provider}` : ''}</div>
@@ -244,4 +264,8 @@
   .green{color:#1a7f37}
   .trunc{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nowrap{white-space:nowrap}
+  .mcp-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(94,92,230,.15);color:#3634a3;text-transform:uppercase;letter-spacing:.04em}
+  .mcpbox{margin:8px 2px 4px;padding:8px 12px;background:#f4f4f8;border-radius:8px;font-size:13px}
+  .mcpbox pre{margin:6px 0 0;max-height:240px;overflow:auto;font-size:11px;white-space:pre-wrap}
+  .mcpbox summary{cursor:pointer;font-size:12px;color:#6e6e73}
 </style>
