@@ -259,3 +259,56 @@ async def test_apply_gate_blocks_orphaned_fallback(tmp_path):
         await apply_config(str(tmp_path / "c.yaml"), store, reloader=None,
                            decrypt=lambda b: b, models_client=None, hybrid=False)
     assert "integrity" in str(e.value).lower() and not store.folded   # nothing committed
+
+
+# --- v3.27: MCP hot apply ---
+
+class McpStore(FakeStore):
+    def __init__(self):
+        super().__init__()
+        self._applied = []
+        self._staged = [{"kind": "mcp_server", "name": "u1", "flag": "new",
+                         "data": {"server_name": "deepwiki", "transport": "http",
+                                  "url": "https://mcp.deepwiki.com/mcp"}}]
+
+
+class FakeMcpClient:
+    def __init__(self):
+        self.listed = 0; self.added = []
+    async def list_servers(self): self.listed += 1; return []
+    async def add_server(self, p): self.added.append(p["server_id"])
+    async def update_server(self, p): pass
+    async def delete_server(self, sid): pass
+    async def update_team(self, p): pass
+    async def new_team(self, p): pass
+
+
+@pytest.mark.asyncio
+async def test_hybrid_apply_reconciles_mcp_without_restart(tmp_path):
+    store = McpStore(); rl = FakeReloader(ok=True); mc = FakeMcpClient()
+    res = await apply_config(str(tmp_path / "c.yaml"), store, rl, decrypt=lambda b: b,
+                             models_client=FakeModelsClient(), mcp_client=mc, hybrid=True)
+    assert res["applied"] is True and res["restart"] == "skipped"
+    assert rl.calls == 0                       # MCP changes never restart the proxy
+    assert mc.added == ["u1"]
+    assert res["mcp"] == {"added": 1, "updated": 0, "deleted": 0, "failed": [], "team": "synced"}
+    assert store.folded is True
+
+
+@pytest.mark.asyncio
+async def test_hybrid_apply_mcp_list_failure_reported_not_raised(tmp_path):
+    class BadMcp(FakeMcpClient):
+        async def list_servers(self): raise RuntimeError("down")
+    store = McpStore(); rl = FakeReloader(ok=True)
+    res = await apply_config(str(tmp_path / "c.yaml"), store, rl, decrypt=lambda b: b,
+                             models_client=FakeModelsClient(), mcp_client=BadMcp(), hybrid=True)
+    assert res["applied"] is True and res["mcp"]["failed"][0]["op"] == "list"
+
+
+@pytest.mark.asyncio
+async def test_non_hybrid_apply_rejects_mcp_items(tmp_path):
+    store = McpStore(); rl = FakeReloader(ok=True)
+    with pytest.raises(ApplyError) as ei:
+        await apply_config(str(tmp_path / "c.yaml"), store, rl, decrypt=lambda b: b)
+    assert "invalid" in str(ei.value).lower() and "mcp" in str(ei.value).lower()
+    assert store.folded is False

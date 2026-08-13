@@ -15,6 +15,7 @@ from app.model_content import content_diff
 from app.config_integrity import group_names, router_orphans, key_orphans, trim_router_setting, trim_key_field, mga_names_from
 from app.reachability import collision_audit, key_over_reach, SEMANTICS_VERSION
 from app.keys_client import KeysClient
+from app.mcp_client import McpClient
 import yaml as _yaml
 
 router = APIRouter(prefix="/api")
@@ -35,6 +36,10 @@ def make_reloader() -> Reloader:
 def make_models_client() -> ModelsClient:
     s = get_settings()
     return ModelsClient(s.litellm_base_url, s.litellm_master_key)
+
+def make_mcp_client() -> McpClient:
+    s = get_settings()
+    return McpClient(s.litellm_base_url, s.litellm_master_key)
 
 def make_keys_client() -> KeysClient:
     s = get_settings()
@@ -188,6 +193,7 @@ async def apply():
             s.config_path, make_config_store(), make_reloader(),
             decrypt=lambda b: f.decrypt(b.encode()).decode(),
             models_client=make_models_client() if s.store_model_in_db else None,
+            mcp_client=make_mcp_client() if s.store_model_in_db else None,
             hybrid=s.store_model_in_db,
         )
     except ApplyError as e:

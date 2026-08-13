@@ -6,6 +6,7 @@ from app.config_render import effective, render_config
 from app.config_store import validate_config, ConfigError, write_config_atomic
 from app.config_integrity import group_names, router_orphans, mga_names_from
 from app.model_reconcile import reconcile_models
+from app.mcp_reconcile import reconcile_mcp
 from app.reloader import ReloadError
 
 _RESTART_KINDS = {"router_setting", "litellm_setting", "general_setting", "passthrough"}
@@ -32,7 +33,8 @@ def _make_resolve_key(eff, decrypt):
     return resolve
 
 
-async def apply_config(config_path, store, reloader, *, decrypt, models_client=None, hybrid=False) -> dict:
+async def apply_config(config_path, store, reloader, *, decrypt, models_client=None,
+                       mcp_client=None, hybrid=False) -> dict:
     """Commit-at-write apply flow.
 
     Non-hybrid (default, hybrid=False):
@@ -69,6 +71,10 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
     if _orphans:
         detail = "; ".join(f'{o["location"]} references missing {o["reference"]!r}' for o in _orphans)
         raise ApplyError(f"integrity: {detail}; fix in the Integrity panel")
+
+    if not hybrid and any(s["kind"] == "mcp_server" for s in staged):
+        raise ApplyError("invalid config, not applied: mcp_server items require hybrid mode "
+                         "(STORE_MODEL_IN_DB=true) — MCP servers hot-apply and are never rendered")
 
     if not hybrid:
         # ---- existing non-hybrid flow (unchanged) ----
@@ -144,6 +150,19 @@ async def apply_config(config_path, store, reloader, *, decrypt, models_client=N
                                           changed_item_names=changed_ids, creds_changed=creds_changed,
                                           resolve_key=resolve_key)
     out = {"applied": True, "hybrid": True, "models": model_report}
+    if mcp_client is not None:
+        # post-commit, reported never rolled back — mirrors the model reconcile.
+        # Runs on EVERY hybrid apply (declarative self-healing, same as models):
+        # servers created directly in LiteLLM get removed; the master is authoritative.
+        mcp_changed = {s["name"] for s in staged
+                       if s["kind"] == "mcp_server" and s.get("flag") in ("new", "changed")}
+        mcp_items = [it for it in eff if it["kind"] == "mcp_server" and it.get("flag") != "deleted"]
+        try:
+            mcp_live = await mcp_client.list_servers()
+            out["mcp"] = await reconcile_mcp(mcp_items, mcp_live, mcp_client, mcp_changed, decrypt)
+        except Exception as e:
+            out["mcp"] = {"added": 0, "updated": 0, "deleted": 0,
+                          "failed": [{"id": "*", "op": "list", "error": str(e)}]}
     if settings_changed:
         expected = [(it["data"] or {}).get("model_name", it["name"]) for it in desired_items]
         try:

@@ -357,7 +357,7 @@ def test_resync_updates_content_drift(tmp_path, monkeypatch):
 def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     import app.routes.config_v3_routes as cr
     captured = {}
-    async def fake_apply(config_path, store, reloader, *, decrypt, models_client=None, hybrid=False):
+    async def fake_apply(config_path, store, reloader, *, decrypt, models_client=None, mcp_client=None, hybrid=False):
         captured["hybrid"] = hybrid
         captured["has_client"] = models_client is not None
         return {"applied": True, "hybrid": hybrid, "models": {"added": 0}, "restart": "skipped"}

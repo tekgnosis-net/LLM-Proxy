@@ -75,6 +75,8 @@ def render_config(items, decrypt, hybrid=False):
                                         "credential_info": {"provider": data.get("provider")}})
         elif kind in _SECTION_BY_KIND:
             sections.setdefault(_SECTION_BY_KIND[kind], {})[name] = data
+        elif kind == "mcp_server":
+            pass  # DB-only entity: hot-applied via /v1/mcp/server (mcp_reconcile); never rendered
     cfg = base
     for sec, kv in sections.items():
         cfg[sec] = _deep_merge(base.get(sec, {}), kv) if isinstance(base.get(sec), dict) else dict(kv)
