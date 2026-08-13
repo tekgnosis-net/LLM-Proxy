@@ -183,6 +183,36 @@ valid.** UI restricts to a dropdown of these exact strings.
 | `proxy_batch_write_at` | int | batch spend writes (default 10s) |
 | + passthrough | — | preserve unknown keys |
 
+## 5. `mcp_server` items (master config only — never rendered into `config.yaml`)
+
+Unlike every other kind on this page, staged/applied `mcp_server` items are
+**not** part of the `config.yaml` schema at all — `render_config()` emits
+nothing for them in either default or hybrid mode, so they never appear in
+the top-level keys list above, contribute no `SECRET_FIELDS`, and a
+bootstrap import of a `mcp_servers:` YAML block is split out into its own
+item kind rather than folded into `passthrough`. Instead, each `mcp_server`
+item is reconciled **live and hot** straight against LiteLLM's own
+`/v1/mcp/server` admin API (add/update/delete; never a restart). Item name =
+a UUID, passed to LiteLLM as `server_id`; `data`:
+
+| field | type | notes |
+|---|---|---|
+| `server_name` | str | required, unique among `mcp_server` items; `[A-Za-z0-9_-]+`; used as the tool prefix and the `/{server_name}/mcp` mount |
+| `description` | str | optional |
+| `transport` | str | `"http"` \| `"sse"` (v1 — stdio out of scope) |
+| `url` | str | required, `http(s)://`; **plaintext** — some vendors embed a secret in the URL, see caveats |
+| `auth_type` | str\|null | `null` \| `"api_key"` \| `"bearer_token"` \| `"basic"` |
+| `auth_value_encrypted` | str | present only when `auth_type` is set; Fernet ciphertext (`CREDENTIALS_KEY` vault) — **SECRET**, redacted on every read, blank-on-edit keeps the existing ciphertext |
+| `static_headers` | object | optional `{header: value}`; **plaintext**, not a secret store |
+| `extra_headers` | list[str] | optional header *names* forwarded from the calling client |
+| `allowed_tools` | list[str] | optional allow-list; empty = all tools |
+| `allow_all_keys` | bool | `true` = every virtual key may use this server without a per-key grant |
+| `mcp_info.mcp_server_cost_info` | object | `{default_cost_per_query, tool_name_to_cost_per_query}` — optional per-tool spend model |
+
+Full admin-guide detail (add/edit, hot apply, per-key access control via the
+`ui-mcp` team, drift/resync, health/usage, and the client-facing endpoints)
+lives in [`mcp-gateway.md`](mcp-gateway.md).
+
 ## Secrets (emit `os.environ/<VAR>`, never literals)
 `litellm_params.api_key`, `aws_secret_access_key` (+ `aws_access_key_id`),
 `vertex_credentials`; `cache_params.password`, `s3_aws_secret_access_key`;
