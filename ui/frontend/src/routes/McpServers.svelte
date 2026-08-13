@@ -53,6 +53,13 @@
   let mcpDriftCount = $derived(mcpDrift
     ? (mcpDrift.missing_in_litellm?.length || 0) + (mcpDrift.extra_in_litellm?.length || 0) + (mcpDrift.content_drifted?.length || 0)
     : 0)
+  let driftInfo = $derived.by(() => {
+    if (!mcpDrift) return {}
+    const m = {}
+    for (const e of mcpDrift.missing_in_litellm ?? []) m[e.id] = 'missing from proxy'
+    for (const e of mcpDrift.content_drifted ?? []) m[e.id] = `settings differ: ${(e.fields ?? []).join(', ')}`
+    return m
+  })
 
   // refresh live views after a successful Apply (same pattern as Models.svelte)
   let _prevApplying = false
@@ -67,7 +74,10 @@
     try {
       const r = await api.resync()
       const m = r.mcp || {}
-      resyncMsg = { ok: true, text: `Resynced — MCP: ${m.added || 0} added, ${m.updated || 0} updated, ${m.deleted || 0} deleted${m.failed?.length ? `, ${m.failed.length} failed` : ''}.` }
+      const fails = (m.failed || []).map(f => `${f.name || f.id} (${f.op}): ${String(f.error || '').slice(0, 200)}`)
+      resyncMsg = fails.length
+        ? { ok: false, text: `Resync incomplete — MCP: ${m.added || 0} added, ${m.updated || 0} updated, ${m.deleted || 0} deleted; failed: ${fails.join(' · ')}` }
+        : { ok: true, text: `Resynced — MCP: ${m.added || 0} added, ${m.updated || 0} updated, ${m.deleted || 0} deleted.` }
     } catch (e) { resyncMsg = { ok: false, text: e.message } }
     await loadDrift(); await loadHealth()
   }
@@ -220,6 +230,13 @@
     {/if}
     <button class="primary" onclick={() => { editingId = null; showAdd = !showAdd; formErr = '' }} disabled={store.applying}>＋ Add MCP server</button>
   </header>
+  {#if mcpDrift && mcpDriftCount > 0}
+    <div class="drift-detail">
+      {#if mcpDrift.missing_in_litellm?.length}<span>Missing from proxy: <strong>{mcpDrift.missing_in_litellm.map(e => e.server_name || e.id).join(', ')}</strong></span>{/if}
+      {#if mcpDrift.extra_in_litellm?.length}<span>Only on proxy (removed on next Apply/Resync): <strong>{mcpDrift.extra_in_litellm.map(e => e.server_name || e.id).join(', ')}</strong></span>{/if}
+      {#if mcpDrift.content_drifted?.length}<span>Settings differ: <strong>{mcpDrift.content_drifted.map(e => `${e.server_name || e.id} (${(e.fields ?? []).join(', ')})`).join('; ')}</strong></span>{/if}
+    </div>
+  {/if}
   {#if resyncMsg}<div class="banner {resyncMsg.ok ? 'ok' : 'err'}">{resyncMsg.text}</div>{/if}
   {#if store.error}<div class="banner err">{store.error}</div>{/if}
   {#if store.notice}<div class="banner ok">{store.notice}</div>{/if}
@@ -228,7 +245,7 @@
     <div class="card add">
       <h3 style="margin:0 0 4px">{editingId ? 'Edit MCP server' : 'Add MCP server'}</h3>
       <label>Server name <input bind:value={form.server_name} placeholder="e.g. firecrawl" />
-        <span class="hint">Letters, digits, _ or -. Becomes the tool prefix (<code>firecrawl-scrape</code>) and the per-server endpoint (<code>/firecrawl/mcp</code>).</span>
+        <span class="hint">Letters, digits or _ (no hyphens — LiteLLM uses '-' as the tool-name separator). Becomes the tool prefix (<code>firecrawl-scrape</code>) and the per-server endpoint (<code>/firecrawl/mcp</code>).</span>
       </label>
       <label>Description <input bind:value={form.description} placeholder="optional" /></label>
       <label>Transport
@@ -351,6 +368,7 @@
                 {#if flag === 'new'}<span class="flag-tag flag-new">new</span>
                 {:else if flag === 'changed'}<span class="flag-tag flag-changed">changed</span>
                 {:else if flag === 'deleted'}<span class="flag-tag flag-deleted">deleted</span>{/if}
+                {#if driftInfo[item.name]}<span class="flag-tag flag-drift" title={driftInfo[item.name]}>drift</span>{/if}
               </td>
               <td class="actions">
                 {#if flag === 'deleted'}
@@ -457,6 +475,8 @@
   .drift{font-size:12px;padding:3px 10px;border-radius:20px}
   .drift.ok{background:#e7f7ec;color:#1d7a33}
   .drift.warn{background:#fff4e5;color:#9a5b00}
+  .drift-detail{font-size:12px;color:#9a5b00;background:#fff4e5;border-radius:8px;padding:6px 10px;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  .flag-drift{background:rgba(255,149,0,.15);color:#9a5b00}
   .row-new{background:rgba(10,132,255,.06)}
   .row-changed{background:rgba(255,149,0,.06)}
   .row-deleted{background:rgba(255,59,48,.05)}

@@ -56,7 +56,7 @@ export function buildMcpInfo(defaultCost, costRows) {
 }
 
 export function validateMcpForm(f) {
-  if (!/^[A-Za-z0-9_-]+$/.test((f.server_name || '').trim())) return 'Server name is required (letters, digits, _ or - only).'
+  if (!/^[A-Za-z0-9_]+$/.test((f.server_name || '').trim())) return 'Server name is required (letters, digits or _ — LiteLLM rejects hyphens).'
   if (!/^https?:\/\//.test((f.url || '').trim())) return 'URL is required (http:// or https://).'
   if (f.auth_type && !(f.auth_value || '').trim() && !f.hasStoredSecret) return 'Auth value is required for the selected auth type.'
   return null

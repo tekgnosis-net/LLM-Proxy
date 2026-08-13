@@ -39,7 +39,7 @@ export function createConfigStore() {
         if (r.restart === 'healthy') msg += '; settings change restarted the proxy (healthy)'
         else if (r.restart === 'unhealthy') msg += `; settings restart UNHEALTHY: ${r.detail || ''}`
         const allFailed = [...(m.failed || []).map(f => `${f.id} (${f.op})`),
-                           ...((mc && mc.failed) || []).map(f => `MCP ${f.id} (${f.op})`)]
+                           ...((mc && mc.failed) || []).map(f => `MCP ${f.name || f.id} (${f.op}): ${String(f.error || '').slice(0, 200)}`)]
         if (allFailed.length) {
           error = `${msg}. ${allFailed.length} op(s) failed: ${allFailed.join(', ')}`
           notice = ''

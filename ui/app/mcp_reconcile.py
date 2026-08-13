@@ -96,7 +96,7 @@ def build_desired(items, decrypt: Optional[Callable[[str], str]]):
             try:
                 payload["credentials"] = {"auth_value": decrypt(ve)}
             except Exception as e:
-                failed.append({"id": it["name"], "op": "decrypt", "error": str(e)})
+                failed.append({"id": it["name"], "name": d.get("server_name"), "op": "decrypt", "error": str(e)})
                 continue
         desired[it["name"]] = payload
     return desired, failed
@@ -122,6 +122,7 @@ async def reconcile_mcp(desired_items, live, client,
     desired, failed = build_desired(desired_items, decrypt)
     failed_ids = {f["id"] for f in failed}
     live_ids = {s.get("server_id") for s in live if s.get("server_id")}
+    live_names = {s.get("server_id"): s.get("server_name") for s in live if s.get("server_id")}
     protected = failed_ids & live_ids
     plan = diff_mcp(desired, live, changed_item_names & set(desired), protected_ids=protected)
     added = updated = deleted = 0
@@ -133,23 +134,23 @@ async def reconcile_mcp(desired_items, live, client,
                 try:
                     await client.update_server(entry); updated += 1
                 except Exception as e2:
-                    failed.append({"id": entry["server_id"], "op": "add->update", "error": str(e2)})
+                    failed.append({"id": entry["server_id"], "name": entry.get("server_name"), "op": "add->update", "error": str(e2)})
             else:
-                failed.append({"id": entry["server_id"], "op": "add", "error": str(e)})
+                failed.append({"id": entry["server_id"], "name": entry.get("server_name"), "op": "add", "error": str(e)})
     for entry in plan["to_update"]:
         try:
             await client.update_server(entry); updated += 1
         except Exception as e:
-            failed.append({"id": entry["server_id"], "op": "update", "error": str(e)})
+            failed.append({"id": entry["server_id"], "name": entry.get("server_name"), "op": "update", "error": str(e)})
     for sid in plan["to_delete"]:
         try:
             await client.delete_server(sid); deleted += 1
         except Exception as e:
-            failed.append({"id": sid, "op": "delete", "error": str(e)})
+            failed.append({"id": sid, "name": live_names.get(sid), "op": "delete", "error": str(e)})
     out = {"added": added, "updated": updated, "deleted": deleted, "failed": failed}
     try:
         out["team"] = await sync_mcp_team(client, set(desired) | protected)
     except Exception as e:
         out["team"] = "error"
-        failed.append({"id": MCP_TEAM_ID, "op": "team_sync", "error": str(e)})
+        failed.append({"id": MCP_TEAM_ID, "name": MCP_TEAM_ID, "op": "team_sync", "error": str(e)})
     return out
