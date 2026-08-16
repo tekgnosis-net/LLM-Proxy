@@ -63,6 +63,11 @@ services:
       STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB:-false}"
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
+      # aiohttp transport reuses stale keep-alive sockets to local backends →
+      # instant SocketTimeoutError on first-after-idle calls (silent per-key
+      # fallbacks to paid models) and mid-stream stream kills (no fallback
+      # exists mid-stream). httpx transport is immune. Diagnosed live 2026-08-16.
+      DISABLE_AIOHTTP_TRANSPORT: "true"
       UI_USERNAME: admin
       UI_PASSWORD: ${LITELLM_MASTER_KEY}
     depends_on:
