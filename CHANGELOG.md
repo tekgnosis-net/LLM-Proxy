@@ -1,3 +1,10 @@
+## [1.34.2](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.1...v1.34.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **ui:** key expiry visible+clearable on edit (blank=keep, 'never'=remove) ([a016dd3](https://github.com/tekgnosis-net/LLM-Proxy/commit/a016dd3d5894bc60209d4b1fd0f4af1d1fa4b6bb))
+
 ## [1.34.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.0...v1.34.1) (2026-08-13)
 
 
