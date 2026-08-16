@@ -11,6 +11,7 @@
   let newKey = $state(null)   // the one-time plaintext key after create
   let availableModels = $state([])
   let editingToken = $state(null)
+  let currentExpiry = $state(null)   // the edited key's existing expiry (display only)
   const STRATEGIES = ['simple-shuffle','least-busy','usage-based-routing','usage-based-routing-v2','latency-based-routing','cost-based-routing']
   const FALLBACKS_PLACEHOLDER = '[{"primary-model-name": ["backup-model-name"]}]'
   let form = $state({ key_alias: '', models: [], max_budget: '', budget_duration: '', duration: '', rpm_limit: '', tpm_limit: '', router_strategy: '', router_fallbacks: '', router_num_retries: '', router_timeout: '', router_cooldown_time: '', router_allowed_fails: '', router_retry_after: '' })
@@ -22,7 +23,7 @@
   // Picker options come from the key's Allowed models (or all models if unrestricted),
   // so a key can only ever fall back to models it is permitted to call.
   let fbOptions = $derived((form.models && form.models.length) ? form.models : availableModels)
-  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = []; passthroughRows = []; existingMetadata = {}; mcpGrants = []; mcpInitial = '[]'; editingTeamId = null }
+  function resetFb() { fbMode = 'picker'; fbRules = []; fbErr = ''; form.router_fallbacks = ''; aliasRows = []; passthroughRows = []; existingMetadata = {}; mcpGrants = []; mcpInitial = '[]'; editingTeamId = null; currentExpiry = null }
   function addFbRule() { fbRules = [...fbRules, { primary: '', backups: [] }] }
   function rmFbRule(i) { fbRules = fbRules.filter((_, j) => j !== i) }
   function switchFbToJson() { form.router_fallbacks = JSON.stringify(rulesToFallbacks(fbRules), null, 2); fbErr = ''; fbMode = 'json' }
@@ -84,7 +85,10 @@
       models: form.models,
       max_budget: num(form.max_budget),
       budget_duration: form.budget_duration || undefined,
-      duration: form.duration || undefined,
+      // blank = leave expiry unchanged; the literal word "never" clears it
+      // (/key/update {"duration": null} verified to null the expires column).
+      duration: form.duration.trim() === '' ? undefined
+        : (form.duration.trim().toLowerCase() === 'never' ? null : form.duration.trim()),
       rpm_limit: num(form.rpm_limit),
       tpm_limit: num(form.tpm_limit)
     }
@@ -143,6 +147,7 @@
       key_alias: k.key_alias || '', models: stripAliasNames(k.models, k.aliases),
       max_budget: k.max_budget ?? '', budget_duration: k.budget_duration || '',
       duration: '', rpm_limit: k.rpm_limit ?? '', tpm_limit: k.tpm_limit ?? '',
+      // (duration deliberately blank on edit = keep the current expiry)
       router_strategy: (k.router_settings?.routing_strategy) || '',
       router_fallbacks: '',
       router_num_retries: k.router_settings?.num_retries ?? '', router_timeout: k.router_settings?.timeout ?? '',
@@ -155,6 +160,7 @@
     if (fb && !representable) { fbMode = 'json'; fbRules = []; form.router_fallbacks = JSON.stringify(fb, null, 2) }
     else { fbMode = 'picker'; fbRules = rules }
     fbErr = ''
+    currentExpiry = k.expires || null
     aliasRows = aliasesToRules(k.aliases)
     existingMetadata = { ...(k.metadata || {}) }
     passthroughRows = listToPassthroughRows(k.metadata?.allowed_passthrough_routes)
@@ -245,7 +251,13 @@
       <div class="grid">
         <label>Max budget ($) <input type="number" min="0" step="0.01" bind:value={form.max_budget} placeholder="e.g. 50" /></label>
         <label>Budget resets <input bind:value={form.budget_duration} placeholder="e.g. 30d" /></label>
-        <label>Expires <input bind:value={form.duration} placeholder="e.g. 30d (blank = never)" /></label>
+        <label>Expires
+          <input bind:value={form.duration}
+                 placeholder={editingToken ? 'blank = keep current · "never" = remove' : 'e.g. 30d (blank = never)'} />
+          {#if editingToken}
+            <span class="hint">{currentExpiry ? `currently expires ${new Date(currentExpiry).toLocaleDateString()} — type "never" to remove` : 'no expiry set'}</span>
+          {/if}
+        </label>
         <label>RPM limit <input type="number" min="0" bind:value={form.rpm_limit} /></label>
         <label>TPM limit <input type="number" min="0" bind:value={form.tpm_limit} /></label>
       </div>
