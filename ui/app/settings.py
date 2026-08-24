@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     catalog_pricing_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
     catalog_endpoints_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/provider_endpoints_support.json"
     backup_dir: str = "/backups"   # local mount for scheduled backups (BACKUP_DIR)
+    app_version: str = "dev"   # baked by CI build-arg APP_VERSION; "dev" for local builds
 
 
 @lru_cache

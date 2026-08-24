@@ -42,6 +42,23 @@ def test_login_then_access(tmp_path):
     assert c.get("/api/config/state").status_code != 401
 
 
+def test_me_reports_version(tmp_path, monkeypatch):
+    # No APP_VERSION set → the "dev" default (used for local/non-CI builds)
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    c = _client(tmp_path)
+    body = c.get("/api/auth/me").json()
+    assert body["authed"] is False
+    assert body["version"] == "dev"
+
+
+def test_me_reports_baked_version(tmp_path, monkeypatch):
+    # CI bakes the release version in via the APP_VERSION build-arg/env
+    monkeypatch.setenv("APP_VERSION", "1.35.0")
+    c = _client(tmp_path)
+    body = c.get("/api/auth/me").json()
+    assert body["version"] == "1.35.0"
+
+
 def _client_cookie_secure(tmp_path, monkeypatch, value):
     """Build the app with SESSION_COOKIE_SECURE set to `value`. Uses monkeypatch
     (auto-restores env) + cache_clear before/after so the cached Settings don't

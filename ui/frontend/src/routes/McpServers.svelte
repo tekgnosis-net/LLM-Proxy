@@ -443,14 +443,14 @@
 <style>
   .page{padding:24px 30px;max-width:1000px}
   header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-  .card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-top:14px;background:#fff}
+  .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card)}
   .card.add{display:flex;flex-direction:column;gap:10px;max-width:560px}
-  label{display:flex;flex-direction:column;font-size:13px;color:#3a3a3c;gap:4px}
-  input,select{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit}
+  label{display:flex;flex-direction:column;font-size:13px;color:var(--text);gap:4px}
+  input,select{padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;background:var(--bg);color:var(--text)}
   table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(0,0,0,.06);font-size:14px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:14px}
   .row{display:flex;gap:8px;margin-top:4px}
-  button{padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+  button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button.danger{color:#ff3b30;border-color:#ffd0cc}
   button.undo{color:#ff9500;border-color:#ffe0b2}
@@ -458,18 +458,18 @@
   button:disabled{opacity:.5;cursor:default}
   .banner{padding:10px 12px;border-radius:8px;margin-top:8px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}
-  .hint{font-size:11px;color:#6e6e73}
-  .empty{color:#6e6e73}
+  .hint{font-size:11px;color:var(--muted)}
+  .empty{color:var(--muted)}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
   .check-res{margin-left:6px;font-weight:600}
   .check-res.ok{color:#34c759}.check-res.bad{color:#ff3b30}
   .actions{display:flex;gap:6px;flex-wrap:wrap}
   .rows{display:flex;flex-direction:column;gap:4px}
-  .field-name{font-size:13px;color:#3a3a3c}
+  .field-name{font-size:13px;color:var(--text)}
   .kv-row{display:flex;gap:6px;align-items:center}
   .kv-row input{flex:1;min-width:0}
-  .x{border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer;padding:4px 9px}
-  .addrow{margin-top:2px;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer;width:fit-content}
+  .x{border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);cursor:pointer;padding:4px 9px}
+  .addrow{margin-top:2px;font-size:12px;padding:3px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);cursor:pointer;width:fit-content}
   label.check{flex-direction:row;align-items:flex-start;gap:8px;flex-wrap:wrap}
   label.check input{margin-top:2px}
   .drift{font-size:12px;padding:3px 10px;border-radius:20px}
@@ -480,12 +480,12 @@
   .row-new{background:rgba(10,132,255,.06)}
   .row-changed{background:rgba(255,149,0,.06)}
   .row-deleted{background:rgba(255,59,48,.05)}
-  .strikethrough{text-decoration:line-through;color:#8e8e93}
+  .strikethrough{text-decoration:line-through;color:var(--muted)}
   .flag-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em}
   .flag-new{background:rgba(10,132,255,.12);color:#0a52c7}
   .flag-changed{background:rgba(255,149,0,.15);color:#b36800}
   .flag-deleted{background:rgba(255,59,48,.12);color:#c0271d}
-  .detail-row td{background:#fafafc;white-space:normal}
+  .detail-row td{background:var(--chip);white-space:normal}
   .tool-list{margin:6px 0;padding-left:18px;font-size:13px}
   .trunc{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nowrap{white-space:nowrap}

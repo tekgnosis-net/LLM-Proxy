@@ -363,7 +363,7 @@
             <tr class={flagAccent(flag)}>
               <td class:strikethrough={flag === 'deleted'}>{publicName}</td>
               <td class:strikethrough={flag === 'deleted'}><code>{lp.model ?? ''}</code></td>
-              <td class:strikethrough={flag === 'deleted'} style="font-size:12px;color:#6e6e73">
+              <td class:strikethrough={flag === 'deleted'} style="font-size:12px;color:var(--muted)">
                 {#if inCost != null || outCost != null}
                   In: ${inCost ?? '—'} Out: ${outCost ?? '—'} / 1M
                 {:else}—{/if}
@@ -405,21 +405,21 @@
 <style>
   .page{padding:24px 30px;max-width:960px}
   header{display:flex;align-items:center;justify-content:space-between}
-  .card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-top:14px;background:#fff}
+  .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card)}
   .card.add{display:flex;flex-direction:column;gap:10px;max-width:520px}
-  label{display:flex;flex-direction:column;font-size:13px;color:#3a3a3c;gap:4px}
-  input,select{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit}
+  label{display:flex;flex-direction:column;font-size:13px;color:var(--text);gap:4px}
+  input,select{padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;background:var(--bg);color:var(--text)}
   table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(0,0,0,.06);font-size:14px}
+  th,td{text-align:left;padding:8px;border-bottom:1px solid var(--border);font-size:14px}
   .row{display:flex;gap:8px;margin-top:4px}
-  button{padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+  button{padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button.danger{color:#ff3b30;border-color:#ffd0cc}
   button.undo{color:#ff9500;border-color:#ffe0b2}
   button:disabled{opacity:.5;cursor:default}
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}.banner.ok{background:#e7f7ec;color:#1d7a33}.banner.info{background:#eef4ff;color:#0a52c7}.banner.warn{background:#fff8e1;color:#7a4800}
-  .hint{font-size:12px;color:#6e6e73}.empty{color:#6e6e73}
+  .hint{font-size:12px;color:var(--muted)}.empty{color:var(--muted)}
   label.check{flex-direction:row;align-items:flex-start;gap:8px;flex-wrap:wrap}
   label.check input{margin-top:2px}
   .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
@@ -430,7 +430,7 @@
   .lookup-row input{flex:1}
   .lookup-row button{white-space:nowrap;padding:8px 10px;font-size:12px}
   .autofill-hint{font-size:11px;color:#1d7a33;margin-top:2px}
-  .prefix{display:inline-flex;align-items:center;padding:0 8px;background:#f0f0f3;border:1px solid #ccc;border-right:0;border-radius:8px 0 0 8px;font:inherit;color:#6e6e73;white-space:nowrap}
+  .prefix{display:inline-flex;align-items:center;padding:0 8px;background:var(--chip);border:1px solid var(--border);border-right:0;border-radius:8px 0 0 8px;font:inherit;color:var(--muted);white-space:nowrap}
   .lookup-row .prefix + input{border-radius:0}
   button.link{background:none;border:0;color:#0a84ff;cursor:pointer;font-size:12px;padding:0;text-align:left;width:fit-content}
 
@@ -443,7 +443,7 @@
   .row-new{background:rgba(10,132,255,.06)}
   .row-changed{background:rgba(255,149,0,.06)}
   .row-deleted{background:rgba(255,59,48,.05)}
-  .strikethrough{text-decoration:line-through;color:#8e8e93}
+  .strikethrough{text-decoration:line-through;color:var(--muted)}
 
   /* Flag tags */
   .flag-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em}

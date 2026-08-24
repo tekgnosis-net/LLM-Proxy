@@ -10,6 +10,9 @@ RUN npm run build           # vite build.outDir = 'dist' -> /web/dist
 FROM python:3.12-slim AS runtime
 WORKDIR /srv
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 # pg_dump/pg_restore 16 for the Backup & Restore feature. The slim image's
 # Debian release moves over time (bookworm → trixie), so resolve the PGDG
 # suite from the running image instead of hardcoding it.
