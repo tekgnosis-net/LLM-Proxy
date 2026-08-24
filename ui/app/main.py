@@ -7,6 +7,7 @@ from app.settings import get_settings
 from app.routes import auth_routes, health_routes, keys_routes, usage_routes
 from app.routes import housekeeping_routes, models_routes, catalog_routes
 from app.routes import config_v3_routes, system_routes, logs_routes, mcp_routes
+from app.routes import backup_routes
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -85,6 +86,27 @@ async def lifespan(app):
         sched.add_job(catalog_job, "interval", days=s.catalog_sync_interval_days, id="catalog",
                       next_run_time=datetime.now(timezone.utc))
 
+    if s.database_url:
+        from app.backup_store import BackupStore, read_mirror
+        from app.backup_scheduler import register_backup_jobs, set_scheduler
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        bstore = BackupStore(s.database_url)
+        try:
+            # Self-heal: ui_settings empty + mirror present (e.g. after a ui_* wipe) → re-import.
+            if not await bstore.settings_present():
+                mirror = read_mirror(s.backup_dir)
+                if mirror:
+                    for tier in ("config", "logs"):
+                        if tier in mirror:
+                            await bstore.save_settings(tier, mirror[tier])
+                    logging.getLogger(__name__).warning("backup settings restored from %s/settings.json", s.backup_dir)
+            sched = sched or AsyncIOScheduler()
+            from app.routes.backup_routes import make_backup_engine
+            await register_backup_jobs(sched, bstore, make_backup_engine)
+            set_scheduler(sched)
+        except Exception:
+            logging.getLogger(__name__).warning("backup scheduler setup failed", exc_info=True)
+
     if sched:
         sched.start()
     try:
@@ -112,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog_routes.router)
     app.include_router(system_routes.router)
     app.include_router(logs_routes.router)
+    app.include_router(backup_routes.router)
     if STATIC_DIR.exists():
         app.mount("/", CachedStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app

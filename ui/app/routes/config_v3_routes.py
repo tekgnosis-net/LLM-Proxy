@@ -46,6 +46,29 @@ def make_keys_client() -> KeysClient:
     s = get_settings()
     return KeysClient(s.litellm_base_url, s.litellm_master_key)
 
+async def _guard_empty_master(master_model_items: list[dict], body: dict | None) -> None:
+    """Spec §7: refuse mass-delete when the master is empty but LiteLLM serves models.
+
+    master_model_items MUST be the same item set the caller is about to act on — resync
+    reconciles from store.applied() alone, so it must pass applied-only items; apply
+    reconciles from effective(applied, staged), so it must pass the effective non-deleted
+    items. Checking a different (broader) set than the one actually reconciled would let a
+    staged-but-unapplied model add mask a truly empty applied master (the incident's exact
+    bypass: applied empty + one staged add -> guard sees a non-empty set, resync still wipes
+    every live model because it only ever looked at applied)."""
+    if body and body.get("force") is True:
+        return
+    if master_model_items:
+        return
+    try:
+        live = await make_models_client().list_models()
+    except Exception:
+        return                      # can't see live: don't block on a probe failure
+    if live:
+        raise HTTPException(status_code=409, detail=(
+            f"master config is empty but LiteLLM serves {len(live)} models — refusing to "
+            f"delete them; restore from Backup & Restore, or pass force:true to wipe deliberately"))
+
 def _redact_item(it: dict) -> dict:
     if it["kind"] == "credential":
         d = it["data"] or {}
@@ -187,10 +210,15 @@ async def delete_item(kind: str, name: str):
     except Exception as e: raise HTTPException(status_code=502, detail=f"stage error: {e}")
 
 @router.post("/apply", dependencies=[Depends(login_required)])
-async def apply():
+async def apply(body: dict | None = Body(None)):
     s = get_settings(); f = _fernet()
+    if s.store_model_in_db:
+        guard_store = make_config_store()
+        eff = effective(await guard_store.applied(), await guard_store.staged())
+        eff_models = [i for i in eff if i["kind"] == "model" and i.get("flag") != "deleted"]
+        await _guard_empty_master(eff_models, body)
     try:
-        return await apply_config(
+        result = await apply_config(
             s.config_path, make_config_store(), make_reloader(),
             decrypt=lambda b: f.decrypt(b.encode()).decode(),
             models_client=make_models_client() if s.store_model_in_db else None,
@@ -201,6 +229,13 @@ async def apply():
         msg = str(e)
         code = 422 if ("invalid" in msg or "integrity" in msg) else 500
         raise HTTPException(status_code=code, detail=msg)
+    try:
+        from app.routes.backup_routes import make_backup_engine
+        make_backup_engine().write_snapshot(await make_config_store().applied())
+    except Exception:
+        import logging; logging.getLogger("uvicorn.error").warning(
+            "apply snapshot failed", exc_info=True)
+    return result
 
 @router.post("/discard", dependencies=[Depends(login_required)])
 async def discard(kind: str | None = None, name: str | None = None):
@@ -260,13 +295,14 @@ async def prepare_hot_apply():
                     "`docker compose up -d` to recreate the stack, then click Apply to fill the model DB."}
 
 @router.post("/config/resync", dependencies=[Depends(login_required)])
-async def config_resync():
+async def config_resync(body: dict | None = Body(None)):
     s = get_settings()
     if not s.store_model_in_db:
         raise HTTPException(status_code=422, detail="resync requires hybrid mode (STORE_MODEL_IN_DB=true)")
     f = _fernet(); store = make_config_store()
     applied = await store.applied()
     model_items = [it for it in applied if it["kind"] == "model"]
+    await _guard_empty_master(model_items, body)
     resolve_key = _make_resolve_key(applied, lambda b: f.decrypt(b.encode()).decode())
     client = make_models_client()
     live = await client.list_models()

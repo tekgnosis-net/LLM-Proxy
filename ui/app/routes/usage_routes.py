@@ -37,6 +37,16 @@ def _ms(v):
     return int(round(v)) if v is not None else None
 
 
+def _parse_body(v):
+    """jsonb arrives as str from asyncpg; '{}'/empty → None (not captured)."""
+    if isinstance(v, str):
+        try:
+            v = json.loads(v)
+        except Exception:
+            return None
+    return v if isinstance(v, (dict, list)) and v else None
+
+
 def _iso_utc(dt):
     """ISO-8601 with an explicit UTC offset.
 
@@ -226,7 +236,9 @@ def _shape_tx(r):
             "latency_ms": r["latency_ms"] or 0,
             "ttft_ms": ms_between(st, cst), "gen_ms": ms_between(cst, et),
             "mcp": _extract_mcp(r.get("metadata")),
-            "error": _extract_error(r.get("metadata")) if r["status"] == "failure" else None}
+            "error": _extract_error(r.get("metadata")) if r["status"] == "failure" else None,
+            "request": _parse_body(r.get("proxy_server_request")),
+            "response": _parse_body(r.get("response"))}
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +407,8 @@ async def usage_tx(request_id: str):
             'l.model_group, l.model, l.model_id, l.custom_llm_provider provider, l.api_base, '
             'COALESCE(v.key_alias, LEFT(l.api_key,10)) key, l.team_id, l.end_user, l.session_id, '
             'l.request_tags tags, l.prompt_tokens tok_in, l.completion_tokens tok_out, '
-            'l.total_tokens tok_total, l.spend, l.request_duration_ms latency_ms, l.metadata '
+            'l.total_tokens tok_total, l.spend, l.request_duration_ms latency_ms, l.metadata, '
+            'l.proxy_server_request, l.response '
             'FROM "LiteLLM_SpendLogs" l LEFT JOIN "LiteLLM_VerificationToken" v ON v.token=l.api_key '
             'WHERE l.request_id = $1 LIMIT 1', request_id)
     except Exception:

@@ -74,6 +74,10 @@ services:
       # fallbacks to paid models) and mid-stream stream kills (no fallback
       # exists mid-stream). httpx transport is immune. Diagnosed live 2026-08-16.
       DISABLE_AIOHTTP_TRANSPORT: "true"
+      # Request/response logging (Settings → Request & response logging) stores
+      # bodies in SpendLogs; LiteLLM truncates every string to 2048 chars by
+      # default — 10M chars = effectively no truncation (full-fidelity dataset).
+      MAX_STRING_LENGTH_PROMPT_IN_DB: "10000000"
       UI_USERNAME: admin
       UI_PASSWORD: ${LITELLM_MASTER_KEY}
     depends_on:
@@ -136,8 +140,11 @@ services:
       LITELLM_PROXY_PORT: ${LITELLM_PROXY_PORT:-4000}
       LITELLM_PROXY_HOST: ${LITELLM_PROXY_HOST:-}
       STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB:-false}"
+      BACKUP_DIR: /backups
+      TZ: ${TZ:-UTC}
     volumes:
       - ./config:/config        # directory mount: enables atomic temp-file + rename
+      - ./backups:/backups   # scheduled backups (Settings → Backup & Restore)
     ports:
       - "${UI_PORT:-8081}:8080"
     depends_on:

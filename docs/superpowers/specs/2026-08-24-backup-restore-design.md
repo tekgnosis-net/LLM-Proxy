@@ -49,7 +49,8 @@ Activity feed and exported as CSV slices.
   `LiteLLM_AuditLog`.
 - **TRANSIENT_TABLES** (in neither tier): `LiteLLM_HealthCheckTable`.
 - **Config tier** = every other base table in `public`, including all `ui_*` tables and
-  `_prisma_migrations` (dumped for provenance; never restored — §6.2).
+  `_prisma_migrations` (schema dumped for provenance; its DATA is excluded — restoring it would
+  conflict with the live migration state; never truncated or restored — §6.2).
 - The module exposes `usage_tables(conn)` / `config_tables(conn)` that resolve the live
   table list via `information_schema` (prefix matching keeps new `LiteLLM_Daily*` tables
   classified correctly after LiteLLM upgrades). Views are ignored everywhere.
@@ -153,9 +154,9 @@ Activity feed and exported as CSV slices.
 2. Stop LiteLLM (socket-proxy `POST /containers/<litellm>/stop`).
 3. `TRUNCATE <all manifest config tables that exist live> CASCADE`-free: one statement listing
    every table, which satisfies the FK graph (all FKs are inside the config tier — verified
-   2026-08-24). `_prisma_migrations` is excluded from both truncate and restore: the live
-   schema and migration state are preserved, which is what makes old backups restorable after
-   LiteLLM upgrades.
+   2026-08-24). `_prisma_migrations` is excluded: the live schema and migration state are
+   preserved (neither its data is restored nor its rows are truncated), which is what makes old
+   backups restorable after LiteLLM upgrades.
 4. `pg_restore --data-only --disable-triggers --no-owner` of `litellm-config.dump`
    (superuser connection; sequences restored via the dump's `setval`s).
 5. Copy the backup's `config.yaml` over the live one (atomic write).

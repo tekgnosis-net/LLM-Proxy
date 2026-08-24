@@ -91,6 +91,25 @@
     parts.push(`total ${fmtMs(d.latency_ms)}`)
     return parts.join(' · ')
   }
+
+  function txMessages(request) {
+    const msgs = request?.messages
+    if (!Array.isArray(msgs)) return null
+    return msgs.map(m => ({
+      role: m.role || '?',
+      content: typeof m.content === 'string' ? m.content
+        : Array.isArray(m.content) ? m.content.map(p => p.text ?? '').join('\n')
+        : m.content == null ? '' : JSON.stringify(m.content),
+      tool_calls: m.tool_calls,
+    }))
+  }
+  function txResponseText(response) {
+    const msg = response?.choices?.[0]?.message
+    if (msg) return { role: msg.role || 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls }
+    if (typeof response?.content === 'string') return { role: 'assistant', content: response.content }
+    return null
+  }
+  let rawBodies = $state({})   // id → bool
 </script>
 
 <div class="card">
@@ -211,6 +230,37 @@
                       {/if}
                     </div>
                   {/if}
+                  {#if t.request || t.response}
+                    <div class="bodybox">
+                      <div class="bodyhead">Request / response
+                        <button class="linkbtn" onclick={() => rawBodies = { ...rawBodies, [r.id]: !rawBodies[r.id] }}>
+                          {rawBodies[r.id] ? 'transcript' : 'raw JSON'}</button>
+                      </div>
+                      {#if rawBodies[r.id]}
+                        {#if t.request}<details open><summary>Request JSON</summary><pre>{JSON.stringify(t.request, null, 2)}</pre></details>{/if}
+                        {#if t.response}<details open><summary>Response JSON</summary><pre>{JSON.stringify(t.response, null, 2)}</pre></details>{/if}
+                      {:else}
+                        {#each (txMessages(t.request) || []) as m}
+                          <div class="msg"><span class="role role-{m.role}">{m.role}</span>
+                            <pre class="msgtext">{m.content}</pre>
+                            {#if m.tool_calls}<pre class="msgtext tool">{JSON.stringify(m.tool_calls, null, 2)}</pre>{/if}
+                          </div>
+                        {/each}
+                        {#if txResponseText(t.response)}
+                          {@const rr = txResponseText(t.response)}
+                          <div class="msg resp"><span class="role role-assistant">{rr.role} ⤶</span>
+                            <pre class="msgtext">{rr.content}</pre>
+                            {#if rr.tool_calls}<pre class="msgtext tool">{JSON.stringify(rr.tool_calls, null, 2)}</pre>{/if}
+                          </div>
+                        {/if}
+                        {#if !txMessages(t.request) && !txResponseText(t.response)}
+                          <p class="empty">Bodies present but in an unrecognized shape — use raw JSON.</p>
+                        {/if}
+                      {/if}
+                    </div>
+                  {:else}
+                    <p class="empty">Request/response not captured (enable it in Settings → Request &amp; response logging).</p>
+                  {/if}
                 {/if}
               </td></tr>
             {/if}
@@ -268,4 +318,10 @@
   .mcpbox{margin:8px 2px 4px;padding:8px 12px;background:#f4f4f8;border-radius:8px;font-size:13px}
   .mcpbox pre{margin:6px 0 0;max-height:240px;overflow:auto;font-size:11px;white-space:pre-wrap}
   .mcpbox summary{cursor:pointer;font-size:12px;color:#6e6e73}
+  .bodybox{margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:10px}
+  .bodyhead{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .msg{margin:6px 0}.msg.resp{border-top:1px dashed var(--border);padding-top:6px}
+  .role{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted)}
+  .msgtext{white-space:pre-wrap;word-break:break-word;font-size:12px;margin:2px 0 0;max-height:320px;overflow:auto}
+  .msgtext.tool{color:var(--muted)}
 </style>

@@ -1,4 +1,4 @@
-import os, pytest
+import os, pytest, json
 from fastapi.testclient import TestClient
 from app.auth import hash_password
 
@@ -84,3 +84,55 @@ def test_cols_last_used_has_utc_offset():
              "cost_per_1m": None, "p50_ms": None, "p95_ms": None, "err_pct": 0.0,
              "last_used": datetime(2026, 6, 21, 12, 0, 0)}]
     assert _ur._cols(rows)[0]["last_used"].endswith("+00:00")
+
+
+# ---------------------------------------------------------------------------
+# Transaction detail tests
+# ---------------------------------------------------------------------------
+
+def _base_tx_row():
+    """Minimal dict for _shape_tx tests with all required fields."""
+    return {
+        "id": "req-123",
+        "time": datetime(2026, 6, 21, 12, 0, 0),
+        "completion_start": None,
+        "end_time": None,
+        "call_type": "acompletion",
+        "status": "success",
+        "cache_hit": None,
+        "model_group": "gpt-4",
+        "model": "gpt-4o",
+        "model_id": "gpt-4o",
+        "provider": "openai",
+        "api_base": "https://api.openai.com/v1",
+        "key": "key-1",
+        "team_id": "team-1",
+        "end_user": "user-1",
+        "session_id": "session-1",
+        "tags": None,
+        "tok_in": 10,
+        "tok_out": 20,
+        "tok_total": 30,
+        "spend": 0.001,
+        "latency_ms": 100,
+        "metadata": None,
+        "proxy_server_request": None,
+        "response": None,
+    }
+
+
+def test_shape_tx_includes_parsed_bodies():
+    r = _base_tx_row()
+    r["proxy_server_request"] = json.dumps({"messages": [{"role": "user", "content": "hi"}]})
+    r["response"] = json.dumps({"choices": [{"message": {"role": "assistant", "content": "yo"}}]})
+    out = _ur._shape_tx(r)
+    assert out["request"]["messages"][0]["content"] == "hi"
+    assert out["response"]["choices"][0]["message"]["content"] == "yo"
+
+
+def test_shape_tx_bodies_absent_or_empty_are_none():
+    r = _base_tx_row()
+    r["proxy_server_request"] = "{}"
+    r["response"] = None
+    out = _ur._shape_tx(r)
+    assert out["request"] is None and out["response"] is None

@@ -1,7 +1,25 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
+  import BackupRestore from './BackupRestore.svelte'
   let { store, theme, setTheme } = $props()
+  let tab = $state('general')
+
+  // Request & response logging (general_setting store_prompts_in_spend_logs)
+  let logMsg = $state(''), logErr = $state(''), logBusy = $state(false)
+  let logEnabled = $state(false)
+  function loadLogSetting() {
+    const it = store.itemsOfKind('general_setting').find(i => i.name === 'store_prompts_in_spend_logs')
+    logEnabled = it ? it.data === true : false
+  }
+  async function toggleLogging(v) {
+    logBusy = true; logMsg = ''; logErr = ''
+    try {
+      await store.stageItem('general_setting', 'store_prompts_in_spend_logs', v)
+      logEnabled = v
+      logMsg = 'Staged. Click Apply to make it live (settings change → brief proxy restart ~25s).'
+    } catch (e) { logErr = e.message } finally { logBusy = false }
+  }
 
   // Change admin password
   let cpOld = $state(''), cpNew = $state(''), cpConfirm = $state('')
@@ -67,6 +85,7 @@
     api.catalogStatus().then(s => catStatus = s).catch(() => {})
     loadPassthrough()
     loadHcInterval()
+    loadLogSetting()
   })
   async function syncCatalog() {
     catBusy = true; catMsg = ''
@@ -79,6 +98,11 @@
   }
 </script>
 <div class="page"><h1>Settings</h1>
+  <div class="tabs">
+    <button class:active={tab === 'general'} onclick={() => tab = 'general'}>General</button>
+    <button class:active={tab === 'backup'} onclick={() => tab = 'backup'}>Backup &amp; Restore</button>
+  </div>
+  {#if tab === 'general'}
   <div class="card"><h2>Appearance</h2>
     <label class="row"><input type="checkbox" checked={theme==='dark'} onchange={(e) => setTheme(e.target.checked ? 'dark' : 'light')} /> Dark mode</label>
   </div>
@@ -135,9 +159,28 @@
     {#if cpErr}<div class="banner err">{cpErr}</div>{/if}
     {#if cpMsg}<div class="banner ok">{cpMsg}</div>{/if}
   </div>
+  <div class="card"><h2>Request &amp; response logging</h2>
+    <p class="hint">When enabled, LiteLLM stores every request body (messages, tools, params) and the
+      full response on each usage row (<code>LiteLLM_SpendLogs</code>). Nothing is truncated
+      (<code>MAX_STRING_LENGTH_PROMPT_IN_DB</code> is raised in docker-compose). Review bodies in
+      Usage → Activity; export them via the <strong>logs backup tier</strong> (Backup &amp; Restore) —
+      enable it so bodies are archived before housekeeping prunes rows.
+      Privacy note: mail-scanning and memory keys will store message content; a key can opt out via
+      key metadata <code>turn_off_message_logging: true</code>.</p>
+    <label class="row"><input type="checkbox" checked={logEnabled} disabled={logBusy}
+      onchange={(e) => toggleLogging(e.target.checked)} /> Store request &amp; response bodies</label>
+    {#if logErr}<div class="banner err">{logErr}</div>{/if}
+    {#if logMsg}<div class="banner ok">{logMsg}</div>{/if}
+  </div>
+  {:else}
+    <BackupRestore />
+  {/if}
 </div>
 <style>
-  .page{padding:24px 30px;max-width:680px}h2{font-size:15px;margin:0 0 10px}
+  .page{padding:24px 30px;max-width:900px}h2{font-size:15px;margin:0 0 10px}
+  .tabs{display:flex;gap:6px;margin-top:10px}
+  .tabs button{padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
+  .tabs button.active{background:#0a84ff;color:#fff;border-color:#0a84ff}
   .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card)}
   label.row{display:flex;align-items:center;gap:8px;color:var(--text)}
   .row{display:flex;gap:10px;align-items:center}
