@@ -86,7 +86,7 @@ async def lifespan(app):
                       next_run_time=datetime.now(timezone.utc))
 
     if s.database_url:
-        from app.backup_store import BackupStore, read_mirror, write_mirror
+        from app.backup_store import BackupStore, read_mirror
         from app.backup_scheduler import register_backup_jobs, set_scheduler
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         bstore = BackupStore(s.database_url)
