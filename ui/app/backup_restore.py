@@ -1,6 +1,7 @@
 """Restore flows: rollback (hot), full recovery (cold), logs merge (spec §6)."""
 from __future__ import annotations
 import json
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -10,6 +11,8 @@ from app.config_engine import _make_resolve_key
 from app.config_store import write_config_atomic
 from app.model_reconcile import reconcile_models
 from app.mcp_reconcile import build_desired as build_mcp_desired, mcp_content_diff, reconcile_mcp
+from app.backup_engine import verify_manifest, pg_restore_cmd, fingerprints as _fps
+from app.backup_tables import NEVER_RESTORE, classify, base_tables
 
 RESTART_KINDS = {"router_setting", "litellm_setting", "general_setting", "passthrough"}
 
@@ -102,11 +105,6 @@ async def rollback_config(items: list[dict], *, config_store, models_client, mcp
     return out
 
 
-from pathlib import Path
-from app.backup_engine import verify_manifest, pg_restore_cmd, fingerprints as _fps
-from app.backup_tables import NEVER_RESTORE, classify, base_tables
-
-
 def truncate_statement(tables: list[str]) -> str:
     keep = [t for t in tables if t not in NEVER_RESTORE]
     return "TRUNCATE " + ", ".join(f'"{t}"' for t in keep)
@@ -139,38 +137,65 @@ async def full_recovery(bdir: Path, *, dsn, reloader, config_path, connect,
         return {"ok": False, "steps": steps}
     step("fingerprints", "ok")
 
-    ok = True
-    try:
-        await reloader.stop(); step("stop", "ok")
-    except Exception as e:
-        step("stop", "error", str(e))
-        return {"ok": False, "steps": steps}
+    # Pre-check: connect + read the live schema + compute restore targets BEFORE
+    # touching the container. Nothing destructive has happened yet, so on any
+    # failure here we report it as a truncate-step error and return WITHOUT
+    # ever calling reloader.stop().
     try:
         conn = await connect()
+    except Exception as e:
+        step("truncate", "error", f"could not read live schema: {e}")
+        return {"ok": False, "steps": steps}
+
+    try:
         try:
             live_config = set(classify(await base_tables(conn))["config"])
-            targets = [t for t in manifest.get("tables", []) if t in live_config]
-            missing = [t for t in manifest.get("tables", []) if t not in live_config]
+        except Exception as e:
+            step("truncate", "error", f"could not read live schema: {e}")
+            return {"ok": False, "steps": steps}
+
+        targets = [t for t in manifest.get("tables", []) if t in live_config]
+        missing = [t for t in manifest.get("tables", []) if t not in live_config]
+        if not targets:
+            step("truncate", "error", "no restorable tables in this backup match the live schema")
+            return {"ok": False, "steps": steps}
+
+        try:
+            await reloader.stop(); step("stop", "ok")
+        except Exception as e:
+            step("stop", "error", str(e))
+            try:                                    # best-effort: don't leave LiteLLM down
+                await reloader.start(); step("start", "ok")
+            except Exception as e2:
+                step("start", "error", str(e2))
+            return {"ok": False, "steps": steps}
+
+        ok = True
+        stage = "truncate"
+        try:
             await conn.execute(truncate_statement(targets))
             step("truncate", "ok", f"skipped (not live): {missing}" if missing else "")
-        finally:
-            await conn.close()
-        argv, env = pg_restore_cmd(dsn, str(bdir / "litellm-config.dump"))
-        rc, err = await run_subprocess(argv, env)
-        if rc != 0:
-            ok = step("pg_restore", "error", err) and ok
-        else:
-            step("pg_restore", "ok")
-        if ok:
-            from app.config_store import write_config_atomic
-            write_config_atomic(config_path, (bdir / "config.yaml").read_text())
-            step("config_yaml", "ok")
-    except Exception as e:
-        ok = step("recover", "error", str(e)) and ok
-    finally:
-        try:
-            await reloader.start(); step("start", "ok")
-            await reloader.verify([]); step("ready", "ok")
+
+            stage = "pg_restore"
+            argv, env = pg_restore_cmd(dsn, str(bdir / "litellm-config.dump"))
+            rc, err = await run_subprocess(argv, env)
+            if rc != 0:
+                ok = step("pg_restore", "error", err) and ok
+            else:
+                step("pg_restore", "ok")
+
+            if ok:
+                stage = "config_yaml"
+                write_config_atomic(config_path, (bdir / "config.yaml").read_text())
+                step("config_yaml", "ok")
         except Exception as e:
-            ok = step("start", "error", str(e)) and ok
-    return {"ok": ok and all(s["status"] == "ok" for s in steps), "steps": steps}
+            ok = step(stage, "error", str(e)) and ok
+        finally:
+            try:
+                await reloader.start(); step("start", "ok")
+                await reloader.verify([]); step("ready", "ok")
+            except Exception as e:
+                ok = step("start", "error", str(e)) and ok
+        return {"ok": ok and all(s["status"] == "ok" for s in steps), "steps": steps}
+    finally:
+        await conn.close()

@@ -38,11 +38,10 @@ def test_parse_export_validates():
     with pytest.raises(ValueError): parse_export(json.dumps({"version": 1, "items": [{"kind": "model"}]}))
 
 
-import gzip
 from datetime import datetime
 from pathlib import Path
 from app.backup_restore import truncate_statement, check_fingerprints, full_recovery
-from app.backup_engine import build_manifest, fingerprints as make_fps, pg_dump_cmd  # reuse helpers
+from app.backup_engine import build_manifest, fingerprints as make_fps  # reuse helpers
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,6 +56,13 @@ def test_check_fingerprints():
     assert check_fingerprints(m, "salt", "fern") == []
     assert check_fingerprints(m, "other", "fern") == ["salt"]
     assert check_fingerprints({}, "salt", "fern") == []          # old manifest: no check possible
+
+
+def test_check_fingerprints_skips_when_have_side_missing():
+    # Production: the UI never holds the LiteLLM salt key, so salt_key is None —
+    # comparison must be skipped rather than treated as a mismatch.
+    m = {"fingerprints": make_fps("salt", "fern")}
+    assert check_fingerprints(m, None, "fern") == []
 
 
 class RecConn:
@@ -131,3 +137,57 @@ async def test_full_recovery_restore_failure_still_starts_litellm(tmp_path):
     assert out["ok"] is False
     assert "start" in rel.calls                       # proxy brought back regardless
     assert any(s["step"] == "pg_restore" and s["status"] == "error" for s in out["steps"])
+
+
+async def test_full_recovery_stop_failure_still_attempts_start(tmp_path):
+    d = _make_backup(tmp_path)
+    conn = RecConn()
+
+    class FailStopReloader(FakeReloader):
+        async def stop(self):
+            self.calls.append("stop")
+            raise RuntimeError("docker stop failed")
+
+    rel = FailStopReloader()
+    async def connect(): return conn
+    async def run_sub(argv, env): raise AssertionError("must not run: stop already failed")
+    cfg = tmp_path / "live.yaml"; cfg.write_text("old: true\n")
+    out = await full_recovery(d, dsn="postgresql://u:pw@h:5432/db", reloader=rel,
+                              config_path=str(cfg), connect=connect, run_subprocess=run_sub,
+                              salt_key="salt", fernet_secret="fern")
+    assert out["ok"] is False
+    assert rel.calls == ["stop", "start"]              # best-effort start even though stop failed
+    assert conn.sql == []                              # never truncated
+    steps = {s["step"]: s["status"] for s in out["steps"]}
+    assert steps["stop"] == "error" and steps["start"] == "ok"
+
+
+async def test_full_recovery_connect_failure_never_stops(tmp_path):
+    d = _make_backup(tmp_path)
+    rel = FakeReloader()
+    async def connect(): raise RuntimeError("db unreachable")
+    async def run_sub(argv, env): raise AssertionError("must not run")
+    out = await full_recovery(d, dsn="x", reloader=rel, config_path="x",
+                              connect=connect, run_subprocess=run_sub,
+                              salt_key="salt", fernet_secret="fern")
+    assert out["ok"] is False and rel.calls == []       # connect failed before any stop
+    steps = {s["step"]: s["status"] for s in out["steps"]}
+    assert steps["truncate"] == "error"
+
+
+class NoMatchConn(RecConn):
+    async def fetch(self, q, *a):
+        return [{"table_name": t} for t in ["LiteLLM_SomeUnrelatedTable"]]
+
+
+async def test_full_recovery_no_live_match_never_stops(tmp_path):
+    d = _make_backup(tmp_path)
+    conn = NoMatchConn(); rel = FakeReloader()
+    async def connect(): return conn
+    async def run_sub(argv, env): raise AssertionError("must not run")
+    out = await full_recovery(d, dsn="x", reloader=rel, config_path="x",
+                              connect=connect, run_subprocess=run_sub,
+                              salt_key="salt", fernet_secret="fern")
+    assert out["ok"] is False and rel.calls == []       # no overlap with live schema: never stopped
+    steps = {s["step"]: s["status"] for s in out["steps"]}
+    assert steps["truncate"] == "error"
