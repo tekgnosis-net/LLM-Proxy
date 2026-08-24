@@ -376,8 +376,8 @@ def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     cr.make_reloader = lambda: FakeReloader(ok=True)
     # FakeStore carries no model items; give the guard an explicit (empty) live
     # list rather than falling through to whatever a prior test's module-level
-    # mock left behind.
-    cr.make_models_client = lambda: FakeModelsClientRoutes([])
+    # mock left behind. monkeypatch.setattr so it reverts after this test.
+    monkeypatch.setattr(cr, "make_models_client", lambda: FakeModelsClientRoutes([]))
     c = TestClient(create_app())
     c.post("/api/auth/login", json={"password": "pw"})
     resp = c.post("/api/apply")
@@ -727,8 +727,8 @@ def _hybrid_client(tmp_path, monkeypatch, live_models=0, master_items=None):
     c = _client(tmp_path, store)
     import app.routes.config_v3_routes as cr
     live = [{"model_name": f"live{i}", "model_info": {"id": f"live{i}"}} for i in range(live_models)]
-    cr.make_models_client = lambda: FakeModelsClientRoutes(live)
-    cr.make_reloader = lambda: FakeReloader(ok=True)
+    monkeypatch.setattr(cr, "make_models_client", lambda: FakeModelsClientRoutes(live))
+    monkeypatch.setattr(cr, "make_reloader", lambda: FakeReloader(ok=True))
     return c
 
 def test_resync_refuses_when_master_empty_but_live_has_models(tmp_path, monkeypatch):
@@ -749,17 +749,41 @@ def test_apply_refuses_when_master_empty_but_live_has_models(tmp_path, monkeypat
 def test_apply_writes_snapshot_on_success(tmp_path, monkeypatch):
     from app.settings import get_settings
     c = _hybrid_client(tmp_path, monkeypatch, live_models=0, master_items=[_m("guarded-model")])
-    # test_backup_routes.py's helper rebinds app.routes.backup_routes.make_backup_engine
-    # to a FakeEngine at module scope with no teardown; when the whole suite runs, that
-    # leaks into this test (apply()'s snapshot hook imports the live attribute at call
-    # time). Reload to restore the real factory before exercising the real snapshot path.
-    import importlib
-    import app.routes.backup_routes as br
-    importlib.reload(br)
     r = c.post("/api/apply", json={})
     assert r.status_code == 200
     snaps = list((tmp_path / "backups" / "snapshots").glob("*-apply.json"))
     assert len(snaps) == 1
+    get_settings.cache_clear()
+
+def test_resync_refuses_when_applied_empty_but_staged_has_model(tmp_path, monkeypatch):
+    # Regression for the guard/actor mismatch: resync reconciles from store.applied()
+    # alone, so the guard must check applied-only items, NOT effective(applied, staged).
+    # A staged-but-unapplied model add must not mask a truly empty applied master — that
+    # was the incident's exact bypass (empty applied master + a stray staged row would
+    # have let resync wipe every live model while the guard waved it through).
+    from app.settings import get_settings
+    c = _hybrid_client(tmp_path, monkeypatch, live_models=2, master_items=[])
+    import app.routes.config_v3_routes as cr
+    store = cr.make_config_store()
+    store._staged = [{"kind": "model", "name": "staged-only", "flag": "new",
+                      "data": {"model_name": "staged-only", "litellm_params": {"model": "openai/x"},
+                               "model_info": {"id": "staged-only"}}}]
+    r = c.post("/api/config/resync", json={})
+    assert r.status_code == 409 and "refusing" in r.json()["detail"]
+    get_settings.cache_clear()
+
+def test_apply_not_refused_when_only_staged_has_model(tmp_path, monkeypatch):
+    # Symmetry check: apply reconciles from effective(applied, staged), so a
+    # staged-but-unapplied model item correctly counts toward the guard there (unlike
+    # resync, which never sees staged rows at all).
+    from app.settings import get_settings
+    c = _hybrid_client(tmp_path, monkeypatch, live_models=0, master_items=[])
+    import app.routes.config_v3_routes as cr
+    store = cr.make_config_store()
+    store._staged = [{"kind": "model", "name": "staged-only", "flag": "new",
+                      "data": {"model_name": "staged-only", "litellm_params": {"model": "openai/x"},
+                               "model_info": {"id": "staged-only"}}}]
+    assert c.post("/api/apply", json={}).status_code == 200
     get_settings.cache_clear()
 
 def test_apply_not_guarded_in_non_hybrid_mode(tmp_path, monkeypatch):

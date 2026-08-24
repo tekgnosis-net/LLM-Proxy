@@ -39,35 +39,35 @@ class FakeCStore:
     async def applied(self): return self.items
 
 
-def _client(tmp_path, engine=None, bstore=None, models=None, cstore=None):
+def _client(tmp_path, monkeypatch, engine=None, bstore=None, models=None, cstore=None):
     os.environ.update(ADMIN_PASSWORD_HASH=hash_password("pw"), SESSION_SECRET="s",
                       CONFIG_PATH=str(tmp_path / "c.yaml"), DATABASE_URL="postgresql://x",
                       BACKUP_DIR=str(tmp_path / "backups"))
     (tmp_path / "c.yaml").write_text("model_list: []\n")
     from app.main import create_app
     import app.routes.backup_routes as br
-    br.make_backup_engine = lambda: engine or FakeEngine(tmp_path / "backups")
-    br.make_backup_store = lambda: bstore or FakeBStore()
-    br.make_models_client = lambda: models or FakeModels(0)
-    br.make_config_store = lambda: cstore or FakeCStore([])
+    monkeypatch.setattr(br, "make_backup_engine", lambda: engine or FakeEngine(tmp_path / "backups"))
+    monkeypatch.setattr(br, "make_backup_store", lambda: bstore or FakeBStore())
+    monkeypatch.setattr(br, "make_models_client", lambda: models or FakeModels(0))
+    monkeypatch.setattr(br, "make_config_store", lambda: cstore or FakeCStore([]))
     c = TestClient(create_app()); c.post("/api/auth/login", json={"password": "pw"}); return c
 
 
-def test_backup_routes_require_login(tmp_path):
-    c = _client(tmp_path); c.cookies.clear()
+def test_backup_routes_require_login(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch); c.cookies.clear()
     assert c.get("/api/backup/status").status_code == 401
 
 
-def test_status_flags_empty_master_with_live_models(tmp_path):
-    c = _client(tmp_path, models=FakeModels(3), cstore=FakeCStore([]))
+def test_status_flags_empty_master_with_live_models(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch, models=FakeModels(3), cstore=FakeCStore([]))
     d = c.get("/api/backup/status").json()
     assert d["master_empty_live_nonempty"] is True and d["live_models"] == 3
     assert set(d["tiers"]) == {"config", "logs"}
 
 
-def test_settings_put_validates_and_saves(tmp_path):
+def test_settings_put_validates_and_saves(tmp_path, monkeypatch):
     bs = FakeBStore()
-    c = _client(tmp_path, bstore=bs)
+    c = _client(tmp_path, monkeypatch, bstore=bs)
     r = c.put("/api/backup/settings", json={"config": {"enabled": True,
         "frequency": {"kind": "daily"}, "time": "02:00", "retention_days": 7}})
     assert r.status_code == 200 and bs.saved and bs.saved[0][0] == "config"
@@ -75,24 +75,24 @@ def test_settings_put_validates_and_saves(tmp_path):
     assert r2.status_code == 422
 
 
-def test_run_now_and_list(tmp_path):
+def test_run_now_and_list(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     assert c.post("/api/backup/run", json={"tier": "logs"}).json()["ok"] is True
     assert eng.ran == ["logs"]
     assert c.post("/api/backup/run", json={"tier": "nope"}).status_code == 422
     assert c.get("/api/backup/list").json()["backups"][0]["id"] == "config/x"
 
 
-def test_confirmation_strings_enforced(tmp_path):
-    c = _client(tmp_path)
+def test_confirmation_strings_enforced(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
     assert c.post("/api/backup/rollback", json={"source": "snapshots/x.json", "confirm": "no"}).status_code == 422
     assert c.post("/api/backup/recover", json={"source": "config/x", "confirm": "no"}).status_code == 422
     assert c.post("/api/backup/restore-logs", json={"source": "all", "confirm": "no"}).status_code == 422
 
 
-def test_download_rejects_traversal_and_missing(tmp_path):
-    c = _client(tmp_path)
+def test_download_rejects_traversal_and_missing(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
     assert c.get("/api/backup/download", params={"path": "config/../../etc/passwd"}).status_code == 422
     assert c.get("/api/backup/download", params={"path": "config/none/file"}).status_code == 404
 
@@ -116,9 +116,9 @@ def _capturing(sentinel):
 
 # --- DELETE /api/backup/item ---
 
-def test_delete_snapshot_json_ok(tmp_path):
+def test_delete_snapshot_json_ok(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     p = eng.backup_path("snapshots/x.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("{}")
@@ -127,9 +127,9 @@ def test_delete_snapshot_json_ok(tmp_path):
     assert not p.exists()
 
 
-def test_delete_dir_with_manifest_ok(tmp_path):
+def test_delete_dir_with_manifest_ok(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     d = eng.backup_path("config/stamp1")
     d.mkdir(parents=True)
     (d / "manifest.json").write_text("{}")
@@ -138,9 +138,9 @@ def test_delete_dir_with_manifest_ok(tmp_path):
     assert not d.exists()
 
 
-def test_delete_manifest_file_refused(tmp_path):
+def test_delete_manifest_file_refused(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     d = eng.backup_path("config/stamp2")
     d.mkdir(parents=True)
     (d / "manifest.json").write_text("{}")
@@ -150,9 +150,9 @@ def test_delete_manifest_file_refused(tmp_path):
     assert d.exists()
 
 
-def test_delete_dir_without_manifest_refused(tmp_path):
+def test_delete_dir_without_manifest_refused(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     d = eng.backup_path("config/stamp3")
     d.mkdir(parents=True)
     (d / "other.txt").write_text("x")
@@ -165,7 +165,7 @@ def test_delete_dir_without_manifest_refused(tmp_path):
 
 def test_rollback_wiring(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     p = eng.backup_path("snapshots/x.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": 1, "items": []}))
@@ -182,7 +182,7 @@ def test_rollback_wiring(tmp_path, monkeypatch):
 
 def test_recover_wiring(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     d = eng.backup_path("config/stamp9")
     d.mkdir(parents=True)
     (d / "manifest.json").write_text("{}")
@@ -200,7 +200,7 @@ def test_recover_wiring(tmp_path, monkeypatch):
 
 def test_restore_logs_wiring(tmp_path, monkeypatch):
     eng = FakeEngine(tmp_path / "b")
-    c = _client(tmp_path, engine=eng)
+    c = _client(tmp_path, monkeypatch, engine=eng)
     d = eng.backup_path("logs/stamp5")
     d.mkdir(parents=True)
     sentinel = {"sentinel": "restore-logs"}

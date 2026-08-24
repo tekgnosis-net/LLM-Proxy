@@ -46,13 +46,19 @@ def make_keys_client() -> KeysClient:
     s = get_settings()
     return KeysClient(s.litellm_base_url, s.litellm_master_key)
 
-async def _guard_empty_master(store, body: dict | None) -> None:
-    """Spec §7: refuse mass-delete when the master is empty but LiteLLM serves models."""
+async def _guard_empty_master(master_model_items: list[dict], body: dict | None) -> None:
+    """Spec §7: refuse mass-delete when the master is empty but LiteLLM serves models.
+
+    master_model_items MUST be the same item set the caller is about to act on — resync
+    reconciles from store.applied() alone, so it must pass applied-only items; apply
+    reconciles from effective(applied, staged), so it must pass the effective non-deleted
+    items. Checking a different (broader) set than the one actually reconciled would let a
+    staged-but-unapplied model add mask a truly empty applied master (the incident's exact
+    bypass: applied empty + one staged add -> guard sees a non-empty set, resync still wipes
+    every live model because it only ever looked at applied)."""
     if body and body.get("force") is True:
         return
-    eff = effective(await store.applied(), await store.staged())
-    master_models = [i for i in eff if i["kind"] == "model" and i.get("flag") != "deleted"]
-    if master_models:
+    if master_model_items:
         return
     try:
         live = await make_models_client().list_models()
@@ -207,7 +213,10 @@ async def delete_item(kind: str, name: str):
 async def apply(body: dict | None = Body(None)):
     s = get_settings(); f = _fernet()
     if s.store_model_in_db:
-        await _guard_empty_master(make_config_store(), body)
+        guard_store = make_config_store()
+        eff = effective(await guard_store.applied(), await guard_store.staged())
+        eff_models = [i for i in eff if i["kind"] == "model" and i.get("flag") != "deleted"]
+        await _guard_empty_master(eff_models, body)
     try:
         result = await apply_config(
             s.config_path, make_config_store(), make_reloader(),
@@ -291,9 +300,9 @@ async def config_resync(body: dict | None = Body(None)):
     if not s.store_model_in_db:
         raise HTTPException(status_code=422, detail="resync requires hybrid mode (STORE_MODEL_IN_DB=true)")
     f = _fernet(); store = make_config_store()
-    await _guard_empty_master(store, body)
     applied = await store.applied()
     model_items = [it for it in applied if it["kind"] == "model"]
+    await _guard_empty_master(model_items, body)
     resolve_key = _make_resolve_key(applied, lambda b: f.decrypt(b.encode()).decode())
     client = make_models_client()
     live = await client.list_models()
