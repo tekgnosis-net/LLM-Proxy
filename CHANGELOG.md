@@ -1,3 +1,16 @@
+# [1.36.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.35.0...v1.36.0) (2026-08-24)
+
+
+### Bug Fixes
+
+* **ui:** dark mode — new-key banner text colour and Routing input surfaces ([d5a6104](https://github.com/tekgnosis-net/LLM-Proxy/commit/d5a610428d761fe784efd4a1bec7d5c30416be26))
+* **ui:** dark mode — replace hardcoded light palette with theme tokens across screens ([4cd36f1](https://github.com/tekgnosis-net/LLM-Proxy/commit/4cd36f1c56465544bb7f099812bc251166fc0907))
+
+
+### Features
+
+* **ui:** show running release version in the sidebar ([edc3e2b](https://github.com/tekgnosis-net/LLM-Proxy/commit/edc3e2bd8fc3acfaa90318606e4cc7080bf34bbd))
+
 # [1.35.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.2...v1.35.0) (2026-08-24)
 
 
