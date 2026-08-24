@@ -94,6 +94,20 @@ class ConfigStore:
                                        it["kind"], it["name"], json.dumps(it["data"]))
         finally: await conn.close()
 
+    async def replace_applied(self, items: list[dict]) -> None:
+        """Restore path: atomically replace the whole master and discard staged."""
+        conn = await self._conn()
+        try:
+            await self.ensure_schema(conn)
+            async with conn.transaction():
+                await conn.execute(f"DELETE FROM {APPLIED}")
+                for it in items:
+                    await conn.execute(
+                        f"INSERT INTO {APPLIED}(kind,name,data) VALUES($1,$2,$3)",
+                        it["kind"], it["name"], json.dumps(it["data"]))
+                await conn.execute(f"DELETE FROM {STAGED}")
+        finally: await conn.close()
+
     async def migrate_model_identities(self) -> int:
         """One-time: rekey legacy model items (name=model_name, data without model_name)
         to uuid names with model_name folded into data. Idempotent. Returns rows migrated."""

@@ -70,3 +70,17 @@ async def test_migrate_rekeys_legacy_model_items(store):
     # idempotent: second run is a no-op
     await store.migrate_model_identities()
     assert len([i for i in (await store.applied()) if i["kind"] == "model"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 6: replace_applied
+# ---------------------------------------------------------------------------
+
+async def test_replace_applied_swaps_master_and_clears_staged(store):
+    await store.stage("model", "old", {"model_name": "o"})
+    await store.fold()
+    await store.stage("model", "pending", {"model_name": "p"})
+    await store.replace_applied([{"kind": "model", "name": "new", "data": {"model_name": "n"}}])
+    applied = await store.applied()
+    assert [(i["kind"], i["name"]) for i in applied] == [("model", "new")]
+    assert await store.staged() == []
