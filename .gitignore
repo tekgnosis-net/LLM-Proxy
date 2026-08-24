@@ -22,3 +22,4 @@ config/*.bak.*
 config/.applied.yaml
 
 config/config.yaml
+backups/
