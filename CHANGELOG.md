@@ -1,3 +1,36 @@
+# [1.35.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.2...v1.35.0) (2026-08-24)
+
+
+### Bug Fixes
+
+* **backup:** async copy_from_query sink, chmod dirs at every level, already-running tests ([91ab800](https://github.com/tekgnosis-net/LLM-Proxy/commit/91ab8003723166c4876f698237520fdcdabb6d31))
+* **backup:** check_decryptable crashed on scalar-data settings items ([e66f0d5](https://github.com/tekgnosis-net/LLM-Proxy/commit/e66f0d55143339e1d28bfa32cff05fa93976c164))
+* **backup:** drop unused write_mirror import from main.py lifespan ([6c2c539](https://github.com/tekgnosis-net/LLM-Proxy/commit/6c2c539fcc86e7348aa2feef20015609b6874fe3))
+* **backup:** exclude _prisma_migrations data from config dumps (restore conflict) ([facd891](https://github.com/tekgnosis-net/LLM-Proxy/commit/facd891130731fa945f36b75e643880864710d18))
+* **backup:** full_recovery pre-checks live schema before stopping proxy, best-effort restart on stop failure ([0fa26b4](https://github.com/tekgnosis-net/LLM-Proxy/commit/0fa26b4622f180cd0098eefab6a843a65efb2575))
+* **backup:** rollback honors deployment mode; last_error only when newer than last ok ([f1555e2](https://github.com/tekgnosis-net/LLM-Proxy/commit/f1555e2519519a9680e58fbf78ca7879bed162f1))
+* **backup:** scope DELETE /api/backup/item file-unlink to snapshots, add wiring tests ([1642f79](https://github.com/tekgnosis-net/LLM-Proxy/commit/1642f7926f9496fefb2979daccdf657e394e9727))
+* **guard:** match empty-master guard's item set to what each caller reconciles ([fde987b](https://github.com/tekgnosis-net/LLM-Proxy/commit/fde987bb93ec4513b0cfe956527fe85c22fb90b3))
+
+
+### Features
+
+* **backup:** /api/backup routes (status, settings, run, list, restores, download) ([f9c0ba7](https://github.com/tekgnosis-net/LLM-Proxy/commit/f9c0ba7696a66aaf9cbc94a096d247ad73ba563f))
+* **backup:** engine pure helpers (stamps, manifests, pg cmds, prune) ([0a08700](https://github.com/tekgnosis-net/LLM-Proxy/commit/0a08700ea2b5b7da90e97bb2debbe03fdff7dc50))
+* **backup:** engine runs - config dump, incremental logs export, snapshots, prune ([526afbf](https://github.com/tekgnosis-net/LLM-Proxy/commit/526afbf89ee60c11015c33f502eedf54e3823b07))
+* **backup:** full recovery (data-only, step log) + reloader stop/start/verify split ([50563fa](https://github.com/tekgnosis-net/LLM-Proxy/commit/50563fa97f1a415c840f3a82490deb5183b8b8fe))
+* **backup:** logs merge restore (temp-table COPY + ON CONFLICT DO NOTHING) ([7857c9e](https://github.com/tekgnosis-net/LLM-Proxy/commit/7857c9e1fba29124afa662276a76db7613cae50e))
+* **backup:** pg client 16 in image; backups mount, TZ, no-truncation env; docs ([6aa4717](https://github.com/tekgnosis-net/LLM-Proxy/commit/6aa4717a16100507afacc482dba3ddcd2b94c45e))
+* **backup:** rollback restore with preview, decrypt pre-check, replace_applied ([56a4ccc](https://github.com/tekgnosis-net/LLM-Proxy/commit/56a4ccc39585bc55ce69c924fe3418de8e78e75e))
+* **backup:** scheduler wiring with mirror self-heal on boot ([381c4e4](https://github.com/tekgnosis-net/LLM-Proxy/commit/381c4e4ee104269e05545023e474bf7098a34062))
+* **backup:** settings + run-history store with mirror self-heal file ([ce82195](https://github.com/tekgnosis-net/LLM-Proxy/commit/ce821957584c5c46e5b5df631bea07094e50126d))
+* **backup:** table tier classification ([0f21368](https://github.com/tekgnosis-net/LLM-Proxy/commit/0f21368569ab378360b94d18d5afa9d1c616640c))
+* **guard:** refuse empty-master resync/apply; snapshot master on every apply ([accbea0](https://github.com/tekgnosis-net/LLM-Proxy/commit/accbea0027085dbc6fb4e5633d2faae45d57d0a4))
+* **logging:** expose request/response bodies in transaction detail API ([5ce76fd](https://github.com/tekgnosis-net/LLM-Proxy/commit/5ce76fd5348f90cdf1359e19b7faa2c09eb3609a))
+* **ui:** Backup & Restore page + api methods ([d0f1f56](https://github.com/tekgnosis-net/LLM-Proxy/commit/d0f1f56039d489d1d1f9df06f66c5ea5c741f079))
+* **ui:** backup alert banner + request/response transcript in activity detail ([13aa39e](https://github.com/tekgnosis-net/LLM-Proxy/commit/13aa39e4c268032c24c4d68286d5e4222fa1a4d2))
+* **ui:** Settings tabs (General | Backup & Restore) + request-logging toggle ([0a37d98](https://github.com/tekgnosis-net/LLM-Proxy/commit/0a37d989263b75442af24ff22309fbbdccbc626e))
+
 ## [1.34.2](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.34.1...v1.34.2) (2026-08-16)
 
 
