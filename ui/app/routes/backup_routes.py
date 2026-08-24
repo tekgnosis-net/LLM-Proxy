@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.auth import login_required
 from app.settings import get_settings
-from app.backup_engine import BackupEngine, verify_manifest
+from app.backup_engine import BackupEngine
 from app.backup_store import BackupStore, TIERS, validate_tier_settings, write_mirror
 from app.backup_restore import (parse_export, rollback_preview, check_decryptable,
                                 rollback_config, full_recovery, restore_logs)
@@ -240,10 +240,11 @@ async def backup_download(path: str):
 @router.delete("/backup/item", dependencies=[Depends(login_required)])
 async def backup_delete(body: dict = Body(...)):
     import shutil
-    p = _bid_path(body.get("path", ""))
+    bid = body.get("path", "")
+    p = _bid_path(bid)
     if p.is_dir() and (p / "manifest.json").is_file():
         shutil.rmtree(p)
-    elif p.is_file() and p.suffix == ".json":
+    elif bid.startswith("snapshots/") and p.is_file() and p.suffix == ".json":
         p.unlink()
     else:
         raise HTTPException(status_code=404, detail="not a deletable backup")
