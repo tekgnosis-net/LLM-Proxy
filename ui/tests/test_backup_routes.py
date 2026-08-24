@@ -18,14 +18,16 @@ class FakeEngine:
 
 
 class FakeBStore:
-    def __init__(self):
+    def __init__(self, last_runs=None):
         from app.backup_store import DEFAULTS
         self.settings = {"config": dict(DEFAULTS["config"]), "logs": dict(DEFAULTS["logs"])}
         self.saved = []
+        # last_runs: {(tier, status): row_dict_or_None}
+        self.last_runs = last_runs or {}
     async def get_settings(self): return self.settings
     async def save_settings(self, tier, value): self.saved.append((tier, value))
     async def runs(self, tier=None, limit=20): return []
-    async def last_run(self, tier, status="ok"): return None
+    async def last_run(self, tier, status="ok"): return self.last_runs.get((tier, status))
 
 
 class FakeModels:
@@ -176,8 +178,9 @@ def test_rollback_wiring(tmp_path, monkeypatch):
     r = c.post("/api/backup/rollback", json={"source": "snapshots/x.json", "confirm": "ROLLBACK"})
     assert r.status_code == 200 and r.json() == sentinel
     assert cap.args and cap.args[0] == []
-    for k in ("config_store", "models_client", "mcp_client", "reloader", "config_path", "fernet"):
+    for k in ("config_store", "models_client", "mcp_client", "reloader", "config_path", "fernet", "hybrid"):
         assert k in cap.kwargs, f"missing kwarg {k}"
+    assert cap.kwargs["hybrid"] is False    # STORE_MODEL_IN_DB defaults to False in this test env
 
 
 def test_recover_wiring(tmp_path, monkeypatch):
@@ -211,3 +214,34 @@ def test_restore_logs_wiring(tmp_path, monkeypatch):
     assert r.status_code == 200 and r.json() == sentinel
     assert cap.args and isinstance(cap.args[0], list) and all(isinstance(x, Path) for x in cap.args[0])
     assert cap.args[0] == [d]
+
+
+# --- GET /api/backup/status: last_error only when newer than last ok ---
+
+def _run(id, error=None):
+    return {"id": id, "tier": "config", "status": "error" if error else "ok",
+            "started_at": "2026-08-24T00:00:00+00:00", "finished_at": "2026-08-24T00:01:00+00:00",
+            "path": None, "bytes": 0, "error": error, "meta": None}
+
+
+def test_status_last_error_newer_than_ok_is_reported(tmp_path, monkeypatch):
+    # config tier is enabled by default (see DEFAULTS)
+    bs = FakeBStore(last_runs={("config", "ok"): _run(1), ("config", "error"): _run(2, "boom")})
+    c = _client(tmp_path, monkeypatch, bstore=bs)
+    d = c.get("/api/backup/status").json()
+    assert d["tiers"]["config"]["last_error"] == "boom"
+
+
+def test_status_last_error_older_than_ok_is_null(tmp_path, monkeypatch):
+    bs = FakeBStore(last_runs={("config", "ok"): _run(5), ("config", "error"): _run(3, "old boom")})
+    c = _client(tmp_path, monkeypatch, bstore=bs)
+    d = c.get("/api/backup/status").json()
+    assert d["tiers"]["config"]["last_error"] is None
+
+
+def test_status_last_error_null_when_tier_disabled(tmp_path, monkeypatch):
+    # logs tier is disabled by default (see DEFAULTS); newer error than (nonexistent) ok
+    bs = FakeBStore(last_runs={("logs", "error"): _run(10, "disabled tier boom")})
+    c = _client(tmp_path, monkeypatch, bstore=bs)
+    d = c.get("/api/backup/status").json()
+    assert d["tiers"]["logs"]["last_error"] is None

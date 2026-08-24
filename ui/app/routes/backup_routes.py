@@ -87,13 +87,20 @@ async def backup_status():
     for t in TIERS:
         last_ok = await store.last_run(t, "ok")
         last_err = await store.last_run(t, "error")
+        enabled = settings[t]["enabled"]
         stale = False
-        if settings[t]["enabled"]:
+        if enabled:
             window = timedelta(days=2 * _interval_days(settings[t]))
             stale = (last_ok is None or
                      datetime.fromisoformat(last_ok["finished_at"]) < now - window)
-        tiers[t] = {"enabled": settings[t]["enabled"], "last_ok": last_ok,
-                    "last_error": (last_err or {}).get("error"),
+        # Only surface last_error when it's newer than the last successful run —
+        # otherwise a single old transient failure would warn forever, even
+        # after later runs succeeded (or the tier was disabled).
+        last_error = None
+        if enabled and last_err and (last_ok is None or last_err["id"] > last_ok["id"]):
+            last_error = last_err.get("error")
+        tiers[t] = {"enabled": enabled, "last_ok": last_ok,
+                    "last_error": last_error,
                     "running": eng.running.get(t, False),
                     "next_run": next_fire(t), "stale": stale}
     master = live = None
@@ -186,7 +193,7 @@ async def backup_rollback(body: dict = Body(...)):
     return await rollback_config(items, config_store=make_config_store(),
                                  models_client=make_models_client(), mcp_client=make_mcp_client(),
                                  reloader=make_reloader(), config_path=s.config_path,
-                                 fernet=_fernet())
+                                 fernet=_fernet(), hybrid=s.store_model_in_db)
 
 
 @router.post("/backup/recover", dependencies=[Depends(login_required)])

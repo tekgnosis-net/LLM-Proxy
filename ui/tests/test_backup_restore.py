@@ -49,10 +49,53 @@ def test_parse_export_validates():
 
 from datetime import datetime
 from pathlib import Path
-from app.backup_restore import truncate_statement, check_fingerprints, full_recovery
+from app.backup_restore import truncate_statement, check_fingerprints, full_recovery, rollback_config
 from app.backup_engine import build_manifest, fingerprints as make_fps  # reuse helpers
 
 pytestmark = pytest.mark.asyncio
+
+
+class _NoCallModelsClient:
+    async def list_models(self):
+        raise AssertionError("models_client.list_models must not be called when hybrid=False")
+
+
+class _NoCallMcpClient:
+    async def list_servers(self):
+        raise AssertionError("mcp_client.list_servers must not be called when hybrid=False")
+
+
+class _FakeConfigStoreRB:
+    def __init__(self, items): self.items = items
+    async def replace_applied(self, items): self.items = items
+    async def applied(self): return self.items
+
+
+class _FakeReloaderRV:
+    def __init__(self): self.calls = []
+    async def reload_and_verify(self, expected):
+        self.calls.append(expected)
+        return True
+
+
+async def test_rollback_config_non_hybrid_skips_reconcile_and_writes_full_config(tmp_path):
+    f = fernet_from_secret("good")
+    items = [_it("model", "m1", {"model_name": "gpt-4", "litellm_params": {"model": "gpt-4"}})]
+    cstore = _FakeConfigStoreRB(items)
+    rel = _FakeReloaderRV()
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("model_list: []\n")
+
+    out = await rollback_config(items, config_store=cstore, models_client=_NoCallModelsClient(),
+                                mcp_client=_NoCallMcpClient(), reloader=rel, config_path=str(cfg),
+                                fernet=f, hybrid=False)
+
+    assert out["applied"] is True
+    assert out["models"] == {"added": 0, "updated": 0, "deleted": 0, "failed": []}
+    assert out["restart"] == "healthy"
+    assert rel.calls == [["gpt-4"]]                    # always reloads on non-hybrid rollback
+    text = cfg.read_text()
+    assert "gpt-4" in text and "model_name" in text     # full config.yaml (model_list inlined), not settings-only
 
 
 def test_truncate_statement_skips_prisma_and_quotes():

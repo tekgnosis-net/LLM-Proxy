@@ -65,48 +65,74 @@ def check_decryptable(items: list[dict], fernet) -> list[str]:
 
 
 async def rollback_config(items: list[dict], *, config_store, models_client, mcp_client,
-                          reloader, config_path: str, fernet) -> dict:
+                          reloader, config_path: str, fernet, hybrid: bool) -> dict:
     """Replace the master with `items`, then converge exactly like resync + a
-    settings-diff-driven restart (spec §6.1). Caller has already run pre-checks."""
+    settings-diff-driven restart (spec §6.1). Caller has already run pre-checks.
+
+    hybrid=True (STORE_MODEL_IN_DB=true): models/MCP servers are reconciled
+    against LiteLLM's live DB-model API; config.yaml stays settings-only and is
+    only rewritten (and the proxy only restarted) when it actually changed.
+    hybrid=False: LiteLLM has no DB-model API to reconcile against — models and
+    credentials live only in config.yaml, so we render the FULL config (with
+    model_list/credential_list inlined) and always rewrite + restart to pick it
+    up, matching how non-hybrid applies already behave.
+    """
     dec = lambda b: fernet.decrypt(b.encode()).decode()
     await config_store.replace_applied(items)
     applied = await config_store.applied()
 
     model_items = [it for it in applied if it["kind"] == "model"]
-    resolve_key = _make_resolve_key(applied, dec)
-    live = await models_client.list_models()
-    model_report = await reconcile_models(model_items, live, models_client,
-                                          changed_item_names={it["name"] for it in model_items},
-                                          creds_changed=set(), resolve_key=resolve_key,
-                                          converge_content=True)
-    mcp_items = [it for it in applied if it["kind"] == "mcp_server"]
-    try:
-        mcp_live = await mcp_client.list_servers()
-        desired_mcp, _ = build_mcp_desired(mcp_items, None)
-        live_by_id = {s.get("server_id"): s for s in mcp_live if s.get("server_id")}
-        drifted = {sid for sid in (set(desired_mcp) & set(live_by_id))
-                   if mcp_content_diff(desired_mcp[sid], live_by_id[sid])}
-        mcp_report = await reconcile_mcp(mcp_items, mcp_live, mcp_client, drifted, dec)
-    except Exception as e:
-        mcp_report = {"added": 0, "updated": 0, "deleted": 0,
-                      "failed": [{"id": "*", "op": "list", "error": str(e)}]}
+    expected = [(it["data"] or {}).get("model_name", it["name"]) for it in model_items]
+
+    if hybrid:
+        resolve_key = _make_resolve_key(applied, dec)
+        live = await models_client.list_models()
+        model_report = await reconcile_models(model_items, live, models_client,
+                                              changed_item_names={it["name"] for it in model_items},
+                                              creds_changed=set(), resolve_key=resolve_key,
+                                              converge_content=True)
+        mcp_items = [it for it in applied if it["kind"] == "mcp_server"]
+        try:
+            mcp_live = await mcp_client.list_servers()
+            desired_mcp, _ = build_mcp_desired(mcp_items, None)
+            live_by_id = {s.get("server_id"): s for s in mcp_live if s.get("server_id")}
+            drifted = {sid for sid in (set(desired_mcp) & set(live_by_id))
+                       if mcp_content_diff(desired_mcp[sid], live_by_id[sid])}
+            mcp_report = await reconcile_mcp(mcp_items, mcp_live, mcp_client, drifted, dec)
+        except Exception as e:
+            mcp_report = {"added": 0, "updated": 0, "deleted": 0,
+                          "failed": [{"id": "*", "op": "list", "error": str(e)}]}
+    else:
+        # No DB-model API to reconcile against on a non-hybrid install: models/
+        # credentials only exist in config.yaml, so there's nothing to converge.
+        model_report = {"added": 0, "updated": 0, "deleted": 0, "failed": []}
+        mcp_report = {"added": 0, "updated": 0, "deleted": 0, "failed": []}
 
     out: dict[str, Any] = {"applied": True, "models": model_report, "mcp": mcp_report}
-    rendered = render_config(applied, dec, hybrid=True)
-    try:
-        on_disk = yaml.safe_load(open(config_path)) or {}
-    except OSError:
-        on_disk = None
-    if rendered != on_disk:
+
+    if hybrid:
+        rendered = render_config(applied, dec, hybrid=True)
+        try:
+            on_disk = yaml.safe_load(open(config_path)) or {}
+        except OSError:
+            on_disk = None
+        if rendered != on_disk:
+            write_config_atomic(config_path, yaml.safe_dump(rendered, sort_keys=False))
+            try:
+                await reloader.reload_and_verify(expected)
+                out["restart"] = "healthy"
+            except Exception as e:
+                out["restart"] = "unhealthy"; out["detail"] = str(e)
+        else:
+            out["restart"] = "skipped"
+    else:
+        rendered = render_config(applied, dec)
         write_config_atomic(config_path, yaml.safe_dump(rendered, sort_keys=False))
-        expected = [(it["data"] or {}).get("model_name", it["name"]) for it in model_items]
         try:
             await reloader.reload_and_verify(expected)
             out["restart"] = "healthy"
         except Exception as e:
             out["restart"] = "unhealthy"; out["detail"] = str(e)
-    else:
-        out["restart"] = "skipped"
     return out
 
 
