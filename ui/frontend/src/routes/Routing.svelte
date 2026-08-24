@@ -356,16 +356,16 @@
 
 <style>
   .page{padding:24px 30px;max-width:720px}
-  .card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-top:14px;background:var(--card,#fff);display:flex;flex-direction:column;gap:14px}
+  .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card,#fff);display:flex;flex-direction:column;gap:14px}
   /* field laid out as label + action buttons side by side */
   .field-row{display:flex;align-items:flex-end;gap:10px}
   .field-label{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:4px;flex:1}
   .field-name{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text,#3a3a3c)}
   .field-col{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:6px}
-  .footer-row{display:flex;gap:8px;padding-top:4px;border-top:1px solid rgba(0,0,0,.06)}
-  select,input[type="text"],input[type="number"],textarea{padding:8px;border:1px solid #ccc;border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
+  .footer-row{display:flex;gap:8px;padding-top:4px;border-top:1px solid var(--border)}
+  select,input[type="text"],input[type="number"],textarea{padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
   textarea{font-family:ui-monospace,monospace}
-  button{padding:6px 12px;border:1px solid #ccc;border-radius:8px;background:var(--card,#fff);font:inherit;cursor:pointer;white-space:nowrap;color:var(--text,#1d1d1f)}
+  button{padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card,#fff);font:inherit;cursor:pointer;white-space:nowrap;color:var(--text,#1d1d1f)}
   button.primary{background:#0a84ff;color:#fff;border:0}
   button:disabled{opacity:.5;cursor:not-allowed}
   .banner{padding:10px 12px;border-radius:8px;font-size:13px}
@@ -379,18 +379,18 @@
   .chevron{font-size:11px;color:var(--muted,#6e6e73)}
   .group-row{display:flex;align-items:flex-start;gap:10px}
   .group-fields{display:flex;flex-direction:column;gap:10px;flex:1}
-  .group-sep{border:0;border-top:1px solid rgba(0,0,0,.06);margin:4px 0}
-  .group-footer{display:flex;gap:8px;padding-top:4px;border-top:1px solid rgba(0,0,0,.06)}
-  .remove-btn{padding:4px 8px;border:1px solid #ccc;border-radius:8px;background:none;cursor:pointer;color:var(--muted,#6e6e73);font-size:12px;align-self:flex-start;margin-top:18px}
+  .group-sep{border:0;border-top:1px solid var(--border);margin:4px 0}
+  .group-footer{display:flex;gap:8px;padding-top:4px;border-top:1px solid var(--border)}
+  .remove-btn{padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;color:var(--muted,#6e6e73);font-size:12px;align-self:flex-start;margin-top:18px}
   .model-checkboxes{display:flex;flex-wrap:wrap;gap:8px;padding:6px 0}
   .checkbox-label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text,#3a3a3c);cursor:pointer}
   .badge-warn{background:#fff4e5;color:#9a5b00;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
   .badge-info{background:#e5effb;color:#0a4a8f;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
-  .caption{font-size:11px;color:#6e6e73;font-weight:400;margin-left:8px}
+  .caption{font-size:11px;color:var(--muted);font-weight:400;margin-left:8px}
   .amber{color:#9a5b00}
   .orphans{list-style:none;padding:0;margin:8px 0}
-  .orphans li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px}
-  .orphans button{margin-left:auto;font-size:12px;padding:3px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}
+  .orphans li{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .orphans button{margin-left:auto;font-size:12px;padding:3px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);cursor:pointer}
   .red{color:#c0271d}
   .mono{font-family:ui-monospace,monospace}
 </style>

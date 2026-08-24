@@ -275,29 +275,29 @@
 </div>
 
 <style>
-  .card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-top:14px;background:#fff}
+  .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card)}
   h2{font-size:15px;margin:0}
   .feed-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
   .seg{display:flex;gap:6px}
-  .seg-btn{padding:4px 14px;border:1px solid rgba(0,0,0,.15);border-radius:20px;background:#f5f5f7;font-size:13px;cursor:pointer;transition:background .15s}
-  .seg-btn:hover{background:#e5e5ea}
+  .seg-btn{padding:4px 14px;border:1px solid var(--border);border-radius:20px;background:var(--chip);color:var(--text);font-size:13px;cursor:pointer;transition:background .15s}
+  .seg-btn:hover{background:var(--chip-hover)}
   .seg-btn.active{background:#0a84ff;color:#fff;border-color:#0a84ff}
   .seg.small .seg-btn{padding:3px 10px;font-size:12px}
   .chips{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
-  .chips select{font-size:13px;padding:4px 8px;border:1px solid rgba(0,0,0,.15);border-radius:8px;background:#fff}
+  .chips select{font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
   .strip{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-  .pill{font-size:12px;padding:3px 10px;border-radius:20px;background:#f5f5f7;color:#3a3a3c}
+  .pill{font-size:12px;padding:3px 10px;border-radius:20px;background:var(--chip);color:var(--text)}
   .pill.red{background:#ffeceb;color:#c0271d}
   .table-wrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px;white-space:nowrap}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
   tr.row{cursor:pointer}
-  tr.row:hover td{background:rgba(0,0,0,.03)}
-  tr.row.failed td{background:#fff7f6}
+  tr.row:hover td{background:var(--chip)}
+  tr.row.failed td{background:var(--danger-tint)}
   tr.row.open td{background:rgba(10,132,255,.06)}
-  .detail-row td{background:#fafafc;white-space:normal}
+  .detail-row td{background:var(--chip);white-space:normal}
   .dgrid{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;padding:6px 2px;font-size:13px}
-  .dl{color:#6e6e73}
+  .dl{color:var(--muted)}
   .dv{overflow-wrap:anywhere}
   .mono{font-family:"SF Mono","Fira Code",monospace;font-size:12px}
   .errbox{margin:8px 2px 4px;padding:10px 12px;background:#ffeceb;border-radius:8px;font-size:13px}
@@ -306,18 +306,18 @@
   .errbox pre{margin:6px 0 0;max-height:240px;overflow:auto;font-size:11px;white-space:pre-wrap}
   .errbox summary{cursor:pointer;font-size:12px;color:#6e6e73;margin-top:6px}
   .more{margin-top:10px;text-align:center}
-  .fb-add{font-size:12px;padding:4px 12px;border:1px solid rgba(0,0,0,.15);border-radius:7px;background:#fff;cursor:pointer}
+  .fb-add{font-size:12px;padding:4px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);cursor:pointer}
   .linkbtn{background:none;border:0;padding:0;color:#0a84ff;cursor:pointer;font:inherit;font-size:12px;text-decoration:underline}
   .banner.err{background:#ffeceb;color:#c0271d;padding:10px 12px;border-radius:8px;margin:6px 0;font-size:13px}
-  .empty{color:#6e6e73}
+  .empty{color:var(--muted)}
   .red{color:#c0271d}
   .green{color:#1a7f37}
   .trunc{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nowrap{white-space:nowrap}
   .mcp-tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(94,92,230,.15);color:#3634a3;text-transform:uppercase;letter-spacing:.04em}
-  .mcpbox{margin:8px 2px 4px;padding:8px 12px;background:#f4f4f8;border-radius:8px;font-size:13px}
+  .mcpbox{margin:8px 2px 4px;padding:8px 12px;background:var(--chip);border-radius:8px;font-size:13px}
   .mcpbox pre{margin:6px 0 0;max-height:240px;overflow:auto;font-size:11px;white-space:pre-wrap}
-  .mcpbox summary{cursor:pointer;font-size:12px;color:#6e6e73}
+  .mcpbox summary{cursor:pointer;font-size:12px;color:var(--muted)}
   .bodybox{margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:10px}
   .bodyhead{font-size:12px;color:var(--muted);margin-bottom:6px}
   .msg{margin:6px 0}.msg.resp{border-top:1px dashed var(--border);padding-top:6px}

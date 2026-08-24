@@ -114,8 +114,8 @@
 {/if}
 
 <style>
-  :global(:root){--bg:#fff;--card:#fff;--text:#1d1d1f;--muted:#6e6e73;--border:rgba(0,0,0,.08);--sidebar:#f5f5f7}
-  :global([data-theme="dark"]){--bg:#1c1c1e;--card:#2c2c2e;--text:#f5f5f7;--muted:#98989d;--border:rgba(255,255,255,.12);--sidebar:#161618}
+  :global(:root){--bg:#fff;--card:#fff;--text:#1d1d1f;--muted:#6e6e73;--border:rgba(0,0,0,.08);--sidebar:#f5f5f7;--chip:#f5f5f7;--chip-hover:#e5e5ea;--danger-tint:#fff7f6}
+  :global([data-theme="dark"]){--bg:#1c1c1e;--card:#2c2c2e;--text:#f5f5f7;--muted:#98989d;--border:rgba(255,255,255,.12);--sidebar:#161618;--chip:#3a3a3c;--chip-hover:#48484a;--danger-tint:#3a2a2a}
   :global(body){margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text)}
   .app{display:grid;grid-template-columns:236px 1fr;height:100vh}
   .sidebar{background:var(--sidebar);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column}

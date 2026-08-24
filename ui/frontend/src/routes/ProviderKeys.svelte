@@ -106,12 +106,12 @@
   .card.add { display: flex; flex-direction: column; gap: 10px; max-width: 420px }
   .card.add h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600 }
   label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; color: var(--muted, #3a3a3c) }
-  input, select { padding: 8px; border: 1px solid var(--border, #ccc); border-radius: 8px; font: inherit }
-  input:disabled { background: var(--disabled-bg, #f5f5f5); color: var(--muted, #6e6e73); cursor: not-allowed }
+  input, select { padding: 8px; border: 1px solid var(--border, #ccc); border-radius: 8px; font: inherit; color: var(--text) }
+  input:disabled { background: var(--chip); color: var(--muted, #6e6e73); cursor: not-allowed }
   table { width: 100%; border-collapse: collapse }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border, rgba(0,0,0,.06)); font-size: 14px }
   .row { display: flex; gap: 8px }
-  button { padding: 8px 12px; border: 1px solid var(--border, #ccc); border-radius: 8px; background: var(--card, #fff); font: inherit; cursor: pointer }
+  button { padding: 8px 12px; border: 1px solid var(--border, #ccc); border-radius: 8px; background: var(--card, #fff); font: inherit; cursor: pointer; color: var(--text) }
   button.primary { background: #0a84ff; color: #fff; border: 0 }
   button.secondary { color: #0a84ff; border-color: #b3d4ff }
   button.danger { color: #ff3b30; border-color: #ffd0cc }

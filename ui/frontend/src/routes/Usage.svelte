@@ -221,28 +221,28 @@
 <style>
   .page{padding:24px 30px;max-width:1100px}
   .range-row{display:flex;align-items:center;gap:8px;margin:12px 0 4px}
-  .refresh{margin-left:auto;font-size:13px;color:#6e6e73}
-  .range-btn{padding:5px 16px;border:1px solid rgba(0,0,0,.15);border-radius:8px;background:#f5f5f7;font-size:13px;cursor:pointer;transition:background .15s}
-  .range-btn:hover{background:#e5e5ea}
+  .refresh{margin-left:auto;font-size:13px;color:var(--muted)}
+  .range-btn{padding:5px 16px;border:1px solid var(--border);border-radius:8px;background:var(--chip);color:var(--text);font-size:13px;cursor:pointer;transition:background .15s}
+  .range-btn:hover{background:var(--chip-hover)}
   .range-btn.active{background:#0a84ff;color:#fff;border-color:#0a84ff}
   .cards{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}
-  .card{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:16px;margin-top:14px;background:#fff}
+  .card{border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:14px;background:var(--card)}
   .card.stat{flex:1;min-width:120px;margin-top:0}
-  .label{font-size:12px;color:#6e6e73}
+  .label{font-size:12px;color:var(--muted)}
   .big{font-size:22px;font-weight:600;margin-top:6px}
   h2{font-size:15px;margin:0 0 10px}
-  .gran{font-size:12px;font-weight:400;color:#6e6e73}
+  .gran{font-size:12px;font-weight:400;color:var(--muted)}
   .tab-row{display:flex;gap:6px;margin-bottom:12px}
-  .tab-btn{padding:4px 14px;border:1px solid rgba(0,0,0,.15);border-radius:20px;background:#f5f5f7;font-size:13px;cursor:pointer;transition:background .15s}
-  .tab-btn:hover{background:#e5e5ea}
+  .tab-btn{padding:4px 14px;border:1px solid var(--border);border-radius:20px;background:var(--chip);color:var(--text);font-size:13px;cursor:pointer;transition:background .15s}
+  .tab-btn:hover{background:var(--chip-hover)}
   .tab-btn.active{background:#0a84ff;color:#fff;border-color:#0a84ff}
   .table-wrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px;white-space:nowrap}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap}
   th.sortable{cursor:pointer;user-select:none}
-  th.sortable:hover{background:rgba(0,0,0,.04)}
+  th.sortable:hover{background:var(--chip)}
   .banner.err{background:#ffeceb;color:#c0271d;padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
-  .empty{color:#6e6e73}
-  .muted{color:#a0a0a5;font-style:italic}
+  .empty{color:var(--muted)}
+  .muted{color:var(--muted);font-style:italic}
   .red{color:#c0271d}
 </style>
