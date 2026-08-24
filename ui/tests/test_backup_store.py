@@ -30,6 +30,13 @@ def test_mirror_roundtrip_0600(tmp_path):
     assert read_mirror(tmp_path / "nope") is None
 
 
+def test_mirror_creates_nested_dir_0700(tmp_path):
+    s = {"config": DEFAULTS["config"], "logs": DEFAULTS["logs"]}
+    write_mirror(tmp_path / "b", s)
+    assert oct((tmp_path / "b").stat().st_mode & 0o777) == "0o700"
+    assert read_mirror(tmp_path / "b") == s
+
+
 import asyncpg
 from app.backup_store import BackupStore
 

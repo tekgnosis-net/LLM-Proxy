@@ -140,8 +140,17 @@ class BackupEngine:
         return p
 
     def _mkdir(self, *parts) -> Path:
-        d = self._dir.joinpath(*parts)
+        # Path.mkdir(mode=..., parents=True) only applies `mode` to the leaf —
+        # intermediate directories (the backup root, the tier dir) are created with
+        # default, umask-derived permissions. chmod each level explicitly instead;
+        # chmod (unlike mkdir's mode=) isn't subject to the process umask.
+        d = self._dir
         d.mkdir(mode=0o700, parents=True, exist_ok=True)
+        d.chmod(0o700)
+        for part in parts:
+            d = d / part
+            d.mkdir(mode=0o700, exist_ok=True)
+            d.chmod(0o700)
         return d
 
     @staticmethod
@@ -250,7 +259,7 @@ class BackupEngine:
                         if n:
                             gz = gzip.open(d / f"{t}.csv.gz", "wb")
                             try:
-                                def sink(data: bytes): gz.write(data)
+                                async def sink(data: bytes): gz.write(data)
                                 await conn.copy_from_query(
                                     f'SELECT * FROM "{t}" WHERE {where}', *args,
                                     output=sink, format="csv", header=True)

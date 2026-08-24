@@ -49,8 +49,9 @@ def test_fingerprints_are_short_hashes():
 
 
 # append to ui/tests/test_backup_engine.py
-import asyncio, gzip, os
+import gzip, os
 import pytest
+from app import backup_engine
 from app.backup_engine import BackupEngine
 
 pytestmark = pytest.mark.asyncio
@@ -91,8 +92,9 @@ class FakeConn:
         for t, rows in self._rows.items():
             if f'"{t}"' in q:
                 data = "col1,col2\n" + "".join(f"{x},{y}\n" for x, y in rows)
-                r = output(data.encode())
-                if asyncio.iscoroutine(r): await r
+                # Match real asyncpg's contract (0.31): output is awaited, not just
+                # called. A sync sink would raise TypeError here instead of hiding.
+                await output(data.encode())
                 return
     async def close(self): pass
 
@@ -123,6 +125,8 @@ async def test_run_config_creates_bundle_and_manifest(tmp_path):
     assert (d / "litellm-config.dump").exists() and (d / "ui_config.json").exists() \
         and (d / "config.yaml").exists() and (d / "manifest.json").exists()
     assert oct(d.stat().st_mode & 0o777) == "0o700"
+    assert oct(Path(tmp_path, "backups").stat().st_mode & 0o777) == "0o700"          # backup root
+    assert oct(Path(tmp_path, "backups", "config").stat().st_mode & 0o777) == "0o700"  # tier dir
     argv, env = calls[0]
     assert '--exclude-table=public."LiteLLM_SpendLogs"' in argv        # usage excluded
     assert '--exclude-table=public."LiteLLM_HealthCheckTable"' in argv  # transient excluded
@@ -173,3 +177,17 @@ async def test_backup_path_rejects_traversal(tmp_path):
     with pytest.raises(ValueError): eng.backup_path("nope/x")
     p = eng.backup_path("snapshots/x.json")
     assert str(p).startswith(str(tmp_path / "backups"))
+
+
+async def test_run_config_rejects_when_already_running(tmp_path):
+    eng, _ = make_engine(tmp_path, [])
+    async with backup_engine._LOCKS["config"]:
+        out = await eng.run_config()
+    assert out == {"ok": False, "error": "already running"}
+
+
+async def test_run_logs_rejects_when_already_running(tmp_path):
+    eng, _ = make_engine(tmp_path, [])
+    async with backup_engine._LOCKS["logs"]:
+        out = await eng.run_logs()
+    assert out == {"ok": False, "error": "already running"}

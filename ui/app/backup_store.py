@@ -44,8 +44,21 @@ def validate_tier_settings(value: dict) -> dict:
     return out
 
 
+def _ensure_dir_0700(p: Path) -> None:
+    """mkdir -p semantics, but chmod(0o700) every level actually created here.
+    Path.mkdir(mode=...) only applies `mode` to the leaf; intermediate directories
+    created implicitly via parents=True get default, umask-derived permissions —
+    and mkdir's mode itself is umask-masked, whereas chmod is not. Never touches
+    an already-existing ancestor (e.g. the caller's tmp_path)."""
+    if p.exists():
+        return
+    _ensure_dir_0700(p.parent)
+    p.mkdir(mode=0o700, exist_ok=True)
+    p.chmod(0o700)
+
+
 def write_mirror(backup_dir: Path | str, settings: dict) -> None:
-    d = Path(backup_dir); d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    d = Path(backup_dir); _ensure_dir_0700(d)
     p = d / "settings.json"
     p.write_text(json.dumps(settings, indent=1))
     p.chmod(0o600)
