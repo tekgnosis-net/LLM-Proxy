@@ -24,12 +24,15 @@ def _pg_env(password: str) -> dict:
     return {**os.environ, "PGPASSWORD": password}
 
 
-def pg_dump_cmd(dsn: str, out_path: str, exclude_tables: list[str]) -> tuple[list[str], dict]:
+def pg_dump_cmd(dsn: str, out_path: str, exclude_tables: list[str],
+                exclude_table_data: list[str] | None = None) -> tuple[list[str], dict]:
     d = parse_dsn(dsn)
     argv = ["pg_dump", "-Fc", "--no-owner", "--no-privileges",
             "-h", d["host"], "-p", str(d["port"]), "-U", d["user"], "-d", d["dbname"],
             "-f", out_path]
     argv += [f'--exclude-table=public."{t}"' for t in exclude_tables]
+    if exclude_table_data:
+        argv += [f'--exclude-table-data=public."{t}"' for t in exclude_table_data]
     return argv, _pg_env(d["password"])
 
 
@@ -102,7 +105,7 @@ import asyncpg
 
 from app.backup_tables import (classify, base_tables, WATERMARK_COLUMNS,
                                ROLLING_DATE_COLUMN, ROLLING_WINDOW_DAYS, WATERMARK_GUARD_S,
-                               USAGE_EXACT, TRANSIENT)
+                               USAGE_EXACT, TRANSIENT, NEVER_RESTORE)
 
 _ID_RE = re.compile(r"^(config|logs|snapshots)/[A-Za-z0-9+._-]+(/[A-Za-z0-9._-]+)?$")
 _LOCKS = {"config": asyncio.Lock(), "logs": asyncio.Lock()}
@@ -179,7 +182,7 @@ class BackupEngine:
                 # introspection hasn't caught up yet (pg_dump ignores unmatched excludes).
                 exclude = sorted(set(tiers["usage"]) | set(tiers["transient"]) | USAGE_EXACT | TRANSIENT)
                 dump = d / "litellm-config.dump"
-                argv, env = pg_dump_cmd(self._dsn, str(dump), exclude)
+                argv, env = pg_dump_cmd(self._dsn, str(dump), exclude, exclude_table_data=sorted(NEVER_RESTORE))
                 rc, err = await self._run(argv, env)
                 if rc != 0:
                     raise RuntimeError(f"pg_dump failed (rc={rc}): {err}")
@@ -191,7 +194,8 @@ class BackupEngine:
                     counts[it["kind"]] = counts.get(it["kind"], 0) + 1
                 files = {f.name: f for f in d.iterdir() if f.name != "manifest.json"}
                 m = build_manifest("config", self._now().isoformat(), files,
-                                   tables=tiers["config"], excluded=exclude, item_counts=counts,
+                                   tables=tiers["config"], excluded=exclude,
+                                   excluded_data=sorted(NEVER_RESTORE), item_counts=counts,
                                    fingerprints=fingerprints(self._salt_key, self._fernet_secret))
                 (d / "manifest.json").write_text(json.dumps(m, indent=1))
                 self._chmod_all(d)

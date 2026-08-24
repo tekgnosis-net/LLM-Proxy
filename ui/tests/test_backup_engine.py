@@ -18,6 +18,12 @@ def test_parse_dsn_and_pg_cmds():
     assert argv[0] == "pg_dump" and "-Fc" in argv and "--no-owner" in argv and "--no-privileges" in argv
     assert '--exclude-table=public."LiteLLM_SpendLogs"' in argv and "/b/x.dump" in argv
     assert env["PGPASSWORD"] == "pw" and "pw" not in " ".join(argv)
+    # Test exclude_table_data parameter
+    argv, env = pg_dump_cmd("postgresql://u:pw@h:5432/db", "/b/x.dump", ["LiteLLM_SpendLogs"], exclude_table_data=["_prisma_migrations"])
+    assert '--exclude-table-data=public."_prisma_migrations"' in argv
+    # Test that omitting exclude_table_data adds no --exclude-table-data entries
+    argv, env = pg_dump_cmd("postgresql://u:pw@h:5432/db", "/b/x.dump", ["LiteLLM_SpendLogs"])
+    assert not any(arg.startswith('--exclude-table-data') for arg in argv)
     rargv, renv = pg_restore_cmd("postgresql://u:pw@h:5432/db", "/b/x.dump")
     assert rargv[0] == "pg_restore" and "--data-only" in rargv and "--disable-triggers" in rargv
 
@@ -130,8 +136,10 @@ async def test_run_config_creates_bundle_and_manifest(tmp_path):
     argv, env = calls[0]
     assert '--exclude-table=public."LiteLLM_SpendLogs"' in argv        # usage excluded
     assert '--exclude-table=public."LiteLLM_HealthCheckTable"' in argv  # transient excluded
+    assert '--exclude-table-data=public."_prisma_migrations"' in argv  # data excluded
     m = json.loads((d / "manifest.json").read_text())
     assert m["tier"] == "config" and m["fingerprints"]["fernet"] and m["item_counts"] == {"model": 1}
+    assert m["excluded_data"] == ["_prisma_migrations"]
 
 
 async def test_run_config_failure_cleans_partial_dir(tmp_path):
