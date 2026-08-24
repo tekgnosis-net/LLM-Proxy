@@ -374,6 +374,10 @@ def test_apply_uses_hybrid_when_store_model_in_db(monkeypatch, tmp_path):
     cr.make_config_store = lambda: FakeStore()
     cr._fernet = lambda: _FakeFernet()
     cr.make_reloader = lambda: FakeReloader(ok=True)
+    # FakeStore carries no model items; give the guard an explicit (empty) live
+    # list rather than falling through to whatever a prior test's module-level
+    # mock left behind.
+    cr.make_models_client = lambda: FakeModelsClientRoutes([])
     c = TestClient(create_app())
     c.post("/api/auth/login", json={"password": "pw"})
     resp = c.post("/api/apply")
@@ -707,4 +711,63 @@ def test_resync_converges_mcp(tmp_path, monkeypatch):
     r = c.post("/api/config/resync").json()
     assert r["mcp"]["updated"] == 1 and r["mcp"]["deleted"] == 1
     assert mc.updated == ["u1"] and mc.deleted == ["ghost"]
+    get_settings.cache_clear()
+
+# Task 10 (v3.30): empty-master guard on resync/apply + per-apply snapshot
+
+def _hybrid_client(tmp_path, monkeypatch, live_models=0, master_items=None):
+    """Hybrid-mode client (STORE_MODEL_IN_DB=true) with a configurable live model
+    count (fake ModelsClient) and configurable master (applied) model items. Also
+    points BACKUP_DIR at a tmp dir so the snapshot test has somewhere to write."""
+    monkeypatch.setenv("STORE_MODEL_IN_DB", "true")
+    monkeypatch.setenv("BACKUP_DIR", str(tmp_path / "backups"))
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    store = ModelStore(list(master_items or []))
+    c = _client(tmp_path, store)
+    import app.routes.config_v3_routes as cr
+    live = [{"model_name": f"live{i}", "model_info": {"id": f"live{i}"}} for i in range(live_models)]
+    cr.make_models_client = lambda: FakeModelsClientRoutes(live)
+    cr.make_reloader = lambda: FakeReloader(ok=True)
+    return c
+
+def test_resync_refuses_when_master_empty_but_live_has_models(tmp_path, monkeypatch):
+    from app.settings import get_settings
+    c = _hybrid_client(tmp_path, monkeypatch, live_models=2, master_items=[])
+    r = c.post("/api/config/resync", json={})
+    assert r.status_code == 409 and "refusing" in r.json()["detail"]
+    # force override proceeds
+    assert c.post("/api/config/resync", json={"force": True}).status_code == 200
+    get_settings.cache_clear()
+
+def test_apply_refuses_when_master_empty_but_live_has_models(tmp_path, monkeypatch):
+    from app.settings import get_settings
+    c = _hybrid_client(tmp_path, monkeypatch, live_models=2, master_items=[])
+    assert c.post("/api/apply", json={}).status_code == 409
+    get_settings.cache_clear()
+
+def test_apply_writes_snapshot_on_success(tmp_path, monkeypatch):
+    from app.settings import get_settings
+    c = _hybrid_client(tmp_path, monkeypatch, live_models=0, master_items=[_m("guarded-model")])
+    # test_backup_routes.py's helper rebinds app.routes.backup_routes.make_backup_engine
+    # to a FakeEngine at module scope with no teardown; when the whole suite runs, that
+    # leaks into this test (apply()'s snapshot hook imports the live attribute at call
+    # time). Reload to restore the real factory before exercising the real snapshot path.
+    import importlib
+    import app.routes.backup_routes as br
+    importlib.reload(br)
+    r = c.post("/api/apply", json={})
+    assert r.status_code == 200
+    snaps = list((tmp_path / "backups" / "snapshots").glob("*-apply.json"))
+    assert len(snaps) == 1
+    get_settings.cache_clear()
+
+def test_apply_not_guarded_in_non_hybrid_mode(tmp_path, monkeypatch):
+    # Regression check: an empty master + non-hybrid mode must NOT be guarded —
+    # the guard is hybrid-only (config.yaml-only deployments don't hot-delete models).
+    # FakeStore has zero model items and non-hybrid mode is the default (no env set).
+    monkeypatch.delenv("STORE_MODEL_IN_DB", raising=False)
+    from app.settings import get_settings; get_settings.cache_clear()
+    c = _client_apply(tmp_path, FakeStore(), ok=True)
+    assert c.post("/api/apply").status_code == 200
     get_settings.cache_clear()
