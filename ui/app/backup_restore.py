@@ -100,3 +100,77 @@ async def rollback_config(items: list[dict], *, config_store, models_client, mcp
     else:
         out["restart"] = "skipped"
     return out
+
+
+from pathlib import Path
+from app.backup_engine import verify_manifest, pg_restore_cmd, fingerprints as _fps
+from app.backup_tables import NEVER_RESTORE, classify, base_tables
+
+
+def truncate_statement(tables: list[str]) -> str:
+    keep = [t for t in tables if t not in NEVER_RESTORE]
+    return "TRUNCATE " + ", ".join(f'"{t}"' for t in keep)
+
+
+def check_fingerprints(manifest: dict, salt_key, fernet_secret) -> list[str]:
+    want = manifest.get("fingerprints") or {}
+    have = _fps(salt_key, fernet_secret)
+    return [k for k in ("salt", "fernet")
+            if want.get(k) and have.get(k) and want[k] != have[k]]
+
+
+async def full_recovery(bdir: Path, *, dsn, reloader, config_path, connect,
+                        run_subprocess, salt_key, fernet_secret) -> dict:
+    steps: list[dict] = []
+    def step(name, status, detail=""):
+        steps.append({"step": name, "status": status, "detail": detail})
+        return status == "ok"
+
+    manifest, errs = verify_manifest(bdir)
+    if manifest is None or errs:
+        step("verify_backup", "error", "; ".join(errs or ["no manifest"]))
+        return {"ok": False, "steps": steps}
+    step("verify_backup", "ok")
+
+    mism = check_fingerprints(manifest, salt_key, fernet_secret)
+    if mism:
+        step("fingerprints", "error",
+             f"backup was made under different secrets ({', '.join(mism)}) — refusing")
+        return {"ok": False, "steps": steps}
+    step("fingerprints", "ok")
+
+    ok = True
+    try:
+        await reloader.stop(); step("stop", "ok")
+    except Exception as e:
+        step("stop", "error", str(e))
+        return {"ok": False, "steps": steps}
+    try:
+        conn = await connect()
+        try:
+            live_config = set(classify(await base_tables(conn))["config"])
+            targets = [t for t in manifest.get("tables", []) if t in live_config]
+            missing = [t for t in manifest.get("tables", []) if t not in live_config]
+            await conn.execute(truncate_statement(targets))
+            step("truncate", "ok", f"skipped (not live): {missing}" if missing else "")
+        finally:
+            await conn.close()
+        argv, env = pg_restore_cmd(dsn, str(bdir / "litellm-config.dump"))
+        rc, err = await run_subprocess(argv, env)
+        if rc != 0:
+            ok = step("pg_restore", "error", err) and ok
+        else:
+            step("pg_restore", "ok")
+        if ok:
+            from app.config_store import write_config_atomic
+            write_config_atomic(config_path, (bdir / "config.yaml").read_text())
+            step("config_yaml", "ok")
+    except Exception as e:
+        ok = step("recover", "error", str(e)) and ok
+    finally:
+        try:
+            await reloader.start(); step("start", "ok")
+            await reloader.verify([]); step("ready", "ok")
+        except Exception as e:
+            ok = step("start", "error", str(e)) and ok
+    return {"ok": ok and all(s["status"] == "ok" for s in steps), "steps": steps}

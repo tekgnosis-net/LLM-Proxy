@@ -36,3 +36,98 @@ def test_parse_export_validates():
     with pytest.raises(ValueError): parse_export("not json")
     with pytest.raises(ValueError): parse_export(json.dumps({"version": 1, "items": "nope"}))
     with pytest.raises(ValueError): parse_export(json.dumps({"version": 1, "items": [{"kind": "model"}]}))
+
+
+import gzip
+from datetime import datetime
+from pathlib import Path
+from app.backup_restore import truncate_statement, check_fingerprints, full_recovery
+from app.backup_engine import build_manifest, fingerprints as make_fps, pg_dump_cmd  # reuse helpers
+
+pytestmark = pytest.mark.asyncio
+
+
+def test_truncate_statement_skips_prisma_and_quotes():
+    sql = truncate_statement(["LiteLLM_TeamTable", "_prisma_migrations", "ui_config_applied"])
+    assert sql == 'TRUNCATE "LiteLLM_TeamTable", "ui_config_applied"'
+
+
+def test_check_fingerprints():
+    m = {"fingerprints": make_fps("salt", "fern")}
+    assert check_fingerprints(m, "salt", "fern") == []
+    assert check_fingerprints(m, "other", "fern") == ["salt"]
+    assert check_fingerprints({}, "salt", "fern") == []          # old manifest: no check possible
+
+
+class RecConn:
+    def __init__(self): self.sql = []
+    async def fetch(self, q, *a):
+        return [{"table_name": t} for t in ["LiteLLM_TeamTable", "ui_config_applied",
+                                            "_prisma_migrations", "LiteLLM_SpendLogs"]]
+    async def execute(self, q, *a): self.sql.append(q)
+    async def close(self): pass
+
+
+class FakeReloader:
+    def __init__(self): self.calls = []
+    async def stop(self): self.calls.append("stop")
+    async def start(self): self.calls.append("start")
+    async def verify(self, expected): self.calls.append("verify"); return True
+
+
+def _make_backup(tmp_path):
+    d = tmp_path / "config" / "stamp"; d.mkdir(parents=True)
+    (d / "litellm-config.dump").write_bytes(b"PGDMP")
+    (d / "ui_config.json").write_text('{"version":1,"items":[]}')
+    (d / "config.yaml").write_text("model_list: []\n")
+    files = {f.name: f for f in d.iterdir()}
+    m = build_manifest("config", datetime.now().astimezone().isoformat(), files,
+                       tables=["LiteLLM_TeamTable", "ui_config_applied", "_prisma_migrations",
+                               "LiteLLM_GoneTable"],
+                       fingerprints=make_fps("salt", "fern"))
+    (d / "manifest.json").write_text(json.dumps(m))
+    return d
+
+
+async def test_full_recovery_happy_path(tmp_path):
+    d = _make_backup(tmp_path)
+    conn = RecConn(); rel = FakeReloader(); calls = []
+    async def run_sub(argv, env): calls.append(argv); return 0, ""
+    async def connect(): return conn
+    cfg = tmp_path / "live.yaml"; cfg.write_text("old: true\n")
+    out = await full_recovery(d, dsn="postgresql://u:pw@h:5432/db", reloader=rel,
+                              config_path=str(cfg), connect=connect, run_subprocess=run_sub,
+                              salt_key="salt", fernet_secret="fern")
+    assert out["ok"] is True
+    assert rel.calls == ["stop", "start", "verify"]
+    # truncated only manifest∩live config tables, never _prisma_migrations or usage:
+    assert conn.sql == ['TRUNCATE "LiteLLM_TeamTable", "ui_config_applied"']
+    assert calls and calls[0][0] == "pg_restore"
+    assert cfg.read_text() == "model_list: []\n"
+    steps = {s["step"]: s["status"] for s in out["steps"]}
+    assert steps["truncate"] == "ok" and steps["ready"] == "ok"
+
+
+async def test_full_recovery_fingerprint_mismatch_refuses_before_stop(tmp_path):
+    d = _make_backup(tmp_path)
+    rel = FakeReloader()
+    async def connect(): raise AssertionError("must not connect")
+    async def run_sub(argv, env): raise AssertionError("must not run")
+    out = await full_recovery(d, dsn="x", reloader=rel, config_path="x",
+                              connect=connect, run_subprocess=run_sub,
+                              salt_key="WRONG", fernet_secret="fern")
+    assert out["ok"] is False and rel.calls == []
+
+
+async def test_full_recovery_restore_failure_still_starts_litellm(tmp_path):
+    d = _make_backup(tmp_path)
+    conn = RecConn(); rel = FakeReloader()
+    async def run_sub(argv, env): return 1, "restore exploded"
+    async def connect(): return conn
+    cfg = tmp_path / "live.yaml"; cfg.write_text("old: true\n")
+    out = await full_recovery(d, dsn="postgresql://u:pw@h:5432/db", reloader=rel,
+                              config_path=str(cfg), connect=connect, run_subprocess=run_sub,
+                              salt_key="salt", fernet_secret="fern")
+    assert out["ok"] is False
+    assert "start" in rel.calls                       # proxy brought back regardless
+    assert any(s["step"] == "pg_restore" and s["status"] == "error" for s in out["steps"])

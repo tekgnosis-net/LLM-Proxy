@@ -49,8 +49,19 @@ class Reloader:
             if r.status_code >= 400:
                 raise ReloadError(f"reload trigger failed: {r.status_code} {r.text[:200]}")
 
-    async def reload_and_verify(self, expected_models: list[str]) -> bool:
-        await self.trigger()
+    async def stop(self) -> None:
+        async with self._client(self._trigger_timeout) as c:
+            r = await c.post(f"{self._sock}/containers/{self._container}/stop", params={"t": 30})
+            if r.status_code >= 400 and r.status_code != 304:   # 304 = already stopped
+                raise ReloadError(f"stop failed: {r.status_code} {r.text[:200]}")
+
+    async def start(self) -> None:
+        async with self._client(self._trigger_timeout) as c:
+            r = await c.post(f"{self._sock}/containers/{self._container}/start")
+            if r.status_code >= 400 and r.status_code != 304:   # 304 = already started
+                raise ReloadError(f"start failed: {r.status_code} {r.text[:200]}")
+
+    async def verify(self, expected_models: list[str]) -> bool:
         deadline = time.monotonic() + self._timeout
         last = "no probe yet"
         while time.monotonic() < deadline:
@@ -70,3 +81,7 @@ class Reloader:
             if self._poll:
                 await asyncio.sleep(self._poll)
         raise ReloadError(f"proxy did not converge within {self._timeout}s ({last})")
+
+    async def reload_and_verify(self, expected_models: list[str]) -> bool:
+        await self.trigger()
+        return await self.verify(expected_models)
