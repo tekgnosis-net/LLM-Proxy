@@ -363,7 +363,7 @@
   .field-name{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text,#3a3a3c)}
   .field-col{display:flex;flex-direction:column;font-size:13px;color:var(--text,#3a3a3c);gap:6px}
   .footer-row{display:flex;gap:8px;padding-top:4px;border-top:1px solid var(--border)}
-  select,input[type="text"],input[type="number"],textarea{padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;background:var(--card,#fff);color:var(--text,#1d1d1f)}
+  select,input[type="text"],input[type="number"],textarea{padding:8px;border:1px solid var(--border);border-radius:8px;font:inherit;background:var(--bg);color:var(--text)}
   textarea{font-family:ui-monospace,monospace}
   button{padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card,#fff);font:inherit;cursor:pointer;white-space:nowrap;color:var(--text,#1d1d1f)}
   button.primary{background:#0a84ff;color:#fff;border:0}

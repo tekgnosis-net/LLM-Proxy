@@ -382,8 +382,8 @@
   button.primary{background:#0a84ff;color:#fff;border:0}button.danger{color:#ff3b30;border-color:#ffd0cc}button:disabled{opacity:.5}
   .banner{padding:10px 12px;border-radius:8px;margin-top:12px;font-size:13px}
   .banner.err{background:#ffeceb;color:#c0271d}
-  .banner.key{background:#fff7e6;border:1px solid #ffe1a8;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .banner.key code{background:#fff;padding:4px 8px;border-radius:6px;border:1px solid #eed8a8;user-select:all}
+  .banner.key{background:#fff7e6;border:1px solid #ffe1a8;color:#7a5b00;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .banner.key code{background:#fff;color:#1d1d1f;padding:4px 8px;border-radius:6px;border:1px solid #eed8a8;user-select:all}
   .empty{color:var(--muted)}
   details{border:1px solid var(--border);border-radius:8px;padding:0}
   .router-summary{padding:8px 10px;cursor:pointer;font-size:13px;color:var(--text);user-select:none;list-style:none}
