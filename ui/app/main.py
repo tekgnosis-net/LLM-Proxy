@@ -85,6 +85,27 @@ async def lifespan(app):
         sched.add_job(catalog_job, "interval", days=s.catalog_sync_interval_days, id="catalog",
                       next_run_time=datetime.now(timezone.utc))
 
+    if s.database_url:
+        from app.backup_store import BackupStore, read_mirror, write_mirror
+        from app.backup_scheduler import register_backup_jobs, set_scheduler
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        bstore = BackupStore(s.database_url)
+        try:
+            # Self-heal: ui_settings empty + mirror present (e.g. after a ui_* wipe) → re-import.
+            if not await bstore.settings_present():
+                mirror = read_mirror(s.backup_dir)
+                if mirror:
+                    for tier in ("config", "logs"):
+                        if tier in mirror:
+                            await bstore.save_settings(tier, mirror[tier])
+                    logging.getLogger(__name__).warning("backup settings restored from %s/settings.json", s.backup_dir)
+            sched = sched or AsyncIOScheduler()
+            from app.routes.backup_routes import make_backup_engine
+            await register_backup_jobs(sched, bstore, make_backup_engine)
+            set_scheduler(sched)
+        except Exception:
+            logging.getLogger(__name__).warning("backup scheduler setup failed", exc_info=True)
+
     if sched:
         sched.start()
     try:

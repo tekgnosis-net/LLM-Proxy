@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     catalog_sync_interval_days: int = 7
     catalog_pricing_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
     catalog_endpoints_url: str = "https://raw.githubusercontent.com/BerriAI/litellm/main/provider_endpoints_support.json"
+    backup_dir: str = "/backups"   # local mount for scheduled backups (BACKUP_DIR)
 
 
 @lru_cache
