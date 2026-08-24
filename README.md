@@ -173,6 +173,15 @@ password. Proxy health: `curl -fsS http://localhost:4000/health/readiness`.
 > The UI image is **pinned** to a release tag in `docker-compose.yml`; to update,
 > bump that tag to a newer release (or switch it to `:latest` for auto-updates),
 > then `docker compose pull && docker compose up -d`.
+>
+> **Before any `docker compose pull` that updates LiteLLM** (`litellm:main-stable`
+> is a floating tag): take a Postgres dump first —
+> `docker exec litellm-postgres pg_dump -U "$POSTGRES_USER" -d litellm | gzip > backup-$(date +%F).sql.gz`.
+> LiteLLM's *default* migration resolver, after applying new Prisma migrations,
+> diffs the whole `public` schema against its own and **drops every table it
+> doesn't own** — including this UI's `ui_*` tables (your master config).
+> `docker-compose.yml` therefore starts LiteLLM with `--use_v2_migration_resolver`,
+> which skips that step; keep the flag if you edit the `command:` line.
 
 ## Bind-mounted layout
 
