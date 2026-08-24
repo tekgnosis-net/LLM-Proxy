@@ -249,6 +249,8 @@ docker compose down                            # stop (data persists in ./data)
 docker compose exec postgres pg_dump -U "$POSTGRES_USER" litellm > backup-$(date +%F).sql
 ```
 
+The UI also automates this: **Settings → Backup & Restore** schedules config and usage-log backups to ./backups with retention and one-click restore.
+
 If Postgres shows permission errors on first boot:
 `sudo chown -R 999:999 data/postgres data/valkey` then `docker compose up -d`.
 

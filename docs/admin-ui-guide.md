@@ -650,6 +650,20 @@ costs and mode when you enter a Provider model id.
 
 ---
 
+## Backup & Restore
+
+Automated backups protect your proxy configuration and request logs. Two independent tiers operate on separate schedules: **Configuration** (the rendered `config.yaml` plus credential metadata) backs up by default daily at 03:00 UTC, retaining 14 days; **Usage logs** (SpendLogs with request/response bodies) is off by default but when enabled backs up daily at 03:30 UTC and retains forever (set `0`). Both can be disabled or adjusted via the settings table.
+
+Each time you click **Apply**, the UI automatically captures a configuration snapshot (the last 50 are kept). Snapshots let you step backwards through a single Apply sequence without waiting for scheduled backups.
+
+Restore modes require you to type a confirmation word to prevent accidental rollback: **ROLLBACK** discards all staged changes and reverts the running config to the backup's state (config.yaml, credentials, and models are restored; keys/usage logs are untouched); **RECOVER** stops the proxy (~1 min), TRUNCATEs every configuration-tier table (UI config, models, MCP servers, virtual keys, teams, users, budgets) and restores them from the backup with pg_restore, then restarts the proxy (usage logs in SpendLogs and daily aggregates are never touched); and **MERGE** applies only to logs-tier backups, inserting usage rows from CSV slices back into the database and skipping rows that already exist without modifying or deleting existing rows. An **empty master** banner appears when the proxy has no applied configuration — the confirmation-word guard and API-level force:true override on Resync/Apply (for deliberate wipes) prevent accidentally wiping a running config.
+
+A backup's encrypted credentials are only usable with the same `SESSION_SECRET` / `CREDENTIALS_KEY` — a mismatch is detected from the manifest fingerprint and the restore is refused. The `LITELLM_SALT_KEY` must also be unchanged for restored model credentials to decrypt inside LiteLLM, but the UI cannot check that key — keep it stable. Back up your secrets separately (e.g. via your host `.env` or a password manager); they are not included in backup files.
+
+Request/response bodies (prompts, completions, metadata) are logged only when **Request & response logging** is enabled in Settings. Bodies are viewed in the **Usage → Activity detail** screen as expandable rows (transcript or raw JSON with copy). Per-key opt-out is available via key metadata: set `turn_off_message_logging: true` to skip that key's bodies from the logs (metadata is still logged). Usage logs are stored in SpendLogs (the LiteLLM usage table) and periodically exported as CSV files to the backups directory — these CSV slices double as the fine-tuning dataset export, with download links available on the Backup & Restore page for integration with your training pipeline.
+
+---
+
 ## Quick reference — field types and conventions
 
 | Convention | Meaning |
