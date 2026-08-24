@@ -30,6 +30,15 @@ def test_check_decryptable_flags_wrong_secret():
     assert check_decryptable(items, f_bad) == []
 
 
+def test_check_decryptable_skips_scalar_data_items():
+    f = fernet_from_secret("good")
+    items = [_it("general_setting", "store_model_in_db", True),
+             _it("general_setting", "database_url", "os.environ/DATABASE_URL"),
+             _it("router_setting", "timeout", 300),
+             _it("model", "m1", {"model_name": "x"})]
+    assert check_decryptable(items, f) == []
+
+
 def test_parse_export_validates():
     items = [_it("model", "a", {})]
     assert parse_export(json.dumps({"version": 1, "items": items})) == items

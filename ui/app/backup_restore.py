@@ -50,7 +50,9 @@ def rollback_preview(current: list[dict], new: list[dict]) -> dict:
 def check_decryptable(items: list[dict], fernet) -> list[str]:
     bad = []
     for it in items:
-        d = it.get("data") or {}
+        d = it.get("data")
+        if not isinstance(d, dict):
+            continue
         for field in ("value_encrypted", "auth_value_encrypted"):
             v = d.get(field)
             if v:
