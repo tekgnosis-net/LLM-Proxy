@@ -1,5 +1,8 @@
 """Restore flows: rollback (hot), full recovery (cold), logs merge (spec §6)."""
 from __future__ import annotations
+import csv as _csv
+import gzip as _gzip
+import io as _io
 import json
 from pathlib import Path
 from typing import Any
@@ -199,3 +202,70 @@ async def full_recovery(bdir: Path, *, dsn, reloader, config_path, connect,
         return {"ok": ok and all(s["status"] == "ok" for s in steps), "steps": steps}
     finally:
         await conn.close()
+
+
+def merge_sql(table: str, csv_cols: list[str], live_cols: list[str]) -> dict:
+    live = set(live_cols)
+    used = [c for c in csv_cols if c in live]
+    dropped = [c for c in csv_cols if c not in live]
+    cols = ", ".join(f'"{c}"' for c in used)
+    return {"temp": f'CREATE TEMP TABLE _restore (LIKE "{table}" INCLUDING DEFAULTS) ON COMMIT DROP',
+            "copy_columns": used, "dropped": dropped,
+            "insert": (f'INSERT INTO "{table}" ({cols}) SELECT {cols} FROM _restore '
+                       f'ON CONFLICT DO NOTHING')}
+
+
+def _tag_count(tag: str) -> int:
+    try:
+        return int(tag.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
+async def restore_logs(slice_dirs: list, connect) -> dict:
+    tables: dict[str, dict] = {}
+    ok = True
+    conn = await connect()
+    try:
+        for d in slice_dirs:
+            for gz in sorted(Path(d).glob("*.csv.gz")):
+                table = gz.name.removesuffix(".csv.gz")
+                try:
+                    with _gzip.open(gz, "rt", newline="") as f:
+                        header = next(_csv.reader(f))
+                    live_cols = [r["column_name"] for r in await conn.fetch(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position", table)]
+                    if not live_cols:
+                        tables.setdefault(table, {"inserted": 0, "skipped": 0,
+                                                  "dropped_columns": [], "error": "table not live"})
+                        continue
+                    m = merge_sql(table, header, live_cols)
+                    async with conn.transaction():
+                        await conn.execute(m["temp"])
+                        src = _gzip.open(gz, "rb")
+                        if m["dropped"]:
+                            keep_idx = [header.index(c) for c in m["copy_columns"]]
+                            buf = _io.StringIO()
+                            w = _csv.writer(buf)
+                            with _gzip.open(gz, "rt", newline="") as f2:
+                                r = _csv.reader(f2)
+                                for row in r:
+                                    w.writerow([row[i] for i in keep_idx])
+                            src = _io.BytesIO(buf.getvalue().encode())
+                        copy_tag = await conn.copy_to_table(
+                            "_restore", source=src,
+                            columns=m["copy_columns"], format="csv", header=True)
+                        copied = _tag_count(str(copy_tag))
+                        inserted = _tag_count(await conn.execute(m["insert"]))
+                    agg = tables.setdefault(table, {"inserted": 0, "skipped": 0,
+                                                    "dropped_columns": m["dropped"]})
+                    agg["inserted"] += inserted
+                    agg["skipped"] += max(copied - inserted, 0)
+                except Exception as e:
+                    ok = False
+                    tables.setdefault(table, {"inserted": 0, "skipped": 0,
+                                              "dropped_columns": []})["error"] = str(e)
+    finally:
+        await conn.close()
+    return {"ok": ok, "tables": tables}

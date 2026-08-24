@@ -191,3 +191,50 @@ async def test_full_recovery_no_live_match_never_stops(tmp_path):
     assert out["ok"] is False and rel.calls == []       # no overlap with live schema: never stopped
     steps = {s["step"]: s["status"] for s in out["steps"]}
     assert steps["truncate"] == "error"
+
+
+import gzip
+from app.backup_restore import merge_sql, restore_logs
+
+
+def test_merge_sql_drops_unknown_cols_and_targets_any_conflict():
+    m = merge_sql("LiteLLM_SpendLogs", ["request_id", "gone_col", "spend"],
+                  ["request_id", "spend", "extra_live"])
+    assert m["copy_columns"] == ["request_id", "spend"]
+    assert m["dropped"] == ["gone_col"]
+    assert m["temp"] == 'CREATE TEMP TABLE _restore (LIKE "LiteLLM_SpendLogs" INCLUDING DEFAULTS) ON COMMIT DROP'
+    assert m["insert"] == ('INSERT INTO "LiteLLM_SpendLogs" ("request_id", "spend") '
+                           'SELECT "request_id", "spend" FROM _restore ON CONFLICT DO NOTHING')
+
+
+class MergeConn:
+    def __init__(self): self.copied = []; self.sql = []
+    def transaction(self):
+        conn = self
+        class _T:
+            async def __aenter__(self): return None
+            async def __aexit__(self, *a): return False
+        return _T()
+    async def fetch(self, q, *a):
+        return [{"column_name": c} for c in ["request_id", "spend"]]
+    async def execute(self, q, *a):
+        self.sql.append(q)
+        return "INSERT 0 1" if q.startswith("INSERT") else "OK"
+    async def copy_to_table(self, table, *, source=None, columns=None, format=None, header=None, **kw):
+        self.copied.append((table, tuple(columns)))
+        return "COPY 2"
+    async def close(self): pass
+
+
+async def test_restore_logs_merges_and_counts(tmp_path):
+    d = tmp_path / "logs" / "s1"; d.mkdir(parents=True)
+    with gzip.open(d / "LiteLLM_SpendLogs.csv.gz", "wt") as f:
+        f.write("request_id,gone_col,spend\nr1,x,0.1\nr2,y,0.2\n")
+    (d / "manifest.json").write_text(json.dumps({"tier": "logs", "taken_at": "t", "files": {}}))
+    conn = MergeConn()
+    async def connect(): return conn
+    out = await restore_logs([d], connect)
+    assert out["ok"] is True
+    t = out["tables"]["LiteLLM_SpendLogs"]
+    assert t["inserted"] == 1 and t["skipped"] == 1 and t["dropped_columns"] == ["gone_col"]
+    assert conn.copied == [("_restore", ("request_id", "spend"))]
