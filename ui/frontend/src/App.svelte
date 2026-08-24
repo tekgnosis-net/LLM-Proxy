@@ -20,6 +20,7 @@
   let authed = $state(false)
   let screen = $state('dash')
   let theme = $state(localStorage.getItem('theme') || 'light')
+  let backupAlert = $state(null)
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -28,8 +29,23 @@
 
   function setTheme(t) { theme = t }
 
-  onMount(async () => { authed = (await api.me()).authed; store.load() })
-  async function onLogin() { authed = true; store.load() }
+  async function checkBackup() {
+    try {
+      const s = await api.backupStatus()
+      if (s.master_empty_live_nonempty)
+        backupAlert = { level: 'err', text: `Master config is empty while LiteLLM serves ${s.live_models} models — restore from Settings → Backup & Restore. Do NOT Resync.` }
+      else {
+        const stale = Object.entries(s.tiers).filter(([, t]) => t.stale).map(([k]) => k)
+        const failed = Object.entries(s.tiers).filter(([, t]) => t.last_error && !t.stale).map(([k]) => k)
+        if (stale.length) backupAlert = { level: 'warn', text: `Backups stale: ${stale.join(', ')} — check Settings → Backup & Restore.` }
+        else if (failed.length) backupAlert = { level: 'warn', text: `Last ${failed.join(', ')} backup failed — check Settings → Backup & Restore.` }
+        else backupAlert = null
+      }
+    } catch { /* status is best-effort */ }
+  }
+
+  onMount(async () => { authed = (await api.me()).authed; store.load(); checkBackup() })
+  async function onLogin() { authed = true; store.load(); checkBackup() }
   async function logout() { await api.logout(); authed = false }
   function confirmDiscard() {
     if (confirm(`Discard all ${store.count} unapplied change(s)? Reverts to the last applied config.`)) {
@@ -64,6 +80,12 @@
       <button class="nav" onclick={logout}>⎋ Sign out</button>
     </aside>
     <main class="main">
+      {#if backupAlert}
+        <div class="banner {backupAlert.level === 'err' ? 'err' : 'warn'}">
+          {backupAlert.text}
+          <button class="dismiss" onclick={() => backupAlert = null}>✕</button>
+        </div>
+      {/if}
       {#if store.pending}
         <div class="applybar">
           <span><strong>{store.count}</strong> unapplied change{store.count === 1 ? '' : 's'}</span>
@@ -114,4 +136,6 @@
   .banner{padding:8px 16px;font-size:13px;font-weight:500}
   .banner.ok{background:#e8f9ee;color:#1a7f45;border-bottom:1px solid #a8e6bf}
   .banner.err{background:#fff0f0;color:#b00020;border-bottom:1px solid #f5b8c4}
+  .banner.warn{background:#fff6e5;color:#8a5a00}
+  .dismiss{float:right;border:0;background:none;cursor:pointer;color:inherit;font:inherit}
 </style>
