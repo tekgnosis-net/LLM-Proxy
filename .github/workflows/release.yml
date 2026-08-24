@@ -90,6 +90,7 @@ jobs:
             echo "::group::build-push attempt $attempt"
             if docker buildx build \
                 --push \
+                --build-arg APP_VERSION="${VERSION}" \
                 --tag "ghcr.io/tekgnosis-net/llm-proxy-ui:${VERSION}" \
                 --tag "ghcr.io/tekgnosis-net/llm-proxy-ui:latest" \
                 ./ui; then

@@ -21,6 +21,7 @@
   let screen = $state('dash')
   let theme = $state(localStorage.getItem('theme') || 'light')
   let backupAlert = $state(null)
+  let version = $state('')
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -44,7 +45,7 @@
     } catch { /* status is best-effort */ }
   }
 
-  onMount(async () => { authed = (await api.me()).authed; store.load(); checkBackup() })
+  onMount(async () => { const m = await api.me(); authed = m.authed; version = m.version || ''; store.load(); checkBackup() })
   async function onLogin() { authed = true; store.load(); checkBackup() }
   async function logout() { await api.logout(); authed = false }
   function confirmDiscard() {
@@ -78,6 +79,7 @@
       <button class="nav" class:active={screen==='settings'} onclick={() => screen='settings'}>⚙ Settings</button>
       <div class="spacer"></div>
       <button class="nav" onclick={logout}>⎋ Sign out</button>
+      <div class="ver">v{version || 'dev'}</div>
     </aside>
     <main class="main">
       {#if backupAlert}
@@ -138,4 +140,5 @@
   .banner.err{background:#fff0f0;color:#b00020;border-bottom:1px solid #f5b8c4}
   .banner.warn{background:#fff6e5;color:#8a5a00}
   .dismiss{float:right;border:0;background:none;cursor:pointer;color:inherit;font:inherit}
+  .ver{margin-top:6px;padding:4px 10px;font-size:11px;color:var(--muted)}
 </style>

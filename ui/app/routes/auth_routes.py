@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from app.auth import verify_password, login_required
 from app.admin_auth import effective_hash, set_hash, verify_and_hash
+from app.settings import get_settings
 
 router = APIRouter(prefix="/api/auth")
 
@@ -26,7 +27,7 @@ def logout(request: Request):
 
 @router.get("/me")
 def me(request: Request):
-    return {"authed": bool(request.session.get("authed"))}
+    return {"authed": bool(request.session.get("authed")), "version": get_settings().app_version}
 
 
 class ChangePwBody(BaseModel):
