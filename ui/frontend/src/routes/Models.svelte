@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, ALL_MODES, SPECIAL_PROVIDER_FIELDS, CUSTOM_PROVIDERS, buildLitellmParams, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
+  import { FALLBACK_PROVIDERS, PINNED_PROVIDERS, SPECIAL_PROVIDER_FIELDS, CUSTOM_PROVIDERS, buildLitellmParams, modeGroups, modeLabel, perTokenToPerM, perMToPerToken } from '../lib/providers.js'
   import { api } from '../lib/api.js'
   import { uuidv4 } from '../lib/browser.js'
   let { store } = $props()
@@ -86,17 +86,11 @@
   }
 
   function currentProvider() { return providers.find(p => p.provider === providerSlug) || { provider: providerSlug } }
-  function providerModes() {
-    // Local/OpenAI-compatible providers point at the operator's own server via
-    // api_base — the catalog's capability matrix can't know what that server
-    // supports (it even marks hosted_vllm audio as unsupported while litellm
-    // ships a hosted_vllm transcription handler). Offer every mode there;
-    // over-offering only risks a failed health check, under-offering hard-blocks
-    // legitimate deployments (ASR/TTS were unselectable).
-    if (CUSTOM_PROVIDERS.has(providerSlug)) return ALL_MODES
-    const m = currentProvider().modes
-    return (Array.isArray(m) && m.length) ? m : ALL_MODES
-  }
+  // Every litellm mode stays selectable; the catalog only decides the ranking
+  // (see modeGroups). Over-offering risks one failed health check — under-offering
+  // hard-blocked ASR/TTS on hosted_vllm and forced a DeepInfra reranker to `chat`.
+  function modeOptions() { return modeGroups(providerSlug, currentProvider().modes) }
+  function modeUnlisted() { return modeOptions().other.includes(form.mode) }
   function specialFields() { return SPECIAL_PROVIDER_FIELDS[providerSlug] || [] }
   function onProviderChange() {
     testResult = null; autofilled = false
@@ -104,8 +98,9 @@
     form.api_base = ''; form.api_version = ''; form.aws_region_name = ''
     form.vertex_project = ''; form.vertex_location = ''
     showAdvanced = CUSTOM_PROVIDERS.has(providerSlug)   // auto-open Advanced (api_base) for custom/local providers
-    const modes = providerModes()
-    if (!modes.includes(form.mode)) form.mode = modes[0] || 'chat'
+    // form.mode is deliberately kept: a mode the new provider's catalog row doesn't
+    // list is still offered (under "Other") and the hint says so — silently flipping
+    // it was the same trap as hiding it.
   }
 
   async function tryAutofill() {
@@ -296,9 +291,18 @@
 
       <label>Mode
         <select bind:value={form.mode}>
-          {#each providerModes() as m}<option value={m}>{modeLabel(m)}</option>{/each}
+          {#if modeOptions().other.length}
+            <optgroup label="Supported (LiteLLM catalog)">
+              {#each modeOptions().supported as m}<option value={m}>{modeLabel(m)}</option>{/each}
+            </optgroup>
+            <optgroup label="Other modes">
+              {#each modeOptions().other as m}<option value={m}>{modeLabel(m)}</option>{/each}
+            </optgroup>
+          {:else}
+            {#each modeOptions().supported as m}<option value={m}>{modeLabel(m)}</option>{/each}
+          {/if}
         </select>
-        <span class="hint">The endpoint type used for the health check.</span>
+        <span class="hint">{#if modeUnlisted()}Not listed for this provider in LiteLLM's catalog — LiteLLM may still support it; the health check will use this endpoint type.{:else}The endpoint type used for the health check.{/if}</span>
       </label>
 
       <label class="check"><input type="checkbox" bind:checked={form.disableHealthCheck} />
