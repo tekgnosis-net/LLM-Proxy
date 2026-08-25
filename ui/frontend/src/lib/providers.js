@@ -40,6 +40,21 @@ export const PINNED_PROVIDERS = ['openai', 'anthropic', 'azure', 'bedrock', 'gem
 // Full mode list (fallback when a provider has no catalog modes).
 export const ALL_MODES = ['chat','embedding','completion','image_generation','audio_transcription','audio_speech','rerank','moderations','responses']
 
+// The Mode picker NEVER hides a mode — it ranks them. LiteLLM's
+// provider_endpoints_support.json is a README-generation matrix, not a capability
+// API: on current upstream main it marks deepinfra, infinity and jina_ai
+// `rerank: false` while litellm ships rerank handlers for all three. Hiding on its
+// say-so forced a DeepInfra reranker to be saved as mode `chat`. Catalog-listed
+// modes come first ("supported"); every other litellm mode stays selectable under
+// "other". Custom/local providers and providers with no catalog row get one flat
+// list (other = []), exactly as before.
+export function modeGroups(slug, catalogModes) {
+  if (CUSTOM_PROVIDERS.has(slug)) return { supported: ALL_MODES, other: [] }
+  const supported = (Array.isArray(catalogModes) ? catalogModes : []).filter(m => ALL_MODES.includes(m))
+  if (!supported.length) return { supported: ALL_MODES, other: [] }
+  return { supported, other: ALL_MODES.filter(m => !supported.includes(m)) }
+}
+
 // Special deployment fields LiteLLM doesn't expose as data — shown only for these slugs.
 export const SPECIAL_PROVIDER_FIELDS = {
   azure: ['api_base', 'api_version'],
