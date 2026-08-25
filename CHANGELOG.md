@@ -1,3 +1,10 @@
+## [1.36.1](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.36.0...v1.36.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ui:** never hide a litellm mode in the model picker — rank by catalog instead ([e07102d](https://github.com/tekgnosis-net/LLM-Proxy/commit/e07102d470cd8b5bf8bfa020c564c6d6230f6d45))
+
 # [1.36.0](https://github.com/tekgnosis-net/LLM-Proxy/compare/v1.35.0...v1.36.0) (2026-08-24)
 
 
